@@ -106,7 +106,7 @@ tests/
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
+    "typecheck": "tsc -b packages/ir",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm test:unit && pnpm test:e2e",
@@ -114,7 +114,6 @@ tests/
   },
   "devDependencies": {
     "@h2d/ir": "workspace:*",
-    "@h2d/reference-renderer": "workspace:*",
     "@playwright/test": "^1.48.0",
     "@types/node": "^22.7.0",
     "@types/pixelmatch": "^5.2.6",
@@ -128,7 +127,9 @@ tests/
 }
 ```
 
-Воркспейс-пакеты объявлены зависимостями корня намеренно: без этого `tests/e2e/` не разрешит `@h2d/ir` и `@h2d/reference-renderer`.
+`@h2d/ir` объявлен зависимостью корня намеренно: без этого `tests/e2e/` его не разрешит.
+
+**Важно: пакеты подключаются по мере появления.** `workspace:*`-зависимость на несуществующий пакет валит `pnpm install`, а `tsc -b` на несуществующий путь валит typecheck. Поэтому здесь в `typecheck` только `packages/ir`, а `@h2d/reference-renderer` в зависимостях отсутствует. Расширения делают Task 4 (добавляет `packages/serializer` в `typecheck`) и Task 12 (добавляет `packages/reference-renderer` и в `typecheck`, и в корневые `devDependencies` — второе обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит импорт).
 
 - [ ] **Step 2: Создать `pnpm-workspace.yaml`**
 
@@ -774,7 +775,18 @@ git commit -m "feat(ir): zod-валидация бандла с проверко
 }
 ```
 
-- [ ] **Step 3: Написать падающий тест**
+- [ ] **Step 3: Подключить пакет к typecheck**
+
+Task 1 оставил в корневом `package.json` только `packages/ir`, потому что остальных пакетов не существовало. Теперь сериализатор появился — расширить скрипт:
+
+```json
+    "typecheck": "tsc -b packages/ir packages/serializer",
+```
+
+Run: `pnpm typecheck`
+Expected: FAIL — `packages/serializer/src` пуст, `TS18003: No inputs were found`. Это ожидаемо и уйдёт на Step 7. Если ошибка другая — значит сломан `tsconfig`, и это надо починить сейчас.
+
+- [ ] **Step 4: Написать падающий тест**
 
 ```ts
 // packages/serializer/test/color.test.ts
@@ -822,12 +834,12 @@ describe('parsePx', () => {
 })
 ```
 
-- [ ] **Step 4: Запустить тест и убедиться, что он падает**
+- [ ] **Step 5: Запустить тест и убедиться, что он падает**
 
 Run: `pnpm vitest run packages/serializer/test/color.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/css/color.js"`.
 
-- [ ] **Step 5: Создать `packages/serializer/src/css/length.ts`**
+- [ ] **Step 6: Создать `packages/serializer/src/css/length.ts`**
 
 ```ts
 /** Computed styles всегда отдают длины в пикселях, поэтому достаточно
@@ -839,7 +851,7 @@ export const parsePx = (value: string): number => {
 }
 ```
 
-- [ ] **Step 6: Создать `packages/serializer/src/css/color.ts`**
+- [ ] **Step 7: Создать `packages/serializer/src/css/color.ts`**
 
 ```ts
 import type { Rgba } from '@h2d/ir'
@@ -916,15 +928,20 @@ export const parseColor = (value: string): Rgba | null => {
 export const isInvisible = (color: Rgba): boolean => color.a === 0
 ```
 
-- [ ] **Step 7: Запустить тесты и убедиться, что они проходят**
+- [ ] **Step 8: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/color.test.ts`
 Expected: PASS, 8 тестов. Тест на нераспознанное значение проходит потому, что в окружении `node` `OffscreenCanvas` отсутствует и функция возвращает `null` — именно то поведение, на которое рассчитан вызывающий код.
 
-- [ ] **Step 8: Коммит**
+- [ ] **Step 9: Проверить typecheck**
+
+Run: `pnpm typecheck`
+Expected: без ошибок — теперь в `packages/serializer/src` есть входные файлы.
+
+- [ ] **Step 10: Коммит**
 
 ```bash
-git add packages/serializer
+git add packages/serializer package.json
 git commit -m "feat(serializer): парсеры цвета и длины"
 ```
 
@@ -2394,7 +2411,24 @@ git commit -m "feat(serializer): обход DOM, сериализация экр
 }
 ```
 
-- [ ] **Step 3: Написать падающий тест**
+- [ ] **Step 3: Подключить пакет к корню**
+
+Два изменения в корневом `package.json`. Первое — расширить typecheck до всех трёх пакетов, теперь они все существуют:
+
+```json
+    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
+```
+
+Второе — добавить пакет в корневые `devDependencies`. Это обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит `@h2d/reference-renderer`:
+
+```json
+    "@h2d/reference-renderer": "workspace:*",
+```
+
+Run: `pnpm install`
+Expected: пакет слинкован, ошибок нет.
+
+- [ ] **Step 4: Написать падающий тест**
 
 ```ts
 // packages/reference-renderer/test/render.test.ts
@@ -2524,12 +2558,12 @@ describe('renderScreenToSvg', () => {
 })
 ```
 
-- [ ] **Step 4: Запустить тест и убедиться, что он падает**
+- [ ] **Step 5: Запустить тест и убедиться, что он падает**
 
 Run: `pnpm vitest run packages/reference-renderer/test/render.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/render.js"`.
 
-- [ ] **Step 5: Создать `packages/reference-renderer/src/render.ts`**
+- [ ] **Step 6: Создать `packages/reference-renderer/src/render.ts`**
 
 ```ts
 import type { Corner, IrNode, Rect, Rgba, Screen, Shadow } from '@h2d/ir'
@@ -2679,7 +2713,7 @@ export const renderScreenToSvg = (screen: Screen): string => {
 }
 ```
 
-- [ ] **Step 6: Создать `packages/reference-renderer/src/html.ts`**
+- [ ] **Step 7: Создать `packages/reference-renderer/src/html.ts`**
 
 ```ts
 /** Оборачивает SVG в минимальную страницу для скриншота в Playwright.
@@ -2693,22 +2727,22 @@ export const wrapSvgInHtml = (svg: string, width: number, height: number): strin
   </style></head><body>${svg}</body></html>`
 ```
 
-- [ ] **Step 7: Создать `packages/reference-renderer/src/index.ts`**
+- [ ] **Step 8: Создать `packages/reference-renderer/src/index.ts`**
 
 ```ts
 export { renderScreenToSvg } from './render.js'
 export { wrapSvgInHtml } from './html.js'
 ```
 
-- [ ] **Step 8: Запустить тесты и убедиться, что они проходят**
+- [ ] **Step 9: Запустить тесты и проверить typecheck**
 
-Run: `pnpm vitest run packages/reference-renderer/test/render.test.ts`
-Expected: PASS, 8 тестов.
+Run: `pnpm vitest run packages/reference-renderer/test/render.test.ts && pnpm typecheck`
+Expected: PASS, 8 тестов, typecheck по трём пакетам без ошибок.
 
-- [ ] **Step 9: Коммит**
+- [ ] **Step 10: Коммит**
 
 ```bash
-git add packages/reference-renderer
+git add packages/reference-renderer package.json pnpm-lock.yaml
 git commit -m "feat(reference-renderer): рендер IR в SVG по порядку отрисовки"
 ```
 
