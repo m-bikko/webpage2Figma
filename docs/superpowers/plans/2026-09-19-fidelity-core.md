@@ -1645,6 +1645,260 @@ git commit -m "feat(ir): валидация формы и инвариантов
 
 ---
 
+## Task 3b: Инварианты, делающие правило проекта машинно-проверяемым
+
+Появилась после второго раунда ревью. Ревьюер собрал бандлы и прогнал их через **настоящий** валидатор из Task 3 — приняты все четыре:
+
+| бандл | результат |
+|---|---|
+| узел `kind:'placeholder'` при `report: []` | **принят** |
+| `needsPlaceholder: true`, `nodeId` → обычный `frame` | **принят** |
+| `needsPlaceholder: true`, `nodeId: null` — невыполнимо по построению | **принят** |
+| повёрнутый блок с `transform` при `report: []` | **принят** |
+
+Третий случай — ровно запрещённый молчаливый fallback: неподдерживаемая фича приезжает обычной пустой коробкой. Четвёртый шире: спека §7.1b требует диагностировать каждую отложенную фичу, но единственной защитой были шесть рукописных фикстур Task 13, а на живой странице не проверяло ничто. Данные для проверки уже лежат в бандле.
+
+### Решение по семантике `needsPlaceholder`
+
+Ревью указало на настоящий пробел в контракте: у флага не определено, означает он **замену** узла или **пометку** на нём. `unsupported.canvas` заменяет узел целиком; `deferred.gradient` висит на узле с реальными детьми и текстом, который заменять нельзя. Без решения проверка «`needsPlaceholder` ⟹ узел является заглушкой» отвергала бы легитимные бандлы.
+
+**Решение: только замена.** `needsPlaceholder: true` означает «узел, на который я ссылаюсь, обязан быть `kind: 'placeholder'`». Коды класса пометки (`deferred.*` на узле с содержимым) выставляют `false`. Это проверяемо и не требует вводить понятие «дополнительный дочерний узел-аннотация».
+
+**Files:**
+- Modify: `packages/ir/src/types.ts` (док-комментарий `needsPlaceholder`)
+- Modify: `packages/ir/src/invariants.ts`, `packages/ir/src/validate.ts`
+- Modify: `packages/ir/test/invariants.test.ts`, `packages/ir/test/validate.test.ts`
+
+- [ ] **Step 1: Зафиксировать семантику в контракте**
+
+В `types.ts`, у поля `needsPlaceholder`, заменить док-комментарий на:
+
+```ts
+  /** Только ЗАМЕНА, не пометка: `true` означает, что узел по `nodeId`
+   *  обязан быть `kind: 'placeholder'`. Коды, которые лишь помечают узел
+   *  с реальным содержимым (`deferred.*` на блоке с детьми и текстом),
+   *  выставляют `false` — заменять такой узел заглушкой нельзя.
+   *  Без этого различения проверка связи «диагностика ↔ заглушка»
+   *  отвергала бы легитимные бандлы. */
+  needsPlaceholder: boolean
+```
+
+- [ ] **Step 2: Написать падающие тесты новых инвариантов**
+
+Добавить в `packages/ir/test/invariants.test.ts`. Существующие тесты не менять.
+
+```ts
+describe('checkInvariants: связь заглушки и диагностики', () => {
+  const placeholderNode = (id: string, code: string, paintOrder: number): IrNode => ({
+    ...frameNode({ id, paintOrder }),
+    kind: 'placeholder',
+    placeholder: { code: code as DiagnosticCode, label: 'canvas' },
+  })
+
+  it('ловит заглушку, которую отчёт не объясняет', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [placeholderNode('ph', 'unsupported.canvas', 1)],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('placeholder.unexplained')
+  })
+
+  it('принимает заглушку с парной диагностикой', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [placeholderNode('ph', 'unsupported.canvas', 1)],
+    })
+    const b = bundle({
+      screens: [screen({ root })],
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'canvas',
+        nodeId: 'ph', screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+
+  it('ловит needsPlaceholder: true с nodeId: null — невыполнимо по построению', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: null, screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('placeholder.no-host')
+  })
+
+  it('ловит needsPlaceholder: true, указывающий на обычный фрейм', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: 'n0', screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('placeholder.wrong-host')
+  })
+})
+
+describe('checkInvariants: отложенные фичи обязаны диагностироваться', () => {
+  it('ловит transform без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+
+  it('принимает transform с парной диагностикой deferred.transform', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+    })
+    const b = bundle({
+      screens: [screen({ root })],
+      report: [{
+        level: 'error', code: 'deferred.transform', message: 'x',
+        nodeId: 'a', screenId: 's0', needsPlaceholder: false,
+      }],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+
+  it('ловит blend без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      style: { ...frameNode().style, blend: 'multiply' },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+
+  it('ловит blur без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      style: { ...frameNode().style, blur: { layer: 4, background: 0 } },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+})
+
+describe('checkInvariants: уникальность идентификаторов', () => {
+  it('ловит дубль Asset.id — иначе картинка молча подменяется другой', () => {
+    const b = bundle({
+      assets: [
+        { id: 'a1', mimeType: 'image/png', width: 1, height: 1, path: 'assets/logo.png' },
+        { id: 'a1', mimeType: 'image/png', width: 2, height: 2, path: 'assets/hero.png' },
+      ],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('asset-id.duplicate')
+  })
+
+  it('ловит дубль Screen.id — иначе screenId в диагностике неоднозначен', () => {
+    const b = bundle({
+      screens: [
+        screen({ id: 'same', root: frameNode({ id: 'x', paintOrder: 0 }) }),
+        screen({ id: 'same', root: frameNode({ id: 'y', paintOrder: 0 }) }),
+      ],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('screen-id.duplicate')
+  })
+})
+
+describe('checkInvariants: токены не в обход проверок', () => {
+  it('ловит висячий assetId в paintStyles', () => {
+    const b = bundle({
+      tokens: {
+        variables: [], textStyles: [],
+        paintStyles: [{
+          name: 'brand',
+          fill: {
+            kind: 'image',
+            ref: {
+              assetId: 'нет-такого',
+              placement: { mode: 'fill', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 },
+            },
+          },
+        }],
+      },
+    })
+    expect(codesOf(checkInvariants(b))).toContain('asset.dangling')
+  })
+
+  it('ловит шрифт из textStyles, отсутствующий в fonts', () => {
+    const b = bundle({
+      tokens: {
+        variables: [], paintStyles: [],
+        textStyles: [{ name: 'h1', run: textRun({ usedFamily: 'Söhne', fontWeight: 700 }) }],
+      },
+    })
+    expect(codesOf(checkInvariants(b))).toContain('font.uncovered')
+  })
+})
+
+describe('checkInvariants: согласованность ссылок диагностики', () => {
+  it('ловит диагностику, у которой узел и экран из разных экранов', () => {
+    const b = bundle({
+      screens: [
+        screen({ id: 's0', root: frameNode({ id: 'на-нулевом', paintOrder: 0 }) }),
+        screen({ id: 's1', root: frameNode({ id: 'на-первом', paintOrder: 0 }) }),
+      ],
+      report: [{
+        level: 'info', code: 'fidelity.grid-flattened', message: 'x',
+        nodeId: 'на-нулевом', screenId: 's1', needsPlaceholder: false,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('diagnostic.screen-mismatch')
+  })
+})
+```
+
+Импорты теста дополнить: `import type { DiagnosticCode } from '../src/codes.js'` и `import type { IrNode } from '../src/types.js'`.
+
+- [ ] **Step 3: Запустить и убедиться, что падает**
+
+Run: `pnpm vitest run packages/ir/test/invariants.test.ts`
+Expected: FAIL — новые коды не порождаются. Существующие 14 тестов обязаны остаться зелёными.
+
+- [ ] **Step 4: Реализовать новые проверки в `invariants.ts`**
+
+Добавить функции и включить их в `checkInvariants`. Требования к реализации:
+
+1. `checkPlaceholders(bundle)` — три проверки. Для каждого узла `kind: 'placeholder'` обязана существовать диагностика с `nodeId === node.id` **и** `code === node.placeholder.code` (точная пара, а не «код встречается где-то в отчёте») → иначе `placeholder.unexplained`. Для каждой диагностики с `needsPlaceholder: true`: `nodeId === null` → `placeholder.no-host`; `nodeId` указывает на узел, у которого `kind !== 'placeholder'` → `placeholder.wrong-host`.
+
+2. `checkDeferredDiagnosed(bundle)` — для каждого узла: `transform !== null` требует диагностику `deferred.transform` с этим `nodeId`; `style.blend !== 'normal'` → `deferred.blend`; `style.blur !== null` → `deferred.blur`; `kind === 'vector'` → `deferred.vector`. Отсутствие → `deferred.undiagnosed` с указанием, какая именно фича не объяснена.
+
+   **Обязательный комментарий над функцией:** этот блок ограничен планом 1 и удаляется по фиче по мере их реализации в плане 2. Без такой пометки он превратится в окаменелость, которая начнёт отвергать корректные бандлы, как только фичи заработают.
+
+3. `checkIdUniqueness` — дубли `Asset.id` и `Screen.id`.
+
+4. Расширить `collectAssetRefs` и сбор `usedFonts` на `tokens.paintStyles` и `tokens.textStyles`. Обход токенов делать отдельной функцией, а не внутри обхода узлов: токены не принадлежат экрану.
+
+5. `diagnostic.screen-mismatch`: если у диагностики заполнены и `nodeId`, и `screenId`, узел обязан принадлежать именно этому экрану.
+
+- [ ] **Step 5: Ограничить объём сообщения об ошибке**
+
+В `validate.ts`. Измеренная проблема: при 50 000 узлов с одинаковым `paintOrder` сообщение составляет **7,84 МБ** — пятьдесят тысяч почти одинаковых строк, отправляемых в UI плагина Figma.
+
+Группировать нарушения по `code`, печатать первые десять каждого вида и добавлять `…и ещё N того же вида`. Политика «сообщать обо всех» правильная, но без ограничения она опровергает себя именно на том бандле, где нужна больше всего.
+
+Тест: бандл с 200 узлами, у всех `paintOrder: 0`; итоговая строка короче 8000 символов и содержит `и ещё`.
+
+- [ ] **Step 6: Прогнать всё**
+
+Run: `pnpm typecheck && pnpm typecheck:root && pnpm vitest run packages/ir`
+Expected: PASS. Существующие 24 теста плюс новые.
+
+- [ ] **Step 7: Коммит**
+
+```bash
+git add packages/ir
+git commit -m "feat(ir): инварианты связи заглушек и диагностик, отложенных фич, уникальности id"
+```
+
+---
+
 ## Task 4: Пакет сериализатора и парсер цвета
 
 Цвет разбирается через быстрый путь для `rgb()`/`rgba()` и через `OffscreenCanvas` для всего остального. Причина: Chrome возвращает из `getComputedStyle` не только `rgb()` — авторские `oklch()`, `color-mix()` и `lab()` доезжают в своём синтаксисе. Растеризация браузером даёт точно тот цвет, который он нарисовал, при любом синтаксисе, включая будущие.
@@ -2261,7 +2515,11 @@ export const readProbe = (
 ```ts
 // packages/serializer/test/stacking.test.ts
 import { describe, expect, it } from 'vitest'
-import { establishesStackingContext, resolvePaintOrder } from '../src/stacking.js'
+import {
+  establishesStackingContext,
+  findInterleaved,
+  resolvePaintOrder,
+} from '../src/stacking.js'
 import type { LayoutProbe } from '../src/probe.js'
 
 const probe = (id: string, overrides: Partial<LayoutProbe> = {}): LayoutProbe => ({
@@ -2392,6 +2650,95 @@ describe('resolvePaintOrder', () => {
     const values = [...resolvePaintOrder(root).values()]
     expect(new Set(values).size).toBe(values.length)
   })
+
+  // Два теста ниже — ядро задачи. Первая редакция резолвера их не проходила:
+  // она бакетировала только ПРЯМЫХ детей контекста, из-за чего
+  // позиционированный потомок, спрятанный за обычной потоковой обёрткой,
+  // не сравнивался по z-index с соседями обёртки. Остальные тесты этого не
+  // ловили, потому что в каждом z-индексированный узел — прямой ребёнок
+  // контекста.
+
+  it('поднимает позиционированного потомка из потоковой обёртки в предка-контекст', () => {
+    // wrapper не создаёт контекст, поэтому P (z=5) обязан сравниваться
+    // с B (z=3) в корневом контексте и красится ПОВЕРХ него.
+    const root = probe('root', {
+      children: [
+        probe('wrapper', {
+          children: [probe('P', { position: 'relative', zIndex: 5 })],
+        }),
+        probe('B', { position: 'relative', zIndex: 3 }),
+      ],
+    })
+    expect(orderOf(root)).toEqual(['root', 'wrapper', 'B', 'P'])
+  })
+
+  it('поднимает потомка с отрицательным z-index под фон потоковой обёртки', () => {
+    const root = probe('root', {
+      children: [
+        probe('wrapper', {
+          children: [probe('under', { position: 'relative', zIndex: -1 })],
+        }),
+        probe('sibling'),
+      ],
+    })
+    // under уходит в отрицательный бакет КОРНЕВОГО контекста, то есть
+    // красится раньше и обёртки, и её потокового соседа.
+    expect(orderOf(root)).toEqual(['root', 'under', 'wrapper', 'sibling'])
+  })
+
+  it('не поднимает потомка сквозь узел, который сам создаёт контекст', () => {
+    // ctx создаёт контекст (позиционирован и имеет z-index), поэтому
+    // inner заперт внутри и не может перекрыть sibling с z-index 2.
+    const root = probe('root', {
+      children: [
+        probe('ctx', {
+          position: 'relative',
+          zIndex: 1,
+          children: [probe('inner', { position: 'relative', zIndex: 999 })],
+        }),
+        probe('sibling', { position: 'relative', zIndex: 2 }),
+      ],
+    })
+    expect(orderOf(root)).toEqual(['root', 'ctx', 'inner', 'sibling'])
+  })
+
+  it('не считает z-index у статичного элемента: случайный z-index: 0 не поднимает его', () => {
+    // getComputedStyle возвращает указанное значение и для статики,
+    // поэтому копипастный `z-index: 0` не должен менять порядок.
+    const root = probe('root', {
+      children: [
+        probe('static-with-z', { zIndex: 0 }),
+        probe('plain'),
+      ],
+    })
+    expect(orderOf(root)).toEqual(['root', 'static-with-z', 'plain'])
+  })
+})
+
+describe('findInterleaved', () => {
+  it('на непереплетённом дереве не находит ничего', () => {
+    const root = probe('root', {
+      children: [probe('a', { children: [probe('b')] }), probe('c')],
+    })
+    expect(findInterleaved(root, resolvePaintOrder(root))).toEqual([])
+  })
+
+  it('находит поддерево, чей диапазон влез внутрь чужого', () => {
+    // P поднят из wrapper и красится после B, из-за чего диапазон
+    // поддерева wrapper разрывается диапазоном B. Дерево Figma такой
+    // порядок выразить не может: там z-порядок задаётся порядком
+    // среди сиблингов.
+    const root = probe('root', {
+      children: [
+        probe('wrapper', {
+          children: [probe('P', { position: 'relative', zIndex: 5 })],
+        }),
+        probe('B', { position: 'relative', zIndex: 3 }),
+      ],
+    })
+    const found = findInterleaved(root, resolvePaintOrder(root))
+    expect(found.length).toBeGreaterThan(0)
+  })
 })
 ```
 
@@ -2402,6 +2749,8 @@ Expected: FAIL — `Failed to resolve import "../src/stacking.js"`.
 
 - [ ] **Step 4: Создать `packages/serializer/src/stacking.ts`**
 
+**Ядро задачи — подъём позиционированных потомков.** Правило CSS: позиционированный элемент участвует в стекинге ближайшего предка-**контекста**, а не своего родителя. Первая редакция этого не делала — бакетировала только прямых детей — и давала классическую ошибку: выпадающее меню с `z-index: 5` внутри непозиционированной обёртки уезжало под соседа обёртки с `z-index: 3`.
+
 ```ts
 import type { LayoutProbe } from './probe.js'
 
@@ -2409,8 +2758,8 @@ const isPositioned = (p: LayoutProbe): boolean => p.position !== 'static'
 
 /** Условия создания stacking context по CSS Positioned Layout и Compositing.
  *  Реализован практически доминирующий набор триггеров; редкие
- *  (`will-change`, `contain: layout` в сочетаниях, `perspective`)
- *  не учитываются и фиксируются вызывающим как Diagnostic. */
+ *  (`will-change`, `perspective`, сочетания `contain`) не учитываются
+ *  и фиксируются вызывающим как Diagnostic. */
 export const establishesStackingContext = (p: LayoutProbe): boolean => {
   if (p.position === 'fixed' || p.position === 'sticky') return true
   if (isPositioned(p) && p.zIndex !== 'auto') return true
@@ -2423,18 +2772,36 @@ export const establishesStackingContext = (p: LayoutProbe): boolean => {
   return false
 }
 
+/** Узел участвует в стекинге контекста как самостоятельная единица,
+ *  а не как часть потока. Сюда попадают позиционированные с `z-index: auto`:
+ *  контекста они не создают, но красятся атомарно в бакете z=0.
+ *
+ *  Упрощение зафиксировано сознательно: по спецификации позиционированные
+ *  потомки такого узла могут «убежать» в предка-контекст. Случай редкий,
+ *  и вместо его моделирования вызывающий обязан породить Diagnostic —
+ *  молчаливо неверный порядок недопустим, честное «не умеем» допустимо. */
+const isStackingParticipant = (p: LayoutProbe): boolean =>
+  isPositioned(p) || (p.parentIsFlexOrGrid && p.zIndex !== 'auto')
+
 type Bucket = 'negative' | 'flow' | 'float' | 'inline' | 'auto' | 'positive'
+
+type Groups = Record<Bucket, LayoutProbe[]>
+
+const emptyGroups = (): Groups => ({
+  negative: [], flow: [], float: [], inline: [], auto: [], positive: [],
+})
 
 const bucketOf = (p: LayoutProbe): Bucket => {
   const z = p.zIndex
-  if (typeof z === 'number' && z < 0 && (isPositioned(p) || p.parentIsFlexOrGrid)) {
-    return 'negative'
-  }
-  if (typeof z === 'number' && z > 0 && (isPositioned(p) || p.parentIsFlexOrGrid)) {
-    return 'positive'
-  }
+  /** `z-index` осмыслен только у позиционированных и у детей flex/grid.
+   *  У статичного элемента `getComputedStyle` вернёт указанное значение,
+   *  поэтому случайный `z-index: 0` на статике не должен поднимать его
+   *  над потоковыми соседями. */
+  const zMatters = isPositioned(p) || p.parentIsFlexOrGrid
+  if (zMatters && typeof z === 'number' && z < 0) return 'negative'
+  if (zMatters && typeof z === 'number' && z > 0) return 'positive'
   if (isPositioned(p)) return 'auto'
-  if (typeof z === 'number' && z === 0) return 'auto'
+  if (zMatters && typeof z === 'number' && z === 0) return 'auto'
   if (p.isFloat) return 'float'
   if (p.isInline) return 'inline'
   return 'flow'
@@ -2443,7 +2810,7 @@ const bucketOf = (p: LayoutProbe): Bucket => {
 const zValue = (p: LayoutProbe): number => (p.zIndex === 'auto' ? 0 : p.zIndex)
 
 /** Стабильная сортировка по z-index: при равных значениях сохраняется
- *  порядок DOM, как того требует спецификация. */
+ *  порядок документа, как того требует спецификация. */
 const byZIndex = (items: LayoutProbe[]): LayoutProbe[] =>
   items
     .map((item, index) => ({ item, index }))
@@ -2452,10 +2819,11 @@ const byZIndex = (items: LayoutProbe[]): LayoutProbe[] =>
 
 /**
  * Порядок отрисовки внутри stacking context, по CSS 2.1 Appendix E:
- * сам элемент → отрицательные контексты → потоковые блоки → флоаты →
- * инлайны → позиционированные с auto/0 → положительные контексты.
+ * сам элемент → отрицательные z-index → потоковые блоки → флоаты →
+ * инлайны → позиционированные с auto/0 → положительные z-index.
  *
- * Возвращает Map id → индекс отрисовки. Индексы плотные и уникальные.
+ * Возвращает Map id → индекс отрисовки. Индексы плотные и уникальные,
+ * и это инвариант, который валидируется в `@h2d/ir`.
  */
 export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
   const order = new Map<string, number>()
@@ -2466,57 +2834,103 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
     counter += 1
   }
 
-  /** Обходит поддерево узла, который НЕ создаёт собственный stacking context:
-   *  его дети участвуют в стекинге ближайшего предка-контекста. */
-  const collect = (p: LayoutProbe, groups: Record<Bucket, LayoutProbe[]>): void => {
-    for (const child of p.children) {
+  /** Собирает участников стекинга ОДНОГО контекста, поднимая
+   *  позиционированных потомков из обычных потоковых обёрток.
+   *
+   *  Потоковый ребёнок кладётся в бакет `flow` И его дети продолжают
+   *  собираться в ЭТОТ ЖЕ контекст — в этом и состоит подъём. Ребёнок,
+   *  который создаёт контекст или участвует в стекинге самостоятельно,
+   *  кладётся в свой бакет, а его поддерево красится вместе с ним,
+   *  поэтому обход в него не заходит. */
+  const collectInto = (node: LayoutProbe, groups: Groups): void => {
+    for (const child of node.children) {
+      if (establishesStackingContext(child) || isStackingParticipant(child)) {
+        groups[bucketOf(child)].push(child)
+        continue
+      }
       groups[bucketOf(child)].push(child)
+      collectInto(child, groups)
     }
   }
 
-  const paintContext = (context: LayoutProbe): void => {
-    emit(context)
-
-    const groups: Record<Bucket, LayoutProbe[]> = {
-      negative: [], flow: [], float: [], inline: [], auto: [], positive: [],
-    }
-    collect(context, groups)
-
-    const paintSubtree = (node: LayoutProbe): void => {
-      if (establishesStackingContext(node)) {
-        paintContext(node)
-        return
-      }
-      emit(node)
-      const nested: Record<Bucket, LayoutProbe[]> = {
-        negative: [], flow: [], float: [], inline: [], auto: [], positive: [],
-      }
-      collect(node, nested)
-      for (const child of byZIndex(nested.negative)) paintSubtree(child)
-      for (const child of nested.flow) paintSubtree(child)
-      for (const child of nested.float) paintSubtree(child)
-      for (const child of nested.inline) paintSubtree(child)
-      for (const child of byZIndex(nested.auto)) paintSubtree(child)
-      for (const child of byZIndex(nested.positive)) paintSubtree(child)
-    }
-
-    for (const child of byZIndex(groups.negative)) paintSubtree(child)
-    for (const child of groups.flow) paintSubtree(child)
-    for (const child of groups.float) paintSubtree(child)
-    for (const child of groups.inline) paintSubtree(child)
-    for (const child of byZIndex(groups.auto)) paintSubtree(child)
-    for (const child of byZIndex(groups.positive)) paintSubtree(child)
+  /** Красит узел, который сам не создаёт контекст и не участвует в стекинге
+   *  самостоятельно: его собственные дети уже собраны родительским
+   *  `collectInto`, поэтому красится только он. */
+  const paintFlowNode = (p: LayoutProbe): void => {
+    emit(p)
   }
 
-  paintContext(root)
+  /** Красит атомарную единицу: контекст или позиционированный узел
+   *  с `z-index: auto`. Оба красятся вместе со своим поддеревом. */
+  const paintUnit = (p: LayoutProbe): void => {
+    emit(p)
+    const groups = emptyGroups()
+    collectInto(p, groups)
+    paintGroups(groups)
+  }
+
+  const paintGroups = (groups: Groups): void => {
+    for (const child of byZIndex(groups.negative)) paintUnit(child)
+    for (const child of groups.flow) paintFlowNode(child)
+    for (const child of groups.float) paintFlowNode(child)
+    for (const child of groups.inline) paintFlowNode(child)
+    for (const child of byZIndex(groups.auto)) paintUnit(child)
+    for (const child of byZIndex(groups.positive)) paintUnit(child)
+  }
+
+  paintUnit(root)
   return order
 }
+
+/** Позиционированные потомки узла, который сам не создаёт контекст,
+ *  подняты в предка-контекст. Это правильно по CSS, но означает, что
+ *  дерево Figma такой порядок выразить не сможет: в Figma z-порядок
+ *  задаётся порядком среди СИБЛИНГОВ. Функция находит такие случаи,
+ *  чтобы плагин мог либо перестроить дерево, либо честно сообщить.
+ *
+ *  Живёт здесь, а не в рендерере: её нужны и рендерер, и плагин Figma. */
+export const findInterleaved = (
+  root: LayoutProbe,
+  order: Map<string, number>,
+): string[] => {
+  const interleaved: string[] = []
+
+  const rangeOf = (p: LayoutProbe): { min: number; max: number } => {
+    let min = order.get(p.id) ?? Number.POSITIVE_INFINITY
+    let max = order.get(p.id) ?? Number.NEGATIVE_INFINITY
+    for (const child of p.children) {
+      const childRange = rangeOf(child)
+      min = Math.min(min, childRange.min)
+      max = Math.max(max, childRange.max)
+    }
+    return { min, max }
+  }
+
+  const visit = (p: LayoutProbe): void => {
+    const ranges = p.children.map((child) => ({ id: child.id, ...rangeOf(child) }))
+    for (const a of ranges) {
+      for (const b of ranges) {
+        if (a.id === b.id) continue
+        // Диапазон b влез внутрь диапазона a: поддеревья переплелись.
+        if (b.min > a.min && b.min < a.max && b.max > a.max) {
+          interleaved.push(b.id)
+        }
+      }
+    }
+    for (const child of p.children) visit(child)
+  }
+
+  visit(root)
+  return [...new Set(interleaved)]
+}
 ```
+
+Обрати внимание на `collectInto`: обе ветки кладут узел в бакет, и различаются только тем, спускается ли обход внутрь. Это не дублирование, которое надо свернуть — это и есть смысловая развилка между «атомарная единица» и «потоковая обёртка, чьи позиционированные потомки поднимаются выше».
 
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/stacking.test.ts`
-Expected: PASS, 15 тестов.
+Expected: PASS, 21 тест.
 
 - [ ] **Step 6: Коммит**
 
@@ -2955,12 +3369,38 @@ export const readText = (
   }
 
   const lines = readLines(el, scrollX, scrollY)
-  if (lines.length === 0) return null
+  if (lines.length === 0) {
+    // Текст есть, но боксов строк нет. Молча вернуть null означает, что
+    // текст исчезает, не оставив в бандле следа, по которому это можно
+    // обнаружить ниже по конвейеру. Вызывающий обязан породить Diagnostic.
+    return null
+  }
   return { runs: [run], lines }
 }
 
 export const hasUnparsedColor = (cs: CSSStyleDeclaration): boolean =>
   parseColor(cs.color) === null
+
+/** Применяет `text-transform` к самой строке.
+ *
+ *  Обязательно, и вот почему: Figma не имеет `text-transform`, поэтому
+ *  спека §7.1 обещает применять его к содержимому. Первая редакция этой
+ *  задачи его не применяла — `textContent` несёт регистр исходника, — и
+ *  текст приезжал в Figma НЕ ТЕМ регистром при зелёном pixel-diff:
+ *  рендерер сравнивал бы одну и ту же непреобразованную строку с обеих
+ *  сторон. Ни валидатор, ни гейт такую потерю увидеть не могут, потому
+ *  что оба слоя ловят несогласованные бандлы, а не потерявшие данные.
+ *  Значит потеря должна быть исключена у продюсера. */
+export const applyTextTransform = (text: string, cs: CSSStyleDeclaration): string => {
+  switch (cs.textTransform) {
+    case 'uppercase': return text.toLocaleUpperCase()
+    case 'lowercase': return text.toLocaleLowerCase()
+    case 'capitalize':
+      return text.replace(/(^|\s)(\p{L})/gu, (_, sep: string, ch: string) =>
+        sep + ch.toLocaleUpperCase())
+    default: return text
+  }
+}
 ```
 
 - [ ] **Step 2: Проверить typecheck**
@@ -3146,9 +3586,25 @@ const buildNode = (
   return { node, probe }
 }
 
-/** Порядок отрисовки считается вторым проходом: он требует готового дерева. */
+/** Порядок отрисовки считается вторым проходом: он требует готового дерева.
+ *
+ *  Промах по карте — это НЕ данные, которые надо продиагностировать, а
+ *  рассинхрон дерева узлов и дерева проб, то есть баг продюсера. Он обязан
+ *  убить захват здесь, в расширении. Мягкий вариант `?? 0` присвоил бы
+ *  нулевой порядок всем непопавшим узлам, и на 50 000 узлов это даёт
+ *  сообщение об ошибке на 7,8 МБ в UI плагина Figma — измерено.
+ *
+ *  Промах становится достижимым не абстрактно: синтетические узлы для
+ *  `::before`/`::after` из плана 2 не имеют DOM-элемента, а значит и пробы. */
 const applyPaintOrder = (node: IrNode, order: Map<string, number>): void => {
-  node.paintOrder = order.get(node.id) ?? 0
+  const resolved = order.get(node.id)
+  if (resolved === undefined) {
+    throw new Error(
+      `Порядок отрисовки не содержит узла ${node.id} (${node.sourceTag}). ` +
+      `Дерево узлов и дерево проб рассинхронизированы — это баг сериализатора.`,
+    )
+  }
+  node.paintOrder = resolved
   for (const child of node.children) applyPaintOrder(child, order)
 }
 
@@ -4369,6 +4825,7 @@ Design-ревью контракта IR (после реализации пер�
 - `absolute-in-flex/` — бейдж `position:absolute` внутри `display:flex`. Ожидание: `selfLayout.positioning === 'absolute'` у бейджа и `'flow'` у соседей.
 - `missing-font/` — `font-family: "Заведомо Отсутствующий Шрифт", Arial`. Ожидание: `usedFamily === 'Arial'` и `fontFallback` уровня `error`.
 - `dashed-border/` — `border: 2px dashed`. Ожидание: `style === 'dashed'` и `strokeStyleFlattened`.
+- `text-transform/` — `text-transform: uppercase` и `capitalize` на абзацах со строчным исходником. Ожидание: `runs[0].text` и `lines[].text` содержат ПРЕОБРАЗОВАННЫЙ регистр. Фикстура нужна именно потому, что pixel-diff эту потерю увидеть не может: рендерер сравнивал бы одну и ту же непреобразованную строку с обеих сторон и остался бы зелёным.
 
 Тест на диагностики формулируется положительно: для каждой фикстуры перечислен набор кодов, которые **обязаны** присутствовать. Отсутствие ожидаемого кода — провал. Это и есть машинная проверка правила «молчаливый fallback — это баг».
 
