@@ -2,12 +2,7 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "composite": false,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@h2d/ir": ["packages/ir/src/index.ts"],
-      "@h2d/reference-renderer": ["packages/reference-renderer/src/index.ts"]
-    }
+    "noEmit": true
   },
   "include": ["tests/**/*.ts", "playwright.config.ts", "vitest.config.ts"]
 }
