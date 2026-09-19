@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { DiagnosticCode } from '../src/codes.js'
 import { checkInvariants } from '../src/invariants.js'
+import type { IrNode } from '../src/types.js'
 import { bundle, frameNode, nodeText, screen, textRun } from './fixtures.js'
 
 const codesOf = (errors: { code: string }[]): string[] => errors.map((e) => e.code)
@@ -177,5 +179,170 @@ describe('checkInvariants: связность текста', () => {
     })
     expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
       .toContain('text.concat-mismatch')
+  })
+})
+
+describe('checkInvariants: связь заглушки и диагностики', () => {
+  const placeholderNode = (id: string, code: string, paintOrder: number): IrNode => ({
+    ...frameNode({ id, paintOrder }),
+    kind: 'placeholder',
+    placeholder: { code: code as DiagnosticCode, label: 'canvas' },
+  })
+
+  it('ловит заглушку, которую отчёт не объясняет', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [placeholderNode('ph', 'unsupported.canvas', 1)],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('placeholder.unexplained')
+  })
+
+  it('принимает заглушку с парной диагностикой', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [placeholderNode('ph', 'unsupported.canvas', 1)],
+    })
+    const b = bundle({
+      screens: [screen({ root })],
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'canvas',
+        nodeId: 'ph', screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+
+  it('ловит needsPlaceholder: true с nodeId: null — невыполнимо по построению', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: null, screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('placeholder.no-host')
+  })
+
+  it('ловит needsPlaceholder: true, указывающий на обычный фрейм', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: 'n0', screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('placeholder.wrong-host')
+  })
+})
+
+describe('checkInvariants: отложенные фичи обязаны диагностироваться', () => {
+  it('ловит transform без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+
+  it('принимает transform с парной диагностикой deferred.transform', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+    })
+    const b = bundle({
+      screens: [screen({ root })],
+      report: [{
+        level: 'error', code: 'deferred.transform', message: 'x',
+        nodeId: 'a', screenId: 's0', needsPlaceholder: false,
+      }],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+
+  it('ловит blend без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      style: { ...frameNode().style, blend: 'multiply' },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+
+  it('ловит blur без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      style: { ...frameNode().style, blur: { layer: 4, background: 0 } },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+})
+
+describe('checkInvariants: уникальность идентификаторов', () => {
+  it('ловит дубль Asset.id — иначе картинка молча подменяется другой', () => {
+    const b = bundle({
+      assets: [
+        { id: 'a1', mimeType: 'image/png', width: 1, height: 1, path: 'assets/logo.png' },
+        { id: 'a1', mimeType: 'image/png', width: 2, height: 2, path: 'assets/hero.png' },
+      ],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('asset-id.duplicate')
+  })
+
+  it('ловит дубль Screen.id — иначе screenId в диагностике неоднозначен', () => {
+    const b = bundle({
+      screens: [
+        screen({ id: 'same', root: frameNode({ id: 'x', paintOrder: 0 }) }),
+        screen({ id: 'same', root: frameNode({ id: 'y', paintOrder: 0 }) }),
+      ],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('screen-id.duplicate')
+  })
+})
+
+describe('checkInvariants: токены не в обход проверок', () => {
+  it('ловит висячий assetId в paintStyles', () => {
+    const b = bundle({
+      tokens: {
+        variables: [], textStyles: [],
+        paintStyles: [{
+          name: 'brand',
+          fill: {
+            kind: 'image',
+            ref: {
+              assetId: 'нет-такого',
+              placement: { mode: 'fill', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 },
+            },
+          },
+        }],
+      },
+    })
+    expect(codesOf(checkInvariants(b))).toContain('asset.dangling')
+  })
+
+  it('ловит шрифт из textStyles, отсутствующий в fonts', () => {
+    const b = bundle({
+      tokens: {
+        variables: [], paintStyles: [],
+        textStyles: [{ name: 'h1', run: textRun({ usedFamily: 'Söhne', fontWeight: 700 }) }],
+      },
+    })
+    expect(codesOf(checkInvariants(b))).toContain('font.uncovered')
+  })
+})
+
+describe('checkInvariants: согласованность ссылок диагностики', () => {
+  it('ловит диагностику, у которой узел и экран из разных экранов', () => {
+    const b = bundle({
+      screens: [
+        screen({ id: 's0', root: frameNode({ id: 'на-нулевом', paintOrder: 0 }) }),
+        screen({ id: 's1', root: frameNode({ id: 'на-первом', paintOrder: 0 }) }),
+      ],
+      report: [{
+        level: 'info', code: 'fidelity.grid-flattened', message: 'x',
+        nodeId: 'на-нулевом', screenId: 's1', needsPlaceholder: false,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('diagnostic.screen-mismatch')
   })
 })

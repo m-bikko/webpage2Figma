@@ -109,4 +109,19 @@ describe('parseBundle: инварианты', () => {
     expect(result.error).toContain('screenshotId')
     expect(result.error).toContain('id узла')
   })
+
+  it('ограничивает объём сообщения при большом количестве однотипных нарушений', () => {
+    const children = Array.from(
+      { length: 199 },
+      (_, i) => frameNode({ id: `n${i}`, paintOrder: 0 }),
+    )
+    const root = frameNode({ id: 'root', paintOrder: 0, children })
+    const b = bundle({ screens: [screen({ root })] })
+
+    const result = parseBundle(b)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.length).toBeLessThan(8000)
+    expect(result.error).toContain('и ещё')
+  })
 })

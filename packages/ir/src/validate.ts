@@ -1,4 +1,5 @@
 import { checkInvariants } from './invariants.js'
+import type { InvariantError } from './invariants.js'
 import { bundleSchema } from './schema.js'
 import type { Bundle } from './types.js'
 import { IR_VERSION, type BundleEnvelope } from './version.js'
@@ -6,6 +7,38 @@ import { IR_VERSION, type BundleEnvelope } from './version.js'
 export type ParseResult =
   | { ok: true; bundle: Bundle }
   | { ok: false; error: string }
+
+/** Сколько нарушений одного `code` печатать целиком, прежде чем свернуть
+ *  остаток. На бандле с 200 узлами одинакового `paintOrder` неограниченный
+ *  вывод даёт сообщение в десятки тысяч символов — почти идентичные строки,
+ *  отправленные в UI плагина Figma. Политика «сообщать обо всех нарушениях»
+ *  верна, но без предела она опровергает себя именно на том бандле, где
+ *  нужна больше всего. */
+const MAX_PER_CODE = 10
+
+/** Группирует по `code`, печатает первые `MAX_PER_CODE` каждого вида
+ *  и сворачивает остаток в «…и ещё N того же вида», вместо построчного
+ *  вывода всех нарушений без разбора. */
+const formatViolations = (violations: InvariantError[]): string => {
+  const byCode = new Map<string, InvariantError[]>()
+  for (const violation of violations) {
+    const group = byCode.get(violation.code)
+    if (group === undefined) byCode.set(violation.code, [violation])
+    else group.push(violation)
+  }
+
+  const lines: string[] = []
+  for (const group of byCode.values()) {
+    for (const violation of group.slice(0, MAX_PER_CODE)) {
+      lines.push(`  • ${violation.path}: ${violation.message}`)
+    }
+    const rest = group.length - MAX_PER_CODE
+    if (rest > 0) {
+      lines.push(`  …и ещё ${rest} того же вида`)
+    }
+  }
+  return lines.join('\n')
+}
 
 /** Порядок проверок продуман: конверт, потом версия, потом форма, потом смысл.
  *  Каждая ступень даёт сообщение, которое человек может прочитать, вместо
@@ -49,10 +82,9 @@ export const parseBundle = (input: unknown): ParseResult => {
    *  причины, и полный список экономит цикл «починил — снова упало». */
   const violations = checkInvariants(parsed.data)
   if (violations.length > 0) {
-    const lines = violations.map((v) => `  • ${v.path}: ${v.message}`).join('\n')
     return {
       ok: false,
-      error: `Бандл валиден по форме, но нарушает инварианты:\n${lines}`,
+      error: `Бандл валиден по форме, но нарушает инварианты:\n${formatViolations(violations)}`,
     }
   }
 

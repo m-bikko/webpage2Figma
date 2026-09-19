@@ -1,4 +1,5 @@
-import type { Bundle, IrNode, Screen } from './types.js'
+import type { DiagnosticCode } from './codes.js'
+import type { Bundle, Fill, IrNode, Screen } from './types.js'
 
 export type InvariantError = { code: string; path: string; message: string }
 
@@ -76,12 +77,54 @@ const checkNodeIds = (bundle: Bundle): InvariantError[] => {
   return errors
 }
 
+/** `Asset.id` и `Screen.id` — тоже пространства идентификаторов бандла,
+ *  но независимые от id узлов: их дублирование ловит не `checkNodeIds`.
+ *  Дубль `Asset.id` молча подменяет картинку другой с тем же id при поиске
+ *  по Map; дубль `Screen.id` делает `screenId` в диагностике неоднозначным
+ *  ровно так же, как дубль id узла делает неоднозначным `nodeId`. */
+const checkIdUniqueness = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+
+  const seenAssets = new Set<string>()
+  for (const [index, asset] of bundle.assets.entries()) {
+    if (seenAssets.has(asset.id)) {
+      errors.push({
+        code: 'asset-id.duplicate',
+        path: `assets[${index}].id`,
+        message:
+          `Повторяющийся id ассета "${asset.id}". Поиск по этому id вернёт ` +
+          `произвольный из дублей — картинка молча подменяется другой.`,
+      })
+    }
+    seenAssets.add(asset.id)
+  }
+
+  const seenScreens = new Set<string>()
+  for (const [index, screen] of bundle.screens.entries()) {
+    if (seenScreens.has(screen.id)) {
+      errors.push({
+        code: 'screen-id.duplicate',
+        path: `screens[${index}].id`,
+        message:
+          `Повторяющийся id экрана "${screen.id}". Диагностика ссылается на экран ` +
+          `по этому id — дубль делает ссылку неоднозначной.`,
+      })
+    }
+    seenScreens.add(screen.id)
+  }
+
+  return errors
+}
+
+const fontKey = (family: string, weight: number, style: string): string =>
+  `${family}|${weight}|${style}`
+
+const fillAssetRefs = (fill: Fill): string[] => (fill.kind === 'image' ? [fill.ref.assetId] : [])
+
 const collectAssetRefs = (node: IrNode): string[] => {
   const refs: string[] = []
   if (node.kind === 'image') refs.push(node.image.assetId)
-  for (const fill of node.style.fills) {
-    if (fill.kind === 'image') refs.push(fill.ref.assetId)
-  }
+  for (const fill of node.style.fills) refs.push(...fillAssetRefs(fill))
   return refs
 }
 
@@ -94,9 +137,9 @@ const checkReferences = (bundle: Bundle): InvariantError[] => {
   const screenIds = new Set(bundle.screens.map((screen) => screen.id))
   const nodeIds = new Set<string>()
   const usedFonts = new Set<string>()
-
-  const fontKey = (family: string, weight: number, style: string): string =>
-    `${family}|${weight}|${style}`
+  /** Экран, которому ФАКТИЧЕСКИ принадлежит узел — для проверки
+   *  `diagnostic.screen-mismatch` ниже. */
+  const nodeScreenId = new Map<string, string>()
 
   for (const [index, screen] of bundle.screens.entries()) {
     if (screen.screenshotId !== null && !assetIds.has(screen.screenshotId)) {
@@ -111,6 +154,7 @@ const checkReferences = (bundle: Bundle): InvariantError[] => {
 
     for (const node of allNodes(screen)) {
       nodeIds.add(node.id)
+      nodeScreenId.set(node.id, screen.id)
 
       for (const assetId of collectAssetRefs(node)) {
         if (!assetIds.has(assetId)) {
@@ -162,6 +206,71 @@ const checkReferences = (bundle: Bundle): InvariantError[] => {
         message: `Диагностика ссылается на несуществующий экран "${diagnostic.screenId}".`,
       })
     }
+    /** Оба поля заполнены — узел обязан принадлежать именно этому экрану.
+     *  Дырявый узел (несуществующий) уже поймала проверка выше, поэтому
+     *  здесь mismatch проверяется только когда узел реально найден. */
+    if (
+      diagnostic.nodeId !== null &&
+      diagnostic.screenId !== null &&
+      nodeScreenId.get(diagnostic.nodeId) !== undefined &&
+      nodeScreenId.get(diagnostic.nodeId) !== diagnostic.screenId
+    ) {
+      errors.push({
+        code: 'diagnostic.screen-mismatch',
+        path: `report[${index}].screenId`,
+        message:
+          `Диагностика указывает узел "${diagnostic.nodeId}" (экран ` +
+          `"${nodeScreenId.get(diagnostic.nodeId)}") и screenId "${diagnostic.screenId}" ` +
+          `— это разные экраны. UI отчёта в плагине сгруппирует диагностику ` +
+          `под неверным экраном.`,
+      })
+    }
+  }
+
+  return errors
+}
+
+/** Токены (`variables`/`textStyles`/`paintStyles`) не принадлежат ни
+ *  одному экрану — палитра стилей существует independent от дерева узлов.
+ *  Поэтому обход токенов — отдельная функция, а не расширение обхода узлов
+ *  внутри `checkReferences`: там для висячей ссылки естественно есть
+ *  `screenId`, а здесь взять его неоткуда, и `InvariantError.path`
+ *  остаётся описательной строкой без screen/node id, как уже делает
+ *  `font.uncovered` в `checkReferences` (путь там — просто `'fonts'`). */
+const checkTokenReferences = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const assetIds = new Set(bundle.assets.map((asset) => asset.id))
+  const declaredFonts = new Set(
+    bundle.fonts.map((font) => fontKey(font.family, font.weight, font.style)),
+  )
+
+  for (const [index, paintStyle] of bundle.tokens.paintStyles.entries()) {
+    for (const assetId of fillAssetRefs(paintStyle.fill)) {
+      if (!assetIds.has(assetId)) {
+        errors.push({
+          code: 'asset.dangling',
+          path: `tokens.paintStyles[${index}].{${paintStyle.name}}`,
+          message:
+            `assetId "${assetId}" не найден в assets. Стиль заливки "${paintStyle.name}" ` +
+            `ссылается на ассет, которого нет в bundle.assets.`,
+        })
+      }
+    }
+  }
+
+  for (const [index, textStyle] of bundle.tokens.textStyles.entries()) {
+    const key = fontKey(
+      textStyle.run.usedFamily, textStyle.run.fontWeight, textStyle.run.fontStyle,
+    )
+    if (!declaredFonts.has(key)) {
+      errors.push({
+        code: 'font.uncovered',
+        path: `tokens.textStyles[${index}].{${textStyle.name}}`,
+        message:
+          `Шрифт "${key}" использован в textStyle "${textStyle.name}", но отсутствует ` +
+          `в fonts. Плагин не сможет его предзагрузить.`,
+      })
+    }
   }
 
   return errors
@@ -195,9 +304,134 @@ const checkTextCoherence = (bundle: Bundle): InvariantError[] => {
   return errors
 }
 
+/** Связь заглушки и диагностики проверяется ТОЧНОЙ парой — `nodeId` узла И
+ *  `code` заглушки, а не «этот код где-то встречается в отчёте». Слабая
+ *  версия приняла бы бандл, где диагностика одной заглушки прикрывает
+ *  отсутствие диагностики у другой: два `kind: 'placeholder'` узла,
+ *  одна запись в report с совпадающим `code` — и оба считались бы
+ *  объяснёнными.
+ *
+ *  Симметрично для `needsPlaceholder` (см. `types.ts`): это ТОЛЬКО замена,
+ *  поэтому диагностика с этим флагом обязана указывать именно на узел
+ *  `kind: 'placeholder'`, а не на обычный узел с содержимым — иначе
+ *  неподдерживаемая фича молча приезжает пустой коробкой, что и есть
+ *  запрещённый правилом проекта силентный fallback. */
+const checkPlaceholders = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const nodeById = new Map<string, IrNode>()
+
+  for (const [screenIndex, screen] of bundle.screens.entries()) {
+    for (const node of allNodes(screen)) {
+      nodeById.set(node.id, node)
+
+      if (node.kind === 'placeholder') {
+        const explained = bundle.report.some(
+          (diagnostic) => diagnostic.nodeId === node.id && diagnostic.code === node.placeholder.code,
+        )
+        if (!explained) {
+          errors.push({
+            code: 'placeholder.unexplained',
+            path: `screens[${screenIndex}].{${node.id}}.placeholder`,
+            message:
+              `Заглушка с кодом "${node.placeholder.code}" не объяснена диагностикой: ` +
+              `в report нет записи с этим nodeId и этим code. Пользователь видит ` +
+              `коробку без причины.`,
+          })
+        }
+      }
+    }
+  }
+
+  for (const [index, diagnostic] of bundle.report.entries()) {
+    if (!diagnostic.needsPlaceholder) continue
+
+    if (diagnostic.nodeId === null) {
+      errors.push({
+        code: 'placeholder.no-host',
+        path: `report[${index}].nodeId`,
+        message:
+          `needsPlaceholder: true без nodeId невыполнимо по построению: заглушку ` +
+          `нечем нарисовать — нет узла, который стал бы ею.`,
+      })
+      continue
+    }
+
+    const node = nodeById.get(diagnostic.nodeId)
+    if (node !== undefined && node.kind !== 'placeholder') {
+      errors.push({
+        code: 'placeholder.wrong-host',
+        path: `report[${index}].nodeId`,
+        message:
+          `needsPlaceholder: true указывает на узел "${diagnostic.nodeId}" с kind ` +
+          `"${node.kind}", а не "placeholder". Это ровно запрещённый молчаливый ` +
+          `fallback: неподдерживаемая фича приезжает обычной пустой коробкой.`,
+      })
+    }
+  }
+
+  return errors
+}
+
+/** ОГРАНИЧЕНО ПЛАНОМ 1. `transform`, `blend`, `blur` и `kind: 'vector'`
+ *  признаны в контракте IR, но их построение в плагине Figma откладывается
+ *  до плана 2 (см. коды `deferred.*` в `codes.ts`). До тех пор любой узел,
+ *  несущий одну из этих фич, ОБЯЗАН сопровождаться парной диагностикой —
+ *  иначе фича молча теряется, что и обнаружил ревьюер на повёрнутом блоке
+ *  с пустым report.
+ *
+ *  Этот блок — временный костыль ровно под этот пробел и должен удаляться
+ *  ПОФИЧНО по мере того, как план 2 реализует построение. Без удаления он
+ *  окаменеет: в момент, когда `transform` начнёт реально строиться в Figma,
+ *  корректный бандл без диагностики (потому что больше нечего откладывать)
+ *  начнёт отвергаться этой же проверкой. Каждую строку `deferred.push(...)`
+ *  убирать вместе с фичей, а не всю функцию сразу. */
+const checkDeferredDiagnosed = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+
+  for (const [screenIndex, screen] of bundle.screens.entries()) {
+    for (const node of allNodes(screen)) {
+      const deferred: { code: DiagnosticCode; feature: string }[] = []
+      if (node.transform !== null) {
+        deferred.push({ code: 'deferred.transform', feature: 'transform' })
+      }
+      if (node.style.blend !== 'normal') {
+        deferred.push({ code: 'deferred.blend', feature: 'blend' })
+      }
+      if (node.style.blur !== null) {
+        deferred.push({ code: 'deferred.blur', feature: 'blur' })
+      }
+      if (node.kind === 'vector') {
+        deferred.push({ code: 'deferred.vector', feature: 'vector' })
+      }
+
+      for (const { code, feature } of deferred) {
+        const explained = bundle.report.some(
+          (diagnostic) => diagnostic.nodeId === node.id && diagnostic.code === code,
+        )
+        if (!explained) {
+          errors.push({
+            code: 'deferred.undiagnosed',
+            path: `screens[${screenIndex}].{${node.id}}.${feature}`,
+            message:
+              `Узел несёт отложенную фичу "${feature}", ожидалась диагностика ` +
+              `"${code}" с этим nodeId, но её нет в report. Фича молча теряется ` +
+              `при построении.`,
+          })
+        }
+      }
+    }
+  }
+
+  return errors
+}
+
 export const checkInvariants = (bundle: Bundle): InvariantError[] => [
   ...bundle.screens.flatMap((screen, index) => checkPaintOrder(screen, index)),
   ...checkNodeIds(bundle),
+  ...checkIdUniqueness(bundle),
   ...checkReferences(bundle),
+  ...checkTokenReferences(bundle),
   ...checkTextCoherence(bundle),
+  ...checkPlaceholders(bundle),
+  ...checkDeferredDiagnosed(bundle),
 ]
