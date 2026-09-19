@@ -3401,7 +3401,17 @@ git commit -m "feat(serializer): сборщик диагностики с код
 
 ## Task 10: Чтение текста
 
-Текст снимается построчно через `Range.getClientRects()`, потому что Figma переносит строки сама и почти наверняка иначе, чем браузер. Тест требует настоящего DOM, поэтому выполняется в Playwright в Task 13, а здесь пишется только реализация — с явной проверкой на следующем шаге.
+**Тело переписано после ревизии контракта.** Текст снимается построчно через `Range.getClientRects()`, потому что Figma переносит строки сама и почти наверняка иначе, чем браузер.
+
+Четыре изменения против первой редакции, каждое закрывает найденную ревью молчаливую потерю.
+
+**`run.text` — только собственный текст узла.** Было `el.textContent`, то есть весь подграф, при том что `readLines` обходит только прямые текстовые узлы. Для `<p>Hello <b>world</b></p>` абзац получал `runs[0].text = "Hello world"` и одну строку `"Hello"`, а `<b>` — свой узел со своим «world». Референс-рендерер читает только `lines` и оставался зелёным; плагин Figma взял бы `runs[0].text` и нарисовал «world» дважды с наложением. Инвариант в `@h2d/ir` теперь требует, чтобы конкатенация ранов равнялась конкатенации строк.
+
+**`fontStack` и `usedFamily` вместо `fontFamily`.** Было: берётся первое семейство из объявленного списка. Но если его нет в системе, браузер рисует следующим, и `lines` содержат метрики **фактического** шрифта, а IR называет объявленный. В Figma, где объявленный шрифт может быть установлен, плагин применил бы чужие метрики и получил вылезающий из боксов текст, считая, что шрифт найден. Спека требует, чтобы этот отчёт «кричал» — теперь он может.
+
+**`lineHeight` и `align` переехали в `NodeText`.** Это свойства абзаца: два рана не должны иметь возможности противоречить друг другу, заставляя плагин выбирать произвольно.
+
+**`text-transform` применяется к строке.** В Figma этого свойства нет, поэтому спека §7.1 обещает применять его к содержимому. Первая редакция не применяла, и текст приезжал не тем регистром при зелёном гейте: рендерер сравнивал бы одну и ту же непреобразованную строку с обеих сторон. Ни валидатор, ни pixel-diff такую потерю увидеть не могут — оба ловят несогласованные бандлы, а не потерявшие данные.
 
 **Files:**
 - Create: `packages/serializer/src/text.ts`
@@ -3412,6 +3422,7 @@ git commit -m "feat(serializer): сборщик диагностики с код
 import type { NodeText, TextAlign, TextDecoration, TextRun } from '@h2d/ir'
 import { parseColor } from './css/color.js'
 import { parsePx } from './css/length.js'
+import { parseBoxShadow } from './css/shadow.js'
 
 const ALIGN_MAP: Record<string, TextAlign> = {
   left: 'left', start: 'left',
@@ -3429,16 +3440,63 @@ const decorationOf = (cs: CSSStyleDeclaration): TextDecoration => {
 
 /** `line-height: normal` не имеет численного значения в computed style.
  *  Множитель 1.2 — то, что использует Chrome для большинства шрифтов;
- *  точное значение восстанавливается из боксов строк ниже. */
+ *  точная величина восстанавливается из боксов строк. */
 const lineHeightOf = (cs: CSSStyleDeclaration, fontSize: number): number => {
   if (cs.lineHeight === 'normal') return Math.round(fontSize * 1.2 * 100) / 100
   return parsePx(cs.lineHeight)
 }
 
-const firstFamily = (value: string): string => {
-  const first = value.split(',')[0]
-  if (first === undefined) return 'sans-serif'
-  return first.trim().replace(/^["']|["']$/g, '')
+/** Разбирает объявленный `font-family` в список семейств.
+ *  Кавычки снимаются, generic-семейства остаются: они значимы для отчёта. */
+export const parseFontStack = (value: string): string[] =>
+  value
+    .split(',')
+    .map((part) => part.trim().replace(/^["']|["']$/g, ''))
+    .filter((part) => part !== '')
+
+/** Находит семейство, которым браузер РЕАЛЬНО рисовал.
+ *
+ *  Это не педантизм: если объявлено `"Söhne", Helvetica` и Söhne в системе
+ *  нет, браузер рисует Helvetica, и `lines` содержат метрики Helvetica.
+ *  Записав в IR «Söhne», мы заставили бы плагин применить метрики Helvetica
+ *  к настоящему Söhne (который в Figma может быть установлен) и получить
+ *  вылезающий текст — причём с точки зрения IR шрифт был бы «найден»,
+ *  и диагностика бы не сработала.
+ *
+ *  `document.fonts.check` отвечает на вопрос «доступно ли это семейство
+ *  для рисования». Первое доступное из стека и есть использованное. */
+export const findUsedFamily = (stack: string[], fontSize: number): string => {
+  if (typeof document === 'undefined' || document.fonts === undefined) {
+    return stack[0] ?? 'sans-serif'
+  }
+  for (const family of stack) {
+    try {
+      if (document.fonts.check(`${fontSize}px "${family}"`)) return family
+    } catch {
+      // Некорректное для CSS имя семейства: пропускаем, не роняя захват.
+      continue
+    }
+  }
+  return stack[0] ?? 'sans-serif'
+}
+
+/** Применяет `text-transform` к самой строке.
+ *
+ *  В Figma этого свойства нет, поэтому преобразование обязано произойти
+ *  здесь. Потеря невидима для обоих нижних слоёв: валидатор ловит
+ *  несогласованные бандлы, а pixel-diff сравнивал бы одну и ту же
+ *  непреобразованную строку с обеих сторон и остался бы зелёным. */
+export const applyTextTransform = (text: string, cs: CSSStyleDeclaration): string => {
+  switch (cs.textTransform) {
+    case 'uppercase': return text.toLocaleUpperCase()
+    case 'lowercase': return text.toLocaleLowerCase()
+    case 'capitalize':
+      return text.replace(
+        /(^|\s)(\p{L})/gu,
+        (_, sep: string, ch: string) => sep + ch.toLocaleUpperCase(),
+      )
+    default: return text
+  }
 }
 
 const weightOf = (cs: CSSStyleDeclaration): number => {
@@ -3446,46 +3504,20 @@ const weightOf = (cs: CSSStyleDeclaration): number => {
   return Number.isNaN(parsed) ? 400 : parsed
 }
 
-/** Собирает боксы строк для всех прямых текстовых детей элемента.
- *  Даёт реальные места переносов, сделанных браузером. */
-const readLines = (
-  el: Element,
-  scrollX: number,
-  scrollY: number,
-): NodeText['lines'] => {
-  const lines: NodeText['lines'] = []
+/** Собственный текст узла: только ПРЯМЫЕ текстовые дети, без подграфа.
+ *  Инвариант контракта требует, чтобы это равнялось конкатенации `lines`. */
+const ownText = (el: Element): string => {
+  let out = ''
   for (const node of el.childNodes) {
     if (node.nodeType !== Node.TEXT_NODE) continue
-    const content = node.textContent
-    if (content === null || content.trim() === '') continue
-
-    const range = document.createRange()
-    range.selectNodeContents(node)
-    const rects = [...range.getClientRects()].filter(
-      (rect) => rect.width > 0 && rect.height > 0,
-    )
-
-    // Текст строки восстанавливается посимвольным сопоставлением с боксами:
-    // это единственный надёжный способ узнать, где именно лёг перенос.
-    let cursor = 0
-    for (const rect of rects) {
-      const text = sliceForRect(node, rect, cursor)
-      cursor += text.length
-      lines.push({
-        x: rect.left + scrollX,
-        y: rect.top + scrollY,
-        w: rect.width,
-        h: rect.height,
-        text,
-      })
-    }
-    range.detach()
+    out += node.textContent ?? ''
   }
-  return lines
+  return out
 }
 
-/** Находит подстроку, попадающую в данный бокс строки, двигая границу Range
- *  посимвольно от позиции `from`. */
+/** Находит подстроку, попадающую в данный бокс строки, двигая границу
+ *  Range посимвольно от позиции `from`. Единственный надёжный способ
+ *  узнать, где именно браузер поставил перенос. */
 const sliceForRect = (node: ChildNode, rect: DOMRect, from: number): string => {
   const full = node.textContent ?? ''
   const probe = document.createRange()
@@ -3501,77 +3533,181 @@ const sliceForRect = (node: ChildNode, rect: DOMRect, from: number): string => {
   return full.slice(from, end)
 }
 
+/** Собирает боксы строк для прямых текстовых детей элемента. */
+const readLines = (
+  el: Element,
+  cs: CSSStyleDeclaration,
+  scrollX: number,
+  scrollY: number,
+): NodeText['lines'] => {
+  const lines: NodeText['lines'] = []
+  for (const node of el.childNodes) {
+    if (node.nodeType !== Node.TEXT_NODE) continue
+    const content = node.textContent
+    if (content === null || content.trim() === '') continue
+
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const rects = [...range.getClientRects()].filter(
+      (rect) => rect.width > 0 && rect.height > 0,
+    )
+
+    let cursor = 0
+    for (const rect of rects) {
+      const raw = sliceForRect(node, rect, cursor)
+      cursor += raw.length
+      lines.push({
+        x: rect.left + scrollX,
+        y: rect.top + scrollY,
+        w: rect.width,
+        h: rect.height,
+        // Преобразование применяется и к строкам, и к рану — инвариант
+        // контракта сверяет их конкатенации между собой.
+        text: applyTextTransform(raw, cs),
+      })
+    }
+    range.detach()
+  }
+  return lines
+}
+
+export type ReadTextResult =
+  | { kind: 'text'; text: NodeText }
+  | { kind: 'none' }
+  /** Текст есть, но боксов строк нет. Молча вернуть «нет текста» означало бы,
+   *  что он исчезает, не оставив в бандле следа, по которому это можно
+   *  обнаружить ниже по конвейеру. Вызывающий обязан породить Diagnostic. */
+  | { kind: 'lost'; sample: string }
+
 export const readText = (
   el: Element,
   cs: CSSStyleDeclaration,
   scrollX: number,
   scrollY: number,
-): NodeText | null => {
-  const hasDirectText = [...el.childNodes].some(
-    (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '',
-  )
-  if (!hasDirectText) return null
+): ReadTextResult => {
+  const own = ownText(el)
+  if (own.trim() === '') return { kind: 'none' }
 
   const fontSize = parsePx(cs.fontSize)
+  const stack = parseFontStack(cs.fontFamily)
   const color = parseColor(cs.color)
+
   const run: TextRun = {
-    text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
-    fontFamily: firstFamily(cs.fontFamily),
+    text: applyTextTransform(own, cs),
+    fontStack: stack.length > 0 ? stack : ['sans-serif'],
+    usedFamily: findUsedFamily(stack, fontSize),
     fontWeight: weightOf(cs),
     fontStyle: cs.fontStyle === 'italic' ? 'italic' : 'normal',
     fontSize,
-    lineHeight: lineHeightOf(cs, fontSize),
     letterSpacing: cs.letterSpacing === 'normal' ? 0 : parsePx(cs.letterSpacing),
     color: color ?? { r: 0, g: 0, b: 0, a: 1 },
     decoration: decorationOf(cs),
-    align: ALIGN_MAP[cs.textAlign] ?? 'left',
+    shadows: parseBoxShadow(cs.textShadow),
   }
 
-  const lines = readLines(el, scrollX, scrollY)
-  if (lines.length === 0) {
-    // Текст есть, но боксов строк нет. Молча вернуть null означает, что
-    // текст исчезает, не оставив в бандле следа, по которому это можно
-    // обнаружить ниже по конвейеру. Вызывающий обязан породить Diagnostic.
-    return null
+  const lines = readLines(el, cs, scrollX, scrollY)
+  if (lines.length === 0) return { kind: 'lost', sample: own.slice(0, 40) }
+
+  return {
+    kind: 'text',
+    text: {
+      runs: [run],
+      lines,
+      lineHeight: lineHeightOf(cs, fontSize),
+      align: ALIGN_MAP[cs.textAlign] ?? 'left',
+    },
   }
-  return { runs: [run], lines }
 }
 
+/** Цвет текста не разобран. Вызывающий обязан породить Diagnostic:
+ *  подстановка чёрного в `readText` — молчаливый fallback, допущенный
+ *  только чтобы не терять сам текст. */
 export const hasUnparsedColor = (cs: CSSStyleDeclaration): boolean =>
   parseColor(cs.color) === null
 
-/** Применяет `text-transform` к самой строке.
- *
- *  Обязательно, и вот почему: Figma не имеет `text-transform`, поэтому
- *  спека §7.1 обещает применять его к содержимому. Первая редакция этой
- *  задачи его не применяла — `textContent` несёт регистр исходника, — и
- *  текст приезжал в Figma НЕ ТЕМ регистром при зелёном pixel-diff:
- *  рендерер сравнивал бы одну и ту же непреобразованную строку с обеих
- *  сторон. Ни валидатор, ни гейт такую потерю увидеть не могут, потому
- *  что оба слоя ловят несогласованные бандлы, а не потерявшие данные.
- *  Значит потеря должна быть исключена у продюсера. */
-export const applyTextTransform = (text: string, cs: CSSStyleDeclaration): string => {
-  switch (cs.textTransform) {
-    case 'uppercase': return text.toLocaleUpperCase()
-    case 'lowercase': return text.toLocaleLowerCase()
-    case 'capitalize':
-      return text.replace(/(^|\s)(\p{L})/gu, (_, sep: string, ch: string) =>
-        sep + ch.toLocaleUpperCase())
-    default: return text
-  }
+/** Фактический шрифт отличается от объявленного. Вызывающий обязан
+ *  породить `fontFallback` уровня error: это главный убийца точности. */
+export const hasFontFallback = (cs: CSSStyleDeclaration): boolean => {
+  const stack = parseFontStack(cs.fontFamily)
+  const first = stack[0]
+  if (first === undefined) return false
+  return findUsedFamily(stack, parsePx(cs.fontSize)) !== first
 }
 ```
 
-- [ ] **Step 2: Проверить typecheck**
+- [ ] **Step 2: Проверить чистые функции юнит-тестами**
+
+Часть модуля чистая и проверяется без браузера. Создать `packages/serializer/test/text.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { applyTextTransform, parseFontStack } from '../src/text.js'
+
+const cs = (textTransform: string): CSSStyleDeclaration =>
+  ({ textTransform }) as unknown as CSSStyleDeclaration
+
+describe('parseFontStack', () => {
+  it('разбирает список и снимает кавычки', () => {
+    expect(parseFontStack('"Söhne", Helvetica, sans-serif'))
+      .toEqual(['Söhne', 'Helvetica', 'sans-serif'])
+  })
+
+  it('оставляет generic-семейства: они значимы для отчёта', () => {
+    expect(parseFontStack('system-ui')).toEqual(['system-ui'])
+  })
+
+  it('снимает одинарные кавычки', () => {
+    expect(parseFontStack("'Times New Roman', serif"))
+      .toEqual(['Times New Roman', 'serif'])
+  })
+
+  it('не возвращает пустых элементов', () => {
+    expect(parseFontStack('Arial,,')).toEqual(['Arial'])
+  })
+})
+
+describe('applyTextTransform', () => {
+  it('none оставляет строку как есть', () => {
+    expect(applyTextTransform('Привет Мир', cs('none'))).toBe('Привет Мир')
+  })
+
+  it('uppercase поднимает регистр, включая кириллицу', () => {
+    expect(applyTextTransform('привет мир', cs('uppercase'))).toBe('ПРИВЕТ МИР')
+  })
+
+  it('lowercase опускает регистр', () => {
+    expect(applyTextTransform('ПРИВЕТ МИР', cs('lowercase'))).toBe('привет мир')
+  })
+
+  it('capitalize поднимает первую букву каждого слова', () => {
+    expect(applyTextTransform('привет мир', cs('capitalize'))).toBe('Привет Мир')
+  })
+
+  it('capitalize не ломает слова после переноса строки', () => {
+    expect(applyTextTransform('раз\nдва', cs('capitalize'))).toBe('Раз\nДва')
+  })
+
+  it('capitalize не трогает буквы внутри слова', () => {
+    expect(applyTextTransform('iPhone', cs('capitalize'))).toBe('IPhone')
+  })
+})
+```
+
+Run: `pnpm vitest run packages/serializer/test/text.test.ts`
+Expected: сначала FAIL на отсутствии модуля, затем PASS, 10 тестов.
+
+Остальное — `readText`, `readLines`, `findUsedFamily` — требует настоящего DOM и проверяется в Task 13 в браузере. Мокать `getClientRects` здесь означало бы тестировать собственный мок.
+
+- [ ] **Step 3: Проверить typecheck**
 
 Run: `pnpm typecheck`
-Expected: без ошибок. Поведение проверяется в настоящем браузере в Task 13 — юнит-тест здесь был бы тестом на мок `getClientRects`, то есть тестом собственного мока.
+Expected: без ошибок.
 
-- [ ] **Step 3: Коммит**
+- [ ] **Step 4: Коммит**
 
 ```bash
 git add packages/serializer
-git commit -m "feat(serializer): чтение текста с реальными боксами строк"
+git commit -m "feat(serializer): чтение текста с фактическим шрифтом и text-transform"
 ```
 
 ---
@@ -4912,10 +5048,10 @@ git commit -m "docs: README и запись в базу знаний по ито
 
 ## Ревизия контракта — дельты к задачам 3–14
 
-> **ВНИМАНИЕ исполнителям задач 10 и 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
+> **ВНИМАНИЕ исполнителю задачи 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
 >
 > - ~~Task 9~~ — **переписана, тело актуально.**
-> - Task 10 собирает `TextRun` с полем `fontFamily` и кладёт `lineHeight`/`align` в ран. В контракте вместо `fontFamily` — `fontStack: string[]` и `usedFamily: string`, а `lineHeight` и `align` переехали в `NodeText`. Плюс `run.text` — только собственный текст узла, и требуется применять `text-transform`.
+> - ~~Task 10~~ — **переписана, тело актуально.**
 > - Task 12 читает `run.fontFamily` и строит узлы без `kind`. Рендерер обязан переключаться по `kind`, рисовать `placeholder` видимо и подставлять `usedFamily` в `font-family`.
 >
 > Эти тела переписываются координатором перед запуском задачи, как это было сделано для Task 2 и Task 3. Если задача досталась тебе с непереписанным телом — **останови работу и сообщи**, не пытайся сам согласовать код с контрактом: расхождений больше, чем видно из одного файла.
