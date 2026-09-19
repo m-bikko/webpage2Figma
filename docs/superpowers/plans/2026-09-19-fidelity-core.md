@@ -2761,12 +2761,60 @@ describe('resolvePaintOrder', () => {
     expect(orderOf(root)).toEqual(['root', 'flow', 'positioned'])
   })
 
-  it('присваивает каждому узлу уникальный индекс', () => {
-    const root = probe('root', {
+  // Считать узлы дерева обязательно. Проверка «все индексы уникальны»
+  // сама по себе бесполезна: ПРОПАВШИЙ узел делает оставшиеся индексы
+  // тривиально уникальными, и такой тест прошёл бы даже на пустой карте.
+  // Ровно так и была пропущена потеря поддеревьев у непозиционированных
+  // stacking context.
+  const countNodes = (p: LayoutProbe): number =>
+    1 + p.children.reduce((sum, child) => sum + countNodes(child), 0)
+
+  const expectDensePermutation = (root: LayoutProbe): void => {
+    const order = resolvePaintOrder(root)
+    const total = countNodes(root)
+    expect(order.size, 'испущен индекс не для каждого узла').toBe(total)
+    const values = [...order.values()].sort((a, b) => a - b)
+    expect(values).toEqual([...Array(total).keys()])
+  }
+
+  it('испускает плотную перестановку 0..n-1 по всем узлам', () => {
+    expectDensePermutation(probe('root', {
       children: [probe('a', { children: [probe('b')] }), probe('c')],
-    })
-    const values = [...resolvePaintOrder(root).values()]
-    expect(new Set(values).size).toBe(values.length)
+    }))
+  })
+
+  it('не теряет поддерево у stacking context из opacity', () => {
+    expectDensePermutation(probe('root', {
+      children: [probe('ctx', { opacity: 0.5, children: [probe('kid')] })],
+    }))
+  })
+
+  it('не теряет поддерево у stacking context из transform, filter, blend и isolation', () => {
+    for (const trigger of [
+      { hasTransform: true },
+      { hasFilter: true },
+      { hasMixBlendMode: true },
+      { isIsolated: true },
+    ]) {
+      expectDensePermutation(probe('root', {
+        children: [probe('ctx', { ...trigger, children: [probe('kid')] })],
+      }))
+    }
+  })
+
+  it('держит плотность на дереве со всеми видами участников разом', () => {
+    expectDensePermutation(probe('root', {
+      children: [
+        probe('flow', { children: [probe('deep', { children: [probe('deeper')] })] }),
+        probe('faded', { opacity: 0.4, children: [probe('in-faded')] }),
+        probe('abs', { position: 'absolute', children: [probe('in-abs')] }),
+        probe('over', { position: 'relative', zIndex: 4, children: [probe('in-over')] }),
+        probe('under', { position: 'relative', zIndex: -2 }),
+        probe('floated', { isFloat: true }),
+        probe('inl', { isInline: true }),
+        probe('flex-kid', { parentIsFlexOrGrid: true, zIndex: 2 }),
+      ],
+    }))
   })
 
   // Два теста ниже — ядро задачи. Первая редакция резолвера их не проходила:
@@ -2830,6 +2878,22 @@ describe('resolvePaintOrder', () => {
       ],
     })
     expect(orderOf(root)).toEqual(['root', 'static-with-z', 'plain'])
+  })
+
+  it('поднимает flex-ребёнка с z-index сквозь потоковую обёртку — осознанно', () => {
+    // По тому же правилу «ближайший предок-КОНТЕКСТ»: flex-ребёнок с
+    // числовым z-index создаёт контекст, поэтому участвует в стекинге
+    // предка, а не обёртки. Поведение зафиксировано тестом, потому что
+    // оно неочевидно и проверять его больше нечем.
+    const root = probe('root', {
+      children: [
+        probe('wrapper', {
+          children: [probe('fc', { parentIsFlexOrGrid: true, zIndex: 5 })],
+        }),
+        probe('sib', { position: 'relative', zIndex: 3 }),
+      ],
+    })
+    expect(orderOf(root)).toEqual(['root', 'wrapper', 'sib', 'fc'])
   })
 })
 
@@ -2987,11 +3051,31 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
     paintGroups(groups)
   }
 
+  /** Различение «атомарная единица» против «потоковая обёртка» вычисляется
+   *  в `collectInto`, но к моменту покраски остаётся только ярлык бакета,
+   *  а его недостаточно: stacking context, созданный НЕ позиционированием
+   *  (`opacity < 1`, `transform`, `filter`, `mix-blend-mode`, `isolation`),
+   *  попадает в `flow`, потому что `zMatters` и `isPositioned` для него
+   *  ложны. Поэтому различение восстанавливается здесь.
+   *
+   *  Без этого `<div style="opacity:.5">` с содержимым терял ВСЁ поддерево:
+   *  `collectInto` внутрь не спускался (правильно — узел атомарен), а
+   *  `paintFlowNode` только испускал индекс. Ни одна сторона поддерево
+   *  не посещала, и инвариант плотности в `@h2d/ir` отверг бы такой бандл.
+   *
+   *  Размещение в бакете `flow` при этом верное: по CSS 2.1 Appendix E
+   *  непозиционированный stacking context красится атомарно на своём
+   *  месте в потоке. Неверен был только красильщик. */
+  const paintInFlow = (p: LayoutProbe): void => {
+    if (establishesStackingContext(p)) paintUnit(p)
+    else paintFlowNode(p)
+  }
+
   const paintGroups = (groups: Groups): void => {
     for (const child of byZIndex(groups.negative)) paintUnit(child)
-    for (const child of groups.flow) paintFlowNode(child)
-    for (const child of groups.float) paintFlowNode(child)
-    for (const child of groups.inline) paintFlowNode(child)
+    for (const child of groups.flow) paintInFlow(child)
+    for (const child of groups.float) paintInFlow(child)
+    for (const child of groups.inline) paintInFlow(child)
     for (const child of byZIndex(groups.auto)) paintUnit(child)
     for (const child of byZIndex(groups.positive)) paintUnit(child)
   }
@@ -3013,32 +3097,44 @@ export const findInterleaved = (
 ): string[] => {
   const interleaved: string[] = []
 
-  const rangeOf = (p: LayoutProbe): { min: number; max: number } => {
-    let min = order.get(p.id) ?? Number.POSITIVE_INFINITY
-    let max = order.get(p.id) ?? Number.NEGATIVE_INFINITY
+  /** Диапазон порядка отрисовки поддерева плюс количество узлов в нём. */
+  const measure = (p: LayoutProbe): { min: number; max: number; count: number } => {
+    const own = order.get(p.id)
+    let min = own ?? Number.POSITIVE_INFINITY
+    let max = own ?? Number.NEGATIVE_INFINITY
+    let count = own === undefined ? 0 : 1
     for (const child of p.children) {
-      const childRange = rangeOf(child)
-      min = Math.min(min, childRange.min)
-      max = Math.max(max, childRange.max)
+      const m = measure(child)
+      min = Math.min(min, m.min)
+      max = Math.max(max, m.max)
+      count += m.count
     }
-    return { min, max }
+    return { min, max, count }
   }
 
+  /** Проверка НЕПРЕРЫВНОСТИ, а не пересечения диапазонов.
+   *
+   *  Смысл прямой: если поддерево занимает диапазон шириной `max - min + 1`,
+   *  а узлов в нём меньше, значит внутрь его диапазона вклинился чужой
+   *  узел. Именно это дерево Figma выразить не может: там z-порядок задаётся
+   *  порядком среди сиблингов, то есть поддерево обязано красится подряд.
+   *
+   *  Попарное сравнение сиблингов на пересечение диапазонов тут не годится:
+   *  случай подъёма даёт ВЛОЖЕННОСТЬ, а не пересечение. Для
+   *  `root > [wrapper > [P z=5], B z=3]` порядок верный `root wrapper B P`,
+   *  и диапазон B это [2,2] ВНУТРИ [1,3] у wrapper — условие на пересечение
+   *  такое не видит. Проверка непрерывности видит: у wrapper ширина 3,
+   *  а узлов 2. Бонусом она линейна и ловит не только соседей. */
   const visit = (p: LayoutProbe): void => {
-    const ranges = p.children.map((child) => ({ id: child.id, ...rangeOf(child) }))
-    for (const a of ranges) {
-      for (const b of ranges) {
-        if (a.id === b.id) continue
-        // Диапазон b влез внутрь диапазона a: поддеревья переплелись.
-        if (b.min > a.min && b.min < a.max && b.max > a.max) {
-          interleaved.push(b.id)
-        }
-      }
+    const m = measure(p)
+    if (m.count > 0 && m.max - m.min + 1 !== m.count) {
+      interleaved.push(p.id)
     }
     for (const child of p.children) visit(child)
   }
 
-  visit(root)
+  // Корень не проверяется: его диапазон по определению покрывает всё.
+  for (const child of root.children) visit(child)
   return [...new Set(interleaved)]
 }
 ```
@@ -3048,7 +3144,7 @@ export const findInterleaved = (
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/stacking.test.ts`
-Expected: PASS, 21 тест.
+Expected: PASS, 24 теста.
 
 - [ ] **Step 6: Коммит**
 
