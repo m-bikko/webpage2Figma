@@ -3232,7 +3232,13 @@ git commit -m "feat(serializer): чтение flex- и grid-раскладки"
 
 ## Task 9: Диагностика
 
-Реализация правила «молчаливый fallback — это баг». Каждое место, где сериализатор чего-то не умеет, обязано позвать сюда.
+**Тело переписано после ревизии контракта.** Реализация правила «молчаливый fallback — это баг»: каждое место, где сериализатор чего-то не умеет, обязано позвать сюда.
+
+Два изменения против первой редакции, каждое по конкретной причине.
+
+**Коды больше не определяются здесь.** Они живут в `@h2d/ir` (файл `codes.ts`), и задача их импортирует. Причина: плагин Figma обязан знать коды, чтобы отрисовать отчёт, но импортировать из сериализатора не может — тот собирается как IIFE для контекста страницы. Держать список здесь означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код провалился бы в плагине в общую ветку без заглушки.
+
+**`needsPlaceholder` — обязательный параметр, а не со значением по умолчанию.** Решение осознанное: значение по умолчанию приглашает забыть, а забытая заглушка означает, что неподдерживаемая фича приедет обычной пустой коробкой. Пусть каждый вызов решает явно. Инвариант в `@h2d/ir` проверяет согласованность, но лучше не доводить до отказа валидатора.
 
 **Files:**
 - Create: `packages/serializer/src/diagnostics.ts`
@@ -3241,47 +3247,79 @@ git commit -m "feat(serializer): чтение flex- и grid-раскладки"
 - [ ] **Step 1: Написать падающий тест**
 
 ```ts
-// packages/serializer/test/diagnostics.test.ts
 import { describe, expect, it } from 'vitest'
-import { DiagnosticSink, DIAGNOSTIC_CODES } from '../src/diagnostics.js'
+import { DIAGNOSTIC_CODES } from '@h2d/ir'
+import { DiagnosticSink } from '../src/diagnostics.js'
 
 describe('DiagnosticSink', () => {
   it('начинается пустым', () => {
-    expect(new DiagnosticSink('Desktop').drain()).toEqual([])
+    expect(new DiagnosticSink('s0').drain()).toEqual([])
   })
 
-  it('записывает диагностику с именем экрана', () => {
-    const sink = new DiagnosticSink('Mobile')
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'canvas не переносится', 'n7')
+  it('записывает диагностику со стабильным screenId, а не с именем экрана', () => {
+    const sink = new DiagnosticSink('s3')
+    sink.report(
+      'warning', DIAGNOSTIC_CODES.unsupportedCanvas,
+      'canvas не переносится', 'n7', true,
+    )
     expect(sink.drain()).toEqual([
       {
         level: 'warning',
         code: 'unsupported.canvas',
         message: 'canvas не переносится',
         nodeId: 'n7',
-        screen: 'Mobile',
+        screenId: 's3',
+        needsPlaceholder: true,
       },
     ])
   })
 
+  it('пишет needsPlaceholder: false для кодов класса пометки', () => {
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid сведён', 'n1', false)
+    expect(sink.drain()[0]?.needsPlaceholder).toBe(false)
+  })
+
   it('дедуплицирует одинаковые записи по коду и узлу', () => {
-    const sink = new DiagnosticSink('Desktop')
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n1')
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'два', 'n1')
+    const sink = new DiagnosticSink('s0')
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n1', true)
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'два', 'n1', true)
     expect(sink.drain()).toHaveLength(1)
   })
 
   it('не дедуплицирует один код на разных узлах', () => {
-    const sink = new DiagnosticSink('Desktop')
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n1')
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n2')
+    const sink = new DiagnosticSink('s0')
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n1', true)
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas, 'раз', 'n2', true)
+    expect(sink.drain()).toHaveLength(2)
+  })
+
+  it('не дедуплицирует разные коды на одном узле', () => {
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid', 'n1', false)
+    sink.report('info', DIAGNOSTIC_CODES.stickyFlattened, 'sticky', 'n1', false)
+    expect(sink.drain()).toHaveLength(2)
+  })
+
+  it('различает записи с nodeId: null и с узлом', () => {
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'без узла', null, false)
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'с узлом', 'n1', false)
     expect(sink.drain()).toHaveLength(2)
   })
 
   it('drain не разрушает накопленное — отчёт можно прочитать дважды', () => {
-    const sink = new DiagnosticSink('Desktop')
-    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid сведён в колонку', 'n1')
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid', 'n1', false)
     expect(sink.drain()).toHaveLength(1)
+    expect(sink.drain()).toHaveLength(1)
+  })
+
+  it('drain отдаёт копию: правка результата не портит накопленное', () => {
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid', 'n1', false)
+    const first = sink.drain()
+    first.pop()
     expect(sink.drain()).toHaveLength(1)
   })
 })
@@ -3295,44 +3333,47 @@ Expected: FAIL — `Failed to resolve import "../src/diagnostics.js"`.
 - [ ] **Step 3: Создать `packages/serializer/src/diagnostics.ts`**
 
 ```ts
-import type { Diagnostic, DiagnosticLevel } from '@h2d/ir'
+import type { Diagnostic, DiagnosticCode, DiagnosticLevel } from '@h2d/ir'
 
-/** Коды стабильны: на них ссылается UI отчёта в плагине Figma и тесты. */
-export const DIAGNOSTIC_CODES = {
-  unsupportedCanvas: 'unsupported.canvas',
-  unsupportedCrossOriginIframe: 'unsupported.cross-origin-iframe',
-  unsupportedClosedShadowRoot: 'unsupported.closed-shadow-root',
-  unsupportedClipPath: 'unsupported.clip-path',
-  unsupportedFilter: 'unsupported.filter',
-  unsupportedTransform3d: 'unsupported.transform-3d',
-  unsupportedRepeatingGradient: 'unsupported.repeating-gradient',
-  colorUnparsed: 'fidelity.color-unparsed',
-  gridFlattened: 'fidelity.grid-flattened',
-  ellipticalCorner: 'fidelity.elliptical-corner',
-  mixedBorderColors: 'fidelity.mixed-border-colors',
-  stickyFlattened: 'fidelity.sticky-flattened',
-} as const
-
-export type DiagnosticCode = (typeof DIAGNOSTIC_CODES)[keyof typeof DIAGNOSTIC_CODES]
-
+/** Собирает диагностику одного экрана.
+ *
+ *  Коды не определяются здесь: они живут в `@h2d/ir`, потому что их обязан
+ *  знать плагин Figma, а импортировать из сериализатора он не может —
+ *  тот собирается как IIFE для контекста страницы. */
 export class DiagnosticSink {
   private readonly items: Diagnostic[] = []
   private readonly seen = new Set<string>()
 
-  constructor(private readonly screen: string) {}
+  constructor(private readonly screenId: string) {}
 
+  /** `needsPlaceholder` обязателен намеренно: значение по умолчанию
+   *  приглашает забыть, а забытая заглушка означает, что неподдерживаемая
+   *  фича приедет в Figma обычной пустой коробкой. Пусть каждый вызов
+   *  решает явно.
+   *
+   *  Семантика — только ЗАМЕНА: `true` означает, что узел по `nodeId`
+   *  обязан быть `kind: 'placeholder'`. Коды, которые лишь помечают узел
+   *  с реальным содержимым, передают `false`. */
   report(
     level: DiagnosticLevel,
     code: DiagnosticCode,
     message: string,
     nodeId: string | null,
+    needsPlaceholder: boolean,
   ): void {
-    const key = `${code}|${nodeId ?? ''}`
+    /** Дедупликация по паре код + узел. Один и тот же изъян на одном узле
+     *  не должен попадать в отчёт дважды, но тот же изъян на другом узле —
+     *  отдельная запись: пользователю нужно знать, сколько мест затронуто. */
+    const key = `${code}|${nodeId ?? '<null>'}`
     if (this.seen.has(key)) return
     this.seen.add(key)
-    this.items.push({ level, code, message, nodeId, screen: this.screen })
+    this.items.push({
+      level, code, message, nodeId, screenId: this.screenId, needsPlaceholder,
+    })
   }
 
+  /** Отдаёт копию: вызывающий не должен иметь возможности испортить
+   *  накопленное, и читать отчёт можно многократно. */
   drain(): Diagnostic[] {
     return [...this.items]
   }
@@ -3342,13 +3383,13 @@ export class DiagnosticSink {
 - [ ] **Step 4: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/diagnostics.test.ts`
-Expected: PASS, 5 тестов.
+Expected: PASS, 9 тестов.
 
 - [ ] **Step 5: Коммит**
 
 ```bash
 git add packages/serializer
-git commit -m "feat(serializer): сборщик диагностики с дедупликацией"
+git commit -m "feat(serializer): сборщик диагностики с кодами из @h2d/ir"
 ```
 
 ---
@@ -4866,9 +4907,9 @@ git commit -m "docs: README и запись в базу знаний по ито
 
 ## Ревизия контракта — дельты к задачам 3–14
 
-> **ВНИМАНИЕ исполнителям задач 9, 10 и 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
+> **ВНИМАНИЕ исполнителям задач 10 и 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
 >
-> - Task 9 всё ещё **определяет** `DIAGNOSTIC_CODES` в сериализаторе. Они переехали в `@h2d/ir` (файл `codes.ts`) — задача обязана их импортировать, а не создавать заново. `DiagnosticSink` принимает `screenId`, а `report()` — параметр `needsPlaceholder`.
+> - ~~Task 9~~ — **переписана, тело актуально.**
 > - Task 10 собирает `TextRun` с полем `fontFamily` и кладёт `lineHeight`/`align` в ран. В контракте вместо `fontFamily` — `fontStack: string[]` и `usedFamily: string`, а `lineHeight` и `align` переехали в `NodeText`. Плюс `run.text` — только собственный текст узла, и требуется применять `text-transform`.
 > - Task 12 читает `run.fontFamily` и строит узлы без `kind`. Рендерер обязан переключаться по `kind`, рисовать `placeholder` видимо и подставлять `usedFamily` в `font-family`.
 >
@@ -4907,6 +4948,8 @@ Design-ревью контракта IR (после реализации пер�
 3. Пока рендерер плана 1 не рисует штрихи — порождать `strokeStyleFlattened`. Молчание здесь запрещено.
 
 ### Task 9 — диагностика
+
+**Тело задачи переписано полностью, дельта применена в нём.** Оставлено здесь для истории.
 
 1. `DiagnosticSink` **импортирует коды из `@h2d/ir`**, своего списка не держит. Задача больше не создаёт `DIAGNOSTIC_CODES` — они переехали в Task 2.
 2. Конструктор принимает `screenId`, а не отображаемое имя.
