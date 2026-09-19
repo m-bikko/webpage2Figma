@@ -17,7 +17,7 @@ sources: [docs/superpowers/specs/2026-09-19-html2design-design.md]
 
 ## Переносим уверенно
 
-Геометрия; заливки — solid, linear/radial/conic-градиенты, image-fill с `cover`/`contain`/`repeat`; обводки, включая разную толщину по сторонам; радиусы по углам; тени внешние и внутренние; `opacity`; `mix-blend-mode`; `overflow: hidden` в `clipsContent`; `transform` translate/rotate/scale; `filter: blur` в Layer Blur; `backdrop-filter: blur` в Background Blur; типографика целиком, включая `text-transform` (применяется к самой строке) и `text-shadow`; `display: flex`/`grid` в auto-layout; псевдоэлементы `::before`/`::after`; открытый shadow DOM; same-origin iframe рекурсивно; inline SVG в Vector.
+Геометрия; сплошные заливки; обводки, включая разную толщину по сторонам и стиль `dashed`/`dotted` в `dashPattern`; радиусы по углам; тени внешние и внутренние; `opacity`; `overflow: hidden` в `clipsContent`; типографика — семейство, кегль, вес, `line-height`, `letter-spacing`, выравнивание, декорации, `text-transform` (применяется к самой строке), `text-shadow`; `display: flex`/`grid` в auto-layout; открытый shadow DOM; same-origin iframe рекурсивно.
 
 ## Переносим в плане 2; в плане 1 обязательно диагностируется
 
