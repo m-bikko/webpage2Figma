@@ -263,10 +263,14 @@ git commit -m "chore: pnpm-воркспейс, strict TypeScript, vitest, playwr
 
 ## Task 2: Типы IR
 
-Типы пишутся целиком, включая поля, которые в этом плане не заполняются (изображения, ассеты, токены). Это дешёвле, чем менять контракт в планах 2–4, и позволяет плагину Figma сразу писаться против финальной формы.
+**Эта задача переписана после design-ревью контракта.** Первая редакция была посимвольно реализована и закоммичена (`5e09c07`), после чего ревью нашло, что выразительная сила контракта уже́ ниже той поддержки, которую обещает спека, и что в каждой точке нехватки результат получается **тихо неверным**, а не громко упавшим. Разбор и обоснование — в разделе «Ревизия контракта» в конце плана. Реализация этой задачи — правка `types.ts` до формы ниже.
+
+Типы пишутся целиком, включая поля, которые в этом плане не заполняются. Это дешевле, чем менять контракт в планах 2–4, и позволяет плагину Figma сразу писаться против финальной формы. Ревью показало, что в первой редакции этот принцип применили к `assets`, `tokens` и `image`, но забыли про `transform`, `blend`, `blur` и векторы — без причины.
+
+**Ключевое решение ревизии: `IrNode` — настоящее размеченное объединение по `kind`.** Тогда `text` непустой ровно когда `kind === 'text'`, состояние «и текст, и картинка одновременно» невыразимо, исчерпывающий `switch` из §8.5 спеки становится возможным, а заглушка для неподдерживаемого содержимого получает собственный вид узла — сейчас её просто нечем представить.
 
 **Files:**
-- Create: `packages/ir/src/version.ts`, `packages/ir/src/types.ts`, `packages/ir/src/index.ts`
+- Create: `packages/ir/src/version.ts`, `packages/ir/src/codes.ts`, `packages/ir/src/types.ts`, `packages/ir/src/index.ts`
 
 - [ ] **Step 1: Создать `packages/ir/src/version.ts`**
 
@@ -275,14 +279,69 @@ git commit -m "chore: pnpm-воркспейс, strict TypeScript, vitest, playwr
  *  работать при несовпадении — молчаливая деградация запрещена. */
 export const IR_VERSION = 1
 export type IrVersion = typeof IR_VERSION
+
+/** Сырой конверт: читается ДО валидации, чтобы отличить «это не наш файл»
+ *  от «наш файл чужой версии» и дать внятное сообщение вместо простыни zod.
+ *  Бандл — односверсионный артефакт: миграций нет, есть отказ. */
+export type BundleEnvelope = { format?: unknown; version?: unknown }
 ```
 
-- [ ] **Step 2: Создать `packages/ir/src/types.ts`**
+- [ ] **Step 2: Создать `packages/ir/src/codes.ts`**
+
+Коды диагностики живут в `@h2d/ir`, а не в сериализаторе. Причина конкретная: плагин Figma не может импортировать из сериализатора — тот собран как IIFE для контекста страницы. Держать список в сериализаторе означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код из плана 2 провалился бы в плагине в общую ветку без заглушки. Тогда неподдерживаемый элемент приехал бы в Figma обычной пустой коробкой — ровно молчаливо неверный результат.
 
 ```ts
+/** Коды стабильны: на них ссылается UI отчёта в плагине Figma и тесты.
+ *  Живут здесь, а не в сериализаторе, потому что плагин обязан их знать,
+ *  а импортировать из сериализатора не может. */
+export const DIAGNOSTIC_CODES = {
+  unsupportedCanvas: 'unsupported.canvas',
+  unsupportedCrossOriginIframe: 'unsupported.cross-origin-iframe',
+  unsupportedClosedShadowRoot: 'unsupported.closed-shadow-root',
+  unsupportedClipPath: 'unsupported.clip-path',
+  unsupportedFilter: 'unsupported.filter',
+  unsupportedTransform3d: 'unsupported.transform-3d',
+  unsupportedRepeatingGradient: 'unsupported.repeating-gradient',
+
+  /** Признано в плане 1, реализуется в плане 2. Пока обязано
+   *  порождать диагностику, а не тихо исчезать. */
+  deferredGradient: 'deferred.gradient',
+  deferredTransform: 'deferred.transform',
+  deferredBlur: 'deferred.blur',
+  deferredBlend: 'deferred.blend',
+  deferredVector: 'deferred.vector',
+  deferredPseudoElement: 'deferred.pseudo-element',
+
+  colorUnparsed: 'fidelity.color-unparsed',
+  colorClamped: 'fidelity.color-clamped',
+  fontFallback: 'fidelity.font-fallback',
+  gridFlattened: 'fidelity.grid-flattened',
+  ellipticalCorner: 'fidelity.elliptical-corner',
+  mixedBorderColors: 'fidelity.mixed-border-colors',
+  strokeStyleFlattened: 'fidelity.stroke-style-flattened',
+  stickyFlattened: 'fidelity.sticky-flattened',
+  paintOrderInterleaved: 'fidelity.paint-order-interleaved',
+} as const
+
+export type DiagnosticCode = (typeof DIAGNOSTIC_CODES)[keyof typeof DIAGNOSTIC_CODES]
+
+export const ALL_DIAGNOSTIC_CODES: readonly DiagnosticCode[] =
+  Object.values(DIAGNOSTIC_CODES)
+```
+
+- [ ] **Step 3: Создать `packages/ir/src/types.ts`**
+
+```ts
+import type { DiagnosticCode } from './codes.js'
 import type { IrVersion } from './version.js'
 
-export type Rgba = { r: number; g: number; b: number; a: number }
+/** sRGB, каналы r/g/b — ЦЕЛЫЕ 0..255, альфа — 0..1.
+ *  Это НЕ единицы Figma: там все четыре канала 0..1. Конверсия делается
+ *  в плагине, потому что источник (`getComputedStyle`) и второй потребитель
+ *  (SVG-рендерер) работают в 0..255, и только Figma — нет.
+ *  Имя с «8» умышленное: `{r:1,g:1,b:1}` — почти чёрный здесь и белый
+ *  в Figma, и эту ошибку легко сделать молча. */
+export type Rgba8 = { r: number; g: number; b: number; a: number }
 
 export type Rect = { x: number; y: number; w: number; h: number }
 
@@ -290,29 +349,83 @@ export type Sides = { top: number; right: number; bottom: number; left: number }
 
 export type Corner = { tl: number; tr: number; br: number; bl: number }
 
-export type ImageFit = 'fill' | 'fit' | 'tile'
+/** Разложенная 2D-трансформа в форме, близкой к Figma.
+ *  Когда она не null, `rect` — НЕтрансформированный border box.
+ *  Иначе два поля противоречат друг другу: `getBoundingClientRect()`
+ *  возвращает габарит уже трансформированного элемента, поэтому
+ *  повёрнутый на 15° блок 100×20 дал бы ~102×31. */
+export type Transform = {
+  /** Радианы, против часовой стрелки. */
+  angle: number
+  scaleX: number
+  scaleY: number
+  translateX: number
+  translateY: number
+}
 
+export type BlendMode =
+  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten'
+  | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light'
+  | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
+
+/** Размещение изображения в боксе. Не keyword: Figma управляет
+ *  картинкой через трансформу, а CSS умеет
+ *  `right 24px center / 120px auto`, что keyword'ом не выразить. */
+export type ImagePlacement = {
+  mode: 'fill' | 'fit' | 'tile' | 'crop'
+  /** Смещение в пикселях от левого верхнего угла бокса. */
+  offsetX: number
+  offsetY: number
+  /** Масштаб изображения; для `tile` задаёт размер плитки. */
+  scaleX: number
+  scaleY: number
+}
+
+export type ImageRef = { assetId: string; placement: ImagePlacement }
+
+/** Градиенты появятся отдельным членом объединения в плане 2.
+ *  Это безопасно именно потому, что `Fill` размечен: неизвестный `kind`
+ *  падает громко и в zod, и в исчерпывающем `switch`. */
 export type Fill =
-  | { kind: 'solid'; color: Rgba }
-  | { kind: 'image'; assetId: string; fit: ImageFit }
+  | { kind: 'solid'; color: Rgba8 }
+  | { kind: 'image'; ref: ImageRef }
 
-export type Stroke = { color: Rgba; weight: Sides }
+export type StrokeStyle = 'solid' | 'dashed' | 'dotted'
+
+export type Stroke = {
+  color: Rgba8
+  weight: Sides
+  style: StrokeStyle
+  /** CSS рисует границу внутрь бокса, а Figma по умолчанию по центру —
+   *  при значении по умолчанию каждый элемент с границей сдвинулся бы
+   *  на половину толщины. Поле существует, чтобы плагин обязан был
+   *  выставить `strokeAlign`, а не забыть про него. */
+  align: 'inside'
+}
 
 export type Shadow = {
   kind: 'outer' | 'inner'
-  color: Rgba
+  color: Rgba8
   offsetX: number
   offsetY: number
   blur: number
   spread: number
 }
 
+export type Blur = { layer: number; background: number }
+
 export type NodeStyle = {
   fills: Fill[]
   stroke: Stroke | null
   corner: Corner
   shadows: Shadow[]
+  /** СОБСТВЕННАЯ непрозрачность узла, не композитная. Ребёнок
+   *  полупрозрачного родителя записывает свою, плагин вкладывает узлы,
+   *  и Figma перемножает так же, как браузер. Запекать эффективную
+   *  непрозрачность вниз по дереву запрещено: Figma применит её дважды. */
   opacity: number
+  blend: BlendMode
+  blur: Blur | null
   clip: boolean
 }
 
@@ -322,6 +435,7 @@ export type LayoutJustify =
   | 'start' | 'center' | 'end'
   | 'space-between' | 'space-around' | 'space-evenly'
 
+/** Описывает раскладку, которую узел навязывает своим детям. */
 export type NodeLayout = {
   mode: LayoutMode
   gap: number
@@ -331,59 +445,152 @@ export type NodeLayout = {
   wrap: boolean
 }
 
+export type SelfPositioning = 'flow' | 'absolute' | 'fixed' | 'sticky' | 'float'
+
+/** Описывает, как узел участвует в раскладке РОДИТЕЛЯ.
+ *  Без этого плагин не может отличить обычного ребёнка flex-контейнера
+ *  от абсолютно позиционированного бейджа и уложит бейдж третьим
+ *  элементом auto-layout, сдвинув остальные. */
+export type SelfLayout = {
+  positioning: SelfPositioning
+  /** null — наследуется `align` родителя (`align-self: auto`). */
+  align: LayoutAlign | null
+  grow: number
+  shrink: number
+}
+
 export type TextDecoration = 'none' | 'underline' | 'strikethrough'
 export type TextAlign = 'left' | 'center' | 'right' | 'justify'
 
 export type TextRun = {
+  /** ТОЛЬКО собственный текст узла, без текста потомков.
+   *  Инвариант: конкатенация `runs[].text` равна собственному тексту узла
+   *  и равна конкатенации `lines[].text`. Первая редакция контракта
+   *  нарушала это: `run.text` был `el.textContent` (весь подграф), а
+   *  `lines` — только прямые текстовые узлы, из-за чего плагин рисовал
+   *  вложенный `<b>` дважды. */
   text: string
-  fontFamily: string
+  /** Весь объявленный `font-family`, по порядку. */
+  fontStack: string[]
+  /** Семейство, которым браузер РЕАЛЬНО рисовал. Может отличаться от
+   *  `fontStack[0]`, и тогда `lines` содержат метрики этого семейства.
+   *  Без различения плагин применил бы метрики Helvetica к Söhne и
+   *  получил вылезающий текст, считая, что шрифт найден. */
+  usedFamily: string
   fontWeight: number
   fontStyle: 'normal' | 'italic'
   fontSize: number
-  lineHeight: number
   letterSpacing: number
-  color: Rgba
+  color: Rgba8
   decoration: TextDecoration
-  align: TextAlign
+  shadows: Shadow[]
 }
 
-/** Реальный бокс строки, снятый через Range.getClientRects().
+/** Реальный бокс строки, снятый через `Range.getClientRects()`.
  *  Figma переносит строки сама и почти наверняка иначе, чем браузер,
  *  поэтому места переносов фиксируются явно. */
 export type LineBox = { x: number; y: number; w: number; h: number; text: string }
 
-export type NodeText = { runs: TextRun[]; lines: LineBox[] }
+export type NodeText = {
+  /** Непустой по построению: текстовый узел без ранов отрендерился бы
+   *  в ничто, и это молчаливая потеря. */
+  runs: [TextRun, ...TextRun[]]
+  lines: LineBox[]
+  /** Свойства абзаца, а не отдельного рана: два рана не могут иметь
+   *  разное выравнивание, и плагин не должен выбирать произвольно. */
+  lineHeight: number
+  align: TextAlign
+}
 
-export type IrNode = {
+export type VectorPath = {
+  /** Путь в синтаксисе SVG `d`. */
+  data: string
+  fill: Rgba8 | null
+  stroke: Stroke | null
+}
+
+type NodeBase = {
+  /** Уникален в пределах БАНДЛА, а не экрана: диагностика ссылается
+   *  на узел, и `n42` в пяти экранах сделал бы ссылку неоднозначной. */
   id: string
   sourceTag: string
   name: string
-  /** Абсолютные координаты документа, не вьюпорта. */
+  /** Абсолютные координаты документа, не вьюпорта. Когда `transform`
+   *  не null — НЕтрансформированный border box. */
   rect: Rect
-  /** Порядок отрисовки браузера, НЕ порядок DOM. */
+  /** Порядок отрисовки браузера, НЕ порядок DOM.
+   *  Инвариант, который валидируется: плотный, уникальный, полный
+   *  порядок по всем узлам экрана. Плотность важна не сама по себе —
+   *  она позволяет плагину обнаружить случай, который дерево Figma
+   *  выразить не может: если `paintOrder` узла попадает внутрь
+   *  диапазона чужого поддерева, значит потомок красится поверх соседа
+   *  родителя, и требуется перестройка либо диагностика. */
   paintOrder: number
+  /** Узел создаёт stacking context. Продюсер знает это бесплатно
+   *  (он уже вычисляет это для порядка отрисовки), плагин восстановить
+   *  не может: ни `transform`, ни `filter`, ни `isolation`, ни
+   *  `z-index` в IR по отдельности не лежат. */
+  isStackingContext: boolean
+  transform: Transform | null
   layout: NodeLayout
+  selfLayout: SelfLayout
   style: NodeStyle
-  text: NodeText | null
-  image: { assetId: string; fit: ImageFit } | null
+  /** В порядке РАСКЛАДКИ: после нормализации `-reverse` и `order`.
+   *  Порядок отрисовки живёт только в `paintOrder`. */
   children: IrNode[]
 }
+
+/** Размеченное объединение, а не флаги. `kind` делает возможным
+ *  исчерпывающий `switch` из §8.5 спеки, исключает представимое
+ *  состояние «и текст, и картинка» и даёт заглушке собственный вид. */
+export type IrNode =
+  | (NodeBase & { kind: 'frame' })
+  | (NodeBase & { kind: 'text'; text: NodeText })
+  | (NodeBase & { kind: 'image'; image: ImageRef })
+  | (NodeBase & { kind: 'vector'; paths: VectorPath[] })
+  | (NodeBase & {
+      kind: 'placeholder'
+      /** Видимая заглушка в Figma. Правило «молчаливый fallback — это баг»
+       *  требует, чтобы неподдерживаемое содержимое было ВИДНО, а не
+       *  приезжало пустой коробкой. */
+      placeholder: { code: DiagnosticCode; label: string }
+    })
+
+export type NodeKind = IrNode['kind']
 
 export type DiagnosticLevel = 'info' | 'warning' | 'error'
 
 export type Diagnostic = {
   level: DiagnosticLevel
-  code: string
+  code: DiagnosticCode
   message: string
   nodeId: string | null
-  screen: string | null
+  /** Стабильный `Screen.id`, не отображаемое имя: имя редактируется
+   *  пользователем и не обязано быть уникальным. */
+  screenId: string | null
+  /** Узел требует видимой заглушки. Иначе плагин, встретив незнакомый
+   *  код, нарисовал бы обычную пустую коробку. */
+  needsPlaceholder: boolean
 }
 
 export type Screen = {
+  /** Стабильный идентификатор. На него ссылается диагностика. */
+  id: string
+  /** Отображаемое имя. Редактируется пользователем, уникальность
+   *  не гарантируется. */
   name: string
+  /** Эмулированная ширина вьюпорта, то есть брейкпоинт.
+   *  Горизонтальное переполнение содержимого здесь НЕ отражается. */
   width: number
+  /** Высота фрейма макета: высота содержимого, но не меньше высоты
+   *  вьюпорта. Скриншот для pixel-diff приводится к этому числу,
+   *  а не наоборот. */
   height: number
   dpr: number
+  /** Позиция скролла на момент захвата: `fixed` и `sticky` сняты в ней.
+   *  Без этого поля смещение необъяснимо в отчёте, а бандл
+   *  из багрепорта невоспроизводим. */
+  scroll: { x: number; y: number }
   root: IrNode
   screenshotId: string | null
 }
@@ -409,6 +616,9 @@ export type Tokens = {
 }
 
 export type Bundle = {
+  /** Маркер формата. Позволяет отличить «это не наш файл» от
+   *  «наш файл чужой версии» и не сообщать «версия undefined». */
+  format: 'h2d'
   version: IrVersion
   capturedAt: string
   url: string
@@ -422,26 +632,61 @@ export type Bundle = {
 }
 ```
 
-- [ ] **Step 3: Создать `packages/ir/src/index.ts`**
+- [ ] **Step 4: Создать `packages/ir/src/index.ts`**
 
 ```ts
 export * from './version.js'
+export * from './codes.js'
 export * from './types.js'
 export * from './schema.js'
 export * from './validate.js'
 ```
 
-- [ ] **Step 4: Убедиться, что typecheck падает**
+- [ ] **Step 5: Убедиться, что typecheck падает только на двух отсутствующих модулях**
 
 Run: `pnpm typecheck`
-Expected: FAIL — `Cannot find module './schema.js'`. Схема появится в Task 3, это ожидаемо.
+Expected: FAIL — ровно две ошибки `TS2307` про `./schema.js` и `./validate.js`. Схема и валидатор появятся в Task 3, это ожидаемо. Любая ошибка внутри `version.ts`, `codes.ts` или `types.ts` — настоящий дефект, его надо исправить здесь.
 
-- [ ] **Step 5: Коммит**
+- [ ] **Step 6: Проверить, что объединение действительно различает виды**
+
+Проверка в файле вне репозитория (например в `/tmp`), удалить после. Смысл не в том, что это компилируется, а в том, что **невозможное состояние не компилируется**:
+
+```ts
+import type { IrNode } from './types.js'
+
+// Должно быть ошибкой: у frame нет поля text
+declare const a: IrNode
+if (a.kind === 'frame') {
+  // @ts-expect-error у kind:'frame' нет text
+  a.text
+}
+
+// Должно быть ошибкой: text и image одновременно невыразимы
+// @ts-expect-error нельзя иметь оба
+const bad: IrNode = { kind: 'text', text: {} as never, image: {} as never } as IrNode
+
+// Исчерпывающий switch должен покрывать все пять видов
+const kindOf = (n: IrNode): string => {
+  switch (n.kind) {
+    case 'frame': return 'frame'
+    case 'text': return 'text'
+    case 'image': return 'image'
+    case 'vector': return 'vector'
+    case 'placeholder': return 'placeholder'
+  }
+}
+```
+
+Убедиться, что `@ts-expect-error` не «висят зря»: если бы объединение было неверным, TypeScript пожаловался бы на неиспользуемое подавление. Именно это и есть проверка.
+
+- [ ] **Step 7: Коммит**
 
 ```bash
 git add packages/ir
-git commit -m "feat(ir): типы формата IR"
+git commit -m "feat(ir)!: контракт как размеченное объединение после design-ревью"
 ```
+
+Тело коммита должно перечислить, что именно изменилось и почему — это ревизия контракта, и через полгода причина должна читаться из истории. Затем пустая строка и трейлер.
 
 ---
 
@@ -3388,6 +3633,88 @@ git commit -m "docs: README и запись в базу знаний по ито
 
 ---
 
+## Ревизия контракта — дельты к задачам 3–14
+
+Design-ревью контракта IR (после реализации первой редакции в `5e09c07`) вернуло **changes required**. Task 2 переписан полностью. Ниже — что именно меняется в остальных задачах. **Исполнитель каждой задачи обязан прочитать свою дельту вместе с телом задачи**: тела задач ниже написаны против первой редакции контракта и в перечисленных местах устарели.
+
+### Почему ревизия, а не версия IR
+
+Ни одного бандла ещё не существует, эталонных фикстур нет, сериализатор не написан. Правка контракта сейчас — это один файл. Та же правка после Task 13 — это переписывание сериализатора, рендерера и двадцати закоммиченных снапшотов. Версия IR остаётся `1`: мигрировать нечего.
+
+Общий диагноз ревью, который стоит держать в голове при всех дельтах: **референс-рендерер разделял слепые пятна контракта** — читал `lines`, а не `runs`, абсолютные `rect`, а не раскладку, и плющил порядок отрисовки. Поэтому pixel-diff, главный инструмент корректности проекта, оставался зелёным почти для всех найденных дефектов. Каждая дельта ниже либо убирает слепое пятно, либо заставляет гейт его видеть.
+
+### Решение по миграциям
+
+Спека §9 обещала «миграции версий» в `packages/ir`. Обещание снимается: бандл — **односверсионный артефакт**, и отказ при несовпадении версий — правильное поведение для двух половин, которые всегда поставляются вместе. `BundleEnvelope` из Task 2 существует не для миграции, а чтобы сообщение об ошибке отличало «это не наш файл» от «наш файл чужой версии». Строгий литерал `IrVersion` на валидированном `Bundle` сохраняется.
+
+### Task 3 — схема и валидация
+
+1. **Связать схему типом.** Было `export const irNodeSchema: z.ZodType<unknown>` и `parsed.data as Bundle`. Становится `z.ZodType<IrNode>` на ленивой схеме, а приведение `as Bundle` удаляется. Причина: с `unknown` и приведением схема и типы расходятся при зелёном typecheck. Добавили поле в `types.ts`, забыли в `schema.ts` — валидация пропускает бандл без него, плагин читает `node.transform.angle`, Figma падает **посреди построения**. Это ровно «половинчатый импорт», который преамбула Task 3 называет худшим исходом.
+2. **`z.discriminatedUnion('kind', …)`** для `IrNode`, обёрнутая в `z.lazy` ради рекурсии `children`.
+3. **`Rgba8`: `.int()`** на `r`, `g`, `b`. Без этого `{r:1,g:1,b:1}` — валидные единицы Figma и почти чёрный в наших — проходит проверку и рисуется неверно. `getComputedStyle` и канвас-путь дают целые, так что ограничение бесплатно.
+4. **Маркер формата**: `format: z.literal('h2d')`, проверяется в `parseBundle` до версии.
+5. **Инварианты `paintOrder` валидируются**, а не документируются: по каждому экрану собрать все `paintOrder`, проверить, что их количество равно количеству узлов, что все уникальны и что множество равно `0..n-1`. Инвариант, существующий только в комментарии резолвера, продюсер может нарушить, и тогда сортировка в плагине станет недетерминированной между запусками.
+6. **Ссылочная целостность** в `parseBundle`: каждый `assetId` из `Fill` и `ImageRef` существует в `assets`; `screenshotId` существует; `nodeId` каждой диагностики существует; `screenId` существует; каждое `usedFamily` из ранов покрыто `fonts`. Причина: при неудачной загрузке картинки `assetId` повисает, `figma.createImage` не вызывается, узел приезжает пустым прямоугольником, диагностики нет, бандл «валиден». Висячая ссылка — это молчаливый fallback, а проверка стоит двадцать строк в единственном месте, общем для обеих половин.
+7. **Уникальность `id` узлов в пределах всего бандла**, а не экрана.
+8. Тесты добавляются на каждый новый отказ: чужой `format`, дырявый `paintOrder`, висячий `assetId`, дубль `id`, `runs: []`, дробный канал цвета.
+
+### Task 6 — обводки
+
+1. Читать `border-*-style` и заполнять `Stroke.style`. Было: `widthOf` обнуляет только `none`/`hidden`, поэтому `dashed` и `dotted` молча становились сплошными. В Figma есть `dashPattern`, то есть терялась представимая фича.
+2. Всегда выставлять `align: 'inside'`.
+3. Пока рендерер плана 1 не рисует штрихи — порождать `strokeStyleFlattened`. Молчание здесь запрещено.
+
+### Task 9 — диагностика
+
+1. `DiagnosticSink` **импортирует коды из `@h2d/ir`**, своего списка не держит. Задача больше не создаёт `DIAGNOSTIC_CODES` — они переехали в Task 2.
+2. Конструктор принимает `screenId`, а не отображаемое имя.
+3. `report()` получает параметр `needsPlaceholder`.
+
+### Task 10 — текст
+
+1. **`run.text` — только собственный текст узла.** Было `el.textContent`, то есть весь подграф. Это ядро находки C2: для `<p>Hello <b>world</b></p>` абзац получал `runs[0].text = "Hello world"` и строку `"Hello"`, а `<b>` — свой узел со своим «world», и плагин рисовал «world» дважды с наложением.
+2. Инвариант, который надо утверждать тестом: конкатенация `runs[].text` равна собственному тексту узла и равна конкатенации `lines[].text`.
+3. **`fontStack` и `usedFamily`.** Первое — весь объявленный `font-family`. Второе — семейство, которым браузер реально рисовал: перебрать стек и взять первое, для которого `document.fonts.check(\`\${size}px "\${family}"\`)` истинно, с системным стеком как последним рубежом. При `usedFamily !== fontStack[0]` — диагностика `fontFallback` уровня `error`. Без этого `lines` содержат метрики фактического шрифта, а IR называет объявленный, и плагин применяет чужие метрики, считая, что шрифт найден.
+4. `lineHeight` и `align` переезжают из `TextRun` в `NodeText`: это свойства абзаца, и два рана не должны иметь возможность противоречить друг другу.
+5. `runs` непустой по построению.
+
+### Task 11 — обход DOM
+
+1. **Присваивать `kind`** и строить соответствующий вариант узла. `<canvas>`, cross-origin iframe и closed shadow root становятся `kind: 'placeholder'` с кодом и подписью, а не пустыми фреймами.
+2. **`selfLayout`** из `LayoutProbe`: `positioning`, `align-self`, `flex-grow`, `flex-shrink`. Данные уже читаются для стекинга и сейчас выбрасываются. Без них абсолютно позиционированный бейдж внутри flex попадёт третьим элементом auto-layout и сдвинет остальных.
+3. **`isStackingContext`** из резолвера — он это уже вычисляет.
+4. **Диагностики на отложенное**, каждая с `needsPlaceholder` где уместно: `background-image` присутствует, но не разбирается → `deferredGradient`; `cs.transform !== 'none'` → `deferredTransform` уровня `error` (было: проверялся только `matrix3d`, поэтому 2D-поворот не порождал ничего); `filter`/`backdrop-filter` blur → `deferredBlur`; `mix-blend-mode !== 'normal'` → `deferredBlend`; узел внутри `<svg>` → `deferredVector`; непустой `content` у `::before`/`::after` → `deferredPseudoElement`.
+5. **Счётчик `id` глобальный по бандлу**, не по экрану.
+6. `Screen.id` генерируется отдельно от `name`; `scroll` записывается.
+7. `Screen.height` — `Math.max(documentElement.scrollHeight, window.innerHeight)`, и это **определение поля**: высота фрейма макета, не меньше вьюпорта. Не менять на чистый `scrollHeight` — это сломало бы короткие страницы, где скриншот `fullPage` выше содержимого.
+
+### Task 12 — референс-рендерер
+
+1. `switch` по `kind`, исчерпывающий.
+2. `kind: 'placeholder'` рисуется **видимо**: пунктирная рамка и подпись из `placeholder.label`. Правило проекта требует, чтобы неподдерживаемое было видно.
+3. Продолжать плющить и сортировать по `paintOrder` — но **дополнительно обнаруживать переплетение** и печатать предупреждение: если `paintOrder` узла попадает внутрь диапазона `[min, max]` чужого поддерева, значит дерево Figma этот порядок выразить не сможет. Рендерер такой случай переживает, а плагин нет, и без этой проверки гейт остаётся зелёным при заведомо невыразимом макете.
+4. Текст рендерится из `lines`, как раньше, но `usedFamily` подставляется в `font-family` — иначе диффится не тот шрифт, которым рисовал браузер.
+
+### Task 13 — фикстуры
+
+Добавить фикстуры, которые заставляют новые поля и диагностики работать, иначе они непроверены:
+
+- `transformed/` — `rotate(15deg)`, `scale(1.5)`, `translate`. Ожидание: `deferredTransform` уровня `error` на каждом. Раздутие осепараллельного габарита достаточно велико, чтобы pixel-diff это громко поймал.
+- `gradient/` — `linear-gradient` фон. Ожидание: `deferredGradient`, а не молча прозрачный блок.
+- `inline-text/` — `<p>Hello <b>world</b> and <span style="color:red">red</span></p>`. Ожидание: инвариант конкатенации выполняется, «world» не дублируется.
+- `absolute-in-flex/` — бейдж `position:absolute` внутри `display:flex`. Ожидание: `selfLayout.positioning === 'absolute'` у бейджа и `'flow'` у соседей.
+- `missing-font/` — `font-family: "Заведомо Отсутствующий Шрифт", Arial`. Ожидание: `usedFamily === 'Arial'` и `fontFallback` уровня `error`.
+- `dashed-border/` — `border: 2px dashed`. Ожидание: `style === 'dashed'` и `strokeStyleFlattened`.
+
+Тест на диагностики формулируется положительно: для каждой фикстуры перечислен набор кодов, которые **обязаны** присутствовать. Отсутствие ожидаемого кода — провал. Это и есть машинная проверка правила «молчаливый fallback — это баг».
+
+### Task 14 — pixel-diff
+
+1. **Скриншот приводится к `Screen.height`, а не наоборот.** Шаг 6 пункт 4 в теле задачи предписывал обратное — менять `Screen.height` на чистый `scrollHeight`. Это ошибка: она сломала бы короткую страницу, где `fullPage`-скриншот выше содержимого. `Screen.height` — определение, скриншот подгоняется под него.
+2. Пороги для новых фикстур: `transformed/` и `gradient/` в плане 1 **обязаны** расходиться — фичи отложены. Поэтому для них pixel-diff не запускается вообще, а проверяется только наличие диагностик. Порог, подогнанный под заведомо неверный рендер, был бы ложью в чеклисте.
+
+---
+
 ## Проверка готовности плана
 
 План считается выполненным, когда:
@@ -3396,6 +3723,9 @@ git commit -m "docs: README и запись в базу знаний по ито
 - [ ] 20 pixel-diff тестов зелёные (4 фикстуры × 5 ширин), пороги не поднимались без объяснённой причины в `threshold.json`
 - [ ] IR-снапшоты закоммичены и просмотрены глазами
 - [ ] Ни одного `any` в коде: `grep -rn ": any\|as any" packages/ tests/` пусто
+- [ ] Все дельты из раздела «Ревизия контракта» применены: схема связана типом `z.ZodType<IrNode>`, приведения `as Bundle` нет, инварианты `paintOrder` и ссылочная целостность валидируются
+- [ ] Для каждой новой фикстуры проверено НАЛИЧИЕ ожидаемых кодов диагностики — машинная проверка правила «молчаливый fallback — это баг»
+- [ ] `transformed/` и `gradient/` не участвуют в pixel-diff, только в проверке диагностик: подогнанный под заведомо неверный рендер порог был бы ложью
 - [ ] `pnpm typecheck:root` проходит и входит в составной скрипт `test` — каталог `tests/` проверяется типами, а не только транспилируется
 - [ ] Резолвер стекинга проходит все 15 тестов, включая изоляцию `z-index` во вложенном контексте
 - [ ] Цвет в синтаксисе `oklch()` разобран через канвас-путь, диагностика `fidelity.color-unparsed` пуста
