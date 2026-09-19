@@ -692,25 +692,38 @@ git commit -m "feat(ir)!: контракт как размеченное объ�
 
 ## Task 3: Валидация IR
 
-Валидатор стоит на входе плагина Figma и обязан отклонять плохой бандл **до** начала построения. Половинчатый импорт — худший из возможных исходов: пользователь не понимает, доверять ли результату.
+**Переписана после design-ревью контракта** вместе с Task 2. Валидатор стоит на входе плагина Figma и обязан отклонять плохой бандл **до** начала построения. Половинчатый импорт — худший из возможных исходов: пользователь не понимает, доверять ли результату.
+
+Ревью добавило к этой задаче два требования, которых в первой редакции не было и без которых валидатор пропускал заведомо сломанные бандлы.
+
+**Первое: схема связывается типом с `types.ts`.** Было `z.ZodType<unknown>` плюс `parsed.data as Bundle`. С таким приведением схема и типы расходятся при зелёном typecheck: добавили поле в `types.ts`, забыли в `schema.ts` — валидация пропускает бандл без него, плагин читает `node.transform.angle`, Figma падает **посреди построения**.
+
+**Второе: проверяются инварианты, которые форма выразить не может.** Схема умеет сказать «`paintOrder` это число» и «`assetId` это строка». Она не умеет сказать «эти числа образуют плотную перестановку» и «эта строка на что-то ссылается». Между тем висячий `assetId` — при неудачной загрузке картинки в extension — даёт пустой прямоугольник без диагностики при формально валидном бандле. Это молчаливый fallback, и стоит он двадцать строк в единственном месте, общем для обеих половин.
+
+Поэтому валидация разделена на два файла: `schema.ts` проверяет форму, `invariants.ts` — смысл. Второй состоит из чистых функций над готовым `Bundle` и тестируется независимо.
 
 **Files:**
-- Create: `packages/ir/src/schema.ts`, `packages/ir/src/validate.ts`
-- Test: `packages/ir/test/validate.test.ts`
+- Create: `packages/ir/src/schema.ts`, `packages/ir/src/invariants.ts`, `packages/ir/src/validate.ts`
+- Modify: `packages/ir/src/index.ts` (добавить экспорт `./invariants.js`)
+- Test: `packages/ir/test/fixtures.ts`, `packages/ir/test/invariants.test.ts`, `packages/ir/test/validate.test.ts`
 
-- [ ] **Step 1: Написать падающий тест**
+- [ ] **Step 1: Создать `packages/ir/test/fixtures.ts`**
+
+Конструкторы валидных объектов, чтобы тесты портили ровно одно поле и было видно, что именно проверяется. Не тест сам по себе, поэтому вынесен отдельно.
 
 ```ts
-// packages/ir/test/validate.test.ts
-import { describe, expect, it } from 'vitest'
-import { IR_VERSION, parseBundle, type Bundle } from '../src/index.js'
+import { IR_VERSION } from '../src/version.js'
+import type { Bundle, IrNode, NodeText, Screen, TextRun } from '../src/types.js'
 
-const emptyNode = {
+export const frameNode = (overrides: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({
+  kind: 'frame',
   id: 'n0',
-  sourceTag: 'body',
-  name: 'body',
+  sourceTag: 'div',
+  name: 'div',
   rect: { x: 0, y: 0, w: 100, h: 100 },
   paintOrder: 0,
+  isStackingContext: false,
+  transform: null,
   layout: {
     mode: 'none',
     gap: 0,
@@ -719,81 +732,496 @@ const emptyNode = {
     justify: 'start',
     wrap: false,
   },
+  selfLayout: { positioning: 'flow', align: null, grow: 0, shrink: 1 },
   style: {
     fills: [],
     stroke: null,
     corner: { tl: 0, tr: 0, br: 0, bl: 0 },
     shadows: [],
     opacity: 1,
+    blend: 'normal',
+    blur: null,
     clip: false,
   },
-  text: null,
-  image: null,
   children: [],
-}
+  ...overrides,
+})
 
-const validBundle = {
+export const textRun = (overrides: Partial<TextRun> = {}): TextRun => ({
+  text: 'привет',
+  fontStack: ['Arial', 'sans-serif'],
+  usedFamily: 'Arial',
+  fontWeight: 400,
+  fontStyle: 'normal',
+  fontSize: 16,
+  letterSpacing: 0,
+  color: { r: 0, g: 0, b: 0, a: 1 },
+  decoration: 'none',
+  shadows: [],
+  ...overrides,
+})
+
+export const nodeText = (overrides: Partial<NodeText> = {}): NodeText => ({
+  runs: [textRun()],
+  lines: [{ x: 0, y: 0, w: 50, h: 20, text: 'привет' }],
+  lineHeight: 20,
+  align: 'left',
+  ...overrides,
+})
+
+export const screen = (overrides: Partial<Screen> = {}): Screen => ({
+  id: 's0',
+  name: 'Desktop',
+  width: 1440,
+  height: 900,
+  dpr: 1,
+  scroll: { x: 0, y: 0 },
+  root: frameNode(),
+  screenshotId: null,
+  ...overrides,
+})
+
+export const bundle = (overrides: Partial<Bundle> = {}): Bundle => ({
+  format: 'h2d',
   version: IR_VERSION,
   capturedAt: '2026-09-19T10:00:00.000Z',
   url: 'https://example.com/',
   title: 'Example',
   userAgent: 'Mozilla/5.0',
-  screens: [
-    { name: 'Desktop', width: 1440, height: 900, dpr: 1, root: emptyNode, screenshotId: null },
-  ],
+  screens: [screen()],
   assets: [],
-  fonts: [],
+  fonts: [{ family: 'Arial', weight: 400, style: 'normal' }],
   tokens: { variables: [], textStyles: [], paintStyles: [] },
   report: [],
-}
+  ...overrides,
+})
+```
 
-describe('parseBundle', () => {
-  it('принимает валидный бандл и возвращает типизированный объект', () => {
-    const result = parseBundle(validBundle)
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    const bundle: Bundle = result.bundle
-    expect(bundle.screens[0]?.width).toBe(1440)
+- [ ] **Step 2: Написать падающие тесты инвариантов**
+
+```ts
+// packages/ir/test/invariants.test.ts
+import { describe, expect, it } from 'vitest'
+import { checkInvariants } from '../src/invariants.js'
+import { bundle, frameNode, nodeText, screen, textRun } from './fixtures.js'
+
+const codesOf = (errors: { code: string }[]): string[] => errors.map((e) => e.code)
+
+describe('checkInvariants: paintOrder', () => {
+  it('пропускает плотную перестановку', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [frameNode({ id: 'b', paintOrder: 1 }), frameNode({ id: 'c', paintOrder: 2 })],
+    })
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 
-  it('отклоняет бандл с чужой версией IR с внятным сообщением', () => {
-    const result = parseBundle({ ...validBundle, version: 999 })
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error).toContain('версия IR')
+  it('ловит дубль paintOrder', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [frameNode({ id: 'b', paintOrder: 1 }), frameNode({ id: 'c', paintOrder: 1 })],
+    })
+    const errors = checkInvariants(bundle({ screens: [screen({ root })] }))
+    expect(codesOf(errors)).toContain('paint-order.duplicate')
   })
 
-  it('отклоняет бандл со сломанной структурой узла, указывая путь', () => {
-    const broken = structuredClone(validBundle)
-    // @ts-expect-error намеренно ломаем поле для проверки валидатора
-    broken.screens[0].root.rect = { x: 0, y: 0 }
-    const result = parseBundle(broken)
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error).toContain('rect')
+  it('ловит дырку в перестановке', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [frameNode({ id: 'b', paintOrder: 5 })],
+    })
+    const errors = checkInvariants(bundle({ screens: [screen({ root })] }))
+    expect(codesOf(errors)).toContain('paint-order.not-dense')
   })
 
-  it('отклоняет не-объект', () => {
-    expect(parseBundle('не бандл').ok).toBe(false)
+  it('считает paintOrder независимо по экранам', () => {
+    const root = frameNode({ id: 'a', paintOrder: 0 })
+    const b = bundle({
+      screens: [
+        screen({ id: 's0', root }),
+        screen({ id: 's1', root: frameNode({ id: 'z', paintOrder: 0 }) }),
+      ],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+})
+
+describe('checkInvariants: уникальность id узлов', () => {
+  it('ловит дубль id внутри экрана', () => {
+    const root = frameNode({
+      id: 'dup', paintOrder: 0,
+      children: [frameNode({ id: 'dup', paintOrder: 1 })],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('node-id.duplicate')
+  })
+
+  it('ловит дубль id МЕЖДУ экранами — id уникальны по бандлу, не по экрану', () => {
+    const b = bundle({
+      screens: [
+        screen({ id: 's0', root: frameNode({ id: 'n0', paintOrder: 0 }) }),
+        screen({ id: 's1', root: frameNode({ id: 'n0', paintOrder: 0 }) }),
+      ],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('node-id.duplicate')
+  })
+})
+
+describe('checkInvariants: ссылочная целостность', () => {
+  it('ловит висячий assetId у image-узла', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [{
+        ...frameNode({ id: 'img', paintOrder: 1 }),
+        kind: 'image',
+        image: {
+          assetId: 'нет-такого',
+          placement: { mode: 'fill', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 },
+        },
+      }],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('asset.dangling')
+  })
+
+  it('ловит висячий assetId в image-заливке', () => {
+    const root = frameNode({
+      id: 'a',
+      paintOrder: 0,
+      style: {
+        ...frameNode().style,
+        fills: [{
+          kind: 'image',
+          ref: {
+            assetId: 'нет-такого',
+            placement: { mode: 'fill', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 },
+          },
+        }],
+      },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('asset.dangling')
+  })
+
+  it('принимает assetId, который есть в assets', () => {
+    const b = bundle({
+      assets: [{ id: 'a1', mimeType: 'image/png', width: 10, height: 10, path: 'assets/a1.png' }],
+      screens: [screen({
+        root: frameNode({
+          id: 'a',
+          paintOrder: 0,
+          style: {
+            ...frameNode().style,
+            fills: [{
+              kind: 'image',
+              ref: {
+                assetId: 'a1',
+                placement: { mode: 'fill', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 },
+              },
+            }],
+          },
+        }),
+      })],
+    })
+    expect(checkInvariants(b)).toEqual([])
+  })
+
+  it('ловит висячий screenshotId', () => {
+    const b = bundle({ screens: [screen({ screenshotId: 'нет-такого' })] })
+    expect(codesOf(checkInvariants(b))).toContain('screenshot.dangling')
+  })
+
+  it('ловит диагностику, ссылающуюся на несуществующий узел', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: 'нет-такого', screenId: 's0', needsPlaceholder: true,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('diagnostic.dangling-node')
+  })
+
+  it('ловит диагностику, ссылающуюся на несуществующий экран', () => {
+    const b = bundle({
+      report: [{
+        level: 'warning', code: 'unsupported.canvas', message: 'x',
+        nodeId: null, screenId: 'нет-такого', needsPlaceholder: false,
+      }],
+    })
+    expect(codesOf(checkInvariants(b))).toContain('diagnostic.dangling-screen')
+  })
+
+  it('ловит шрифт, использованный в тексте, но отсутствующий в fonts', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [{
+        ...frameNode({ id: 't', paintOrder: 1 }),
+        kind: 'text',
+        text: nodeText({ runs: [textRun({ usedFamily: 'Söhne', fontWeight: 700 })] }),
+      }],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('font.uncovered')
+  })
+})
+
+describe('checkInvariants: связность текста', () => {
+  it('ловит расхождение конкатенации ранов и строк', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [{
+        ...frameNode({ id: 't', paintOrder: 1 }),
+        kind: 'text',
+        text: nodeText({
+          runs: [textRun({ text: 'привет мир' })],
+          lines: [{ x: 0, y: 0, w: 50, h: 20, text: 'привет' }],
+        }),
+      }],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('text.concat-mismatch')
   })
 })
 ```
 
-- [ ] **Step 2: Запустить тест и убедиться, что он падает**
+- [ ] **Step 3: Запустить тесты и убедиться, что они падают**
 
-Run: `pnpm vitest run packages/ir/test/validate.test.ts`
-Expected: FAIL — `Failed to resolve import "../src/index.js"` либо `parseBundle is not a function`.
+Run: `pnpm vitest run packages/ir/test/invariants.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/invariants.js"`.
 
-- [ ] **Step 3: Создать `packages/ir/src/schema.ts`**
+- [ ] **Step 4: Создать `packages/ir/src/invariants.ts`**
+
+Чистые функции над готовым `Bundle`. Проверяют то, чего схема выразить не может.
+
+```ts
+import type { Bundle, IrNode, Screen } from './types.js'
+
+export type InvariantError = { code: string; path: string; message: string }
+
+const flatten = (node: IrNode, out: IrNode[]): void => {
+  out.push(node)
+  for (const child of node.children) flatten(child, out)
+}
+
+export const allNodes = (screen: Screen): IrNode[] => {
+  const out: IrNode[] = []
+  flatten(screen.root, out)
+  return out
+}
+
+/** `paintOrder` обязан быть плотной перестановкой 0..n-1 по каждому экрану.
+ *  Плотность нужна не сама по себе: по ней плагин обнаруживает случай,
+ *  который дерево Figma выразить не может — когда потомок красится поверх
+ *  соседа родителя, `paintOrder` узла попадает внутрь диапазона чужого
+ *  поддерева. Инвариант, живущий только в комментарии резолвера, продюсер
+ *  может нарушить, и тогда сортировка в плагине станет недетерминированной
+ *  между запусками. */
+const checkPaintOrder = (screen: Screen, index: number): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const nodes = allNodes(screen)
+  const seen = new Set<number>()
+
+  for (const node of nodes) {
+    if (seen.has(node.paintOrder)) {
+      errors.push({
+        code: 'paint-order.duplicate',
+        path: `screens[${index}].{${node.id}}.paintOrder`,
+        message:
+          `Повторяющийся paintOrder ${node.paintOrder}. Порядок отрисовки должен ` +
+          `быть полным: при совпадении сортировка в плагине недетерминирована.`,
+      })
+    }
+    seen.add(node.paintOrder)
+  }
+
+  for (let expected = 0; expected < nodes.length; expected += 1) {
+    if (!seen.has(expected)) {
+      errors.push({
+        code: 'paint-order.not-dense',
+        path: `screens[${index}].paintOrder`,
+        message:
+          `В порядке отрисовки дырка: нет значения ${expected} при ${nodes.length} узлах. ` +
+          `Ожидается плотная перестановка 0..${nodes.length - 1}.`,
+      })
+      break
+    }
+  }
+
+  return errors
+}
+
+/** Id узлов уникальны в пределах БАНДЛА, а не экрана: диагностика ссылается
+ *  на узел, и `n42` в пяти экранах сделал бы ссылку неоднозначной. */
+const checkNodeIds = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const seen = new Set<string>()
+  for (const [index, screen] of bundle.screens.entries()) {
+    for (const node of allNodes(screen)) {
+      if (seen.has(node.id)) {
+        errors.push({
+          code: 'node-id.duplicate',
+          path: `screens[${index}].{${node.id}}.id`,
+          message:
+            `Повторяющийся id узла "${node.id}". Id уникальны в пределах бандла: ` +
+            `на них ссылается отчёт.`,
+        })
+      }
+      seen.add(node.id)
+    }
+  }
+  return errors
+}
+
+const collectAssetRefs = (node: IrNode): string[] => {
+  const refs: string[] = []
+  if (node.kind === 'image') refs.push(node.image.assetId)
+  for (const fill of node.style.fills) {
+    if (fill.kind === 'image') refs.push(fill.ref.assetId)
+  }
+  return refs
+}
+
+/** Висячая ссылка — это молчаливый fallback. При неудачной загрузке картинки
+ *  в extension `assetId` повисает, `figma.createImage` не вызывается, узел
+ *  приезжает пустым прямоугольником, диагностики нет, бандл «валиден». */
+const checkReferences = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const assetIds = new Set(bundle.assets.map((asset) => asset.id))
+  const screenIds = new Set(bundle.screens.map((screen) => screen.id))
+  const nodeIds = new Set<string>()
+  const usedFonts = new Set<string>()
+
+  const fontKey = (family: string, weight: number, style: string): string =>
+    `${family}|${weight}|${style}`
+
+  for (const [index, screen] of bundle.screens.entries()) {
+    if (screen.screenshotId !== null && !assetIds.has(screen.screenshotId)) {
+      errors.push({
+        code: 'screenshot.dangling',
+        path: `screens[${index}].screenshotId`,
+        message:
+          `screenshotId "${screen.screenshotId}" не найден в assets. Скриншоты ` +
+          `регистрируются как ассеты — иначе ссылку нечем проверить.`,
+      })
+    }
+
+    for (const node of allNodes(screen)) {
+      nodeIds.add(node.id)
+
+      for (const assetId of collectAssetRefs(node)) {
+        if (!assetIds.has(assetId)) {
+          errors.push({
+            code: 'asset.dangling',
+            path: `screens[${index}].{${node.id}}`,
+            message:
+              `assetId "${assetId}" не найден в assets. В Figma это дало бы пустой ` +
+              `прямоугольник без диагностики.`,
+          })
+        }
+      }
+
+      if (node.kind === 'text') {
+        for (const run of node.text.runs) {
+          usedFonts.add(fontKey(run.usedFamily, run.fontWeight, run.fontStyle))
+        }
+      }
+    }
+  }
+
+  const declaredFonts = new Set(
+    bundle.fonts.map((font) => fontKey(font.family, font.weight, font.style)),
+  )
+  for (const used of usedFonts) {
+    if (!declaredFonts.has(used)) {
+      errors.push({
+        code: 'font.uncovered',
+        path: 'fonts',
+        message:
+          `Шрифт "${used}" использован в тексте, но отсутствует в fonts. Плагин не ` +
+          `сможет его предзагрузить, и создание текста упадёт.`,
+      })
+    }
+  }
+
+  for (const [index, diagnostic] of bundle.report.entries()) {
+    if (diagnostic.nodeId !== null && !nodeIds.has(diagnostic.nodeId)) {
+      errors.push({
+        code: 'diagnostic.dangling-node',
+        path: `report[${index}].nodeId`,
+        message: `Диагностика ссылается на несуществующий узел "${diagnostic.nodeId}".`,
+      })
+    }
+    if (diagnostic.screenId !== null && !screenIds.has(diagnostic.screenId)) {
+      errors.push({
+        code: 'diagnostic.dangling-screen',
+        path: `report[${index}].screenId`,
+        message: `Диагностика ссылается на несуществующий экран "${diagnostic.screenId}".`,
+      })
+    }
+  }
+
+  return errors
+}
+
+/** Конкатенация `runs[].text` обязана равняться конкатенации `lines[].text`.
+ *  Первая редакция контракта это нарушала: `run.text` был `el.textContent`
+ *  (весь подграф), а `lines` — только прямые текстовые узлы, из-за чего
+ *  плагин рисовал вложенный `<b>` дважды с наложением. */
+const checkTextCoherence = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+  const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim()
+
+  for (const [index, screen] of bundle.screens.entries()) {
+    for (const node of allNodes(screen)) {
+      if (node.kind !== 'text') continue
+      const fromRuns = normalize(node.text.runs.map((run) => run.text).join(''))
+      const fromLines = normalize(node.text.lines.map((line) => line.text).join(''))
+      if (fromRuns !== fromLines) {
+        errors.push({
+          code: 'text.concat-mismatch',
+          path: `screens[${index}].{${node.id}}.text`,
+          message:
+            `Конкатенация ранов ("${fromRuns}") не равна конкатенации строк ` +
+            `("${fromLines}"). Потребители читают разные половины: рендерер строки, ` +
+            `плагин раны — расхождение даёт дублирующийся текст в Figma.`,
+        })
+      }
+    }
+  }
+  return errors
+}
+
+export const checkInvariants = (bundle: Bundle): InvariantError[] => [
+  ...bundle.screens.flatMap((screen, index) => checkPaintOrder(screen, index)),
+  ...checkNodeIds(bundle),
+  ...checkReferences(bundle),
+  ...checkTextCoherence(bundle),
+]
+```
+
+- [ ] **Step 5: Запустить тесты инвариантов**
+
+Run: `pnpm vitest run packages/ir/test/invariants.test.ts`
+Expected: PASS, 14 тестов.
+
+- [ ] **Step 6: Создать `packages/ir/src/schema.ts`**
+
+Зеркало `types.ts`. Связано типом: `z.ZodType<IrNode>` на ленивой схеме — если зеркало разойдётся с оригиналом, это ошибка компиляции, а не тихий пропуск.
 
 ```ts
 import { z } from 'zod'
+import { ALL_DIAGNOSTIC_CODES, type DiagnosticCode } from './codes.js'
+import type { Bundle, IrNode } from './types.js'
 import { IR_VERSION } from './version.js'
 
-const rgba = z.object({
-  r: z.number().min(0).max(255),
-  g: z.number().min(0).max(255),
-  b: z.number().min(0).max(255),
+/** Целые каналы обязательны: `{r:1,g:1,b:1}` это валидные единицы Figma
+ *  и почти чёрный в наших. Без `.int()` такая подмена проходит проверку
+ *  и рисуется неверно. `getComputedStyle` и канвас-путь дают целые,
+ *  так что ограничение бесплатно. */
+const rgba8 = z.object({
+  r: z.number().int().min(0).max(255),
+  g: z.number().int().min(0).max(255),
+  b: z.number().int().min(0).max(255),
   a: z.number().min(0).max(1),
 })
 
@@ -805,23 +1233,52 @@ const corner = z.object({
   tl: z.number(), tr: z.number(), br: z.number(), bl: z.number(),
 })
 
-const imageFit = z.enum(['fill', 'fit', 'tile'])
+const transform = z.object({
+  angle: z.number(),
+  scaleX: z.number(),
+  scaleY: z.number(),
+  translateX: z.number(),
+  translateY: z.number(),
+})
 
-const fill = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('solid'), color: rgba }),
-  z.object({ kind: z.literal('image'), assetId: z.string(), fit: imageFit }),
+const blendMode = z.enum([
+  'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+  'color-dodge', 'color-burn', 'hard-light', 'soft-light',
+  'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity',
 ])
 
-const stroke = z.object({ color: rgba, weight: sides })
+const imagePlacement = z.object({
+  mode: z.enum(['fill', 'fit', 'tile', 'crop']),
+  offsetX: z.number(),
+  offsetY: z.number(),
+  scaleX: z.number(),
+  scaleY: z.number(),
+})
+
+const imageRef = z.object({ assetId: z.string().min(1), placement: imagePlacement })
+
+const fill = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('solid'), color: rgba8 }),
+  z.object({ kind: z.literal('image'), ref: imageRef }),
+])
+
+const stroke = z.object({
+  color: rgba8,
+  weight: sides,
+  style: z.enum(['solid', 'dashed', 'dotted']),
+  align: z.literal('inside'),
+})
 
 const shadow = z.object({
   kind: z.enum(['outer', 'inner']),
-  color: rgba,
+  color: rgba8,
   offsetX: z.number(),
   offsetY: z.number(),
   blur: z.number().min(0),
   spread: z.number(),
 })
+
+const blur = z.object({ layer: z.number().min(0), background: z.number().min(0) })
 
 const nodeStyle = z.object({
   fills: z.array(fill),
@@ -829,73 +1286,123 @@ const nodeStyle = z.object({
   corner,
   shadows: z.array(shadow),
   opacity: z.number().min(0).max(1),
+  blend: blendMode,
+  blur: blur.nullable(),
   clip: z.boolean(),
 })
+
+const layoutAlign = z.enum(['start', 'center', 'end', 'stretch', 'baseline'])
 
 const nodeLayout = z.object({
   mode: z.enum(['row', 'column', 'none']),
   gap: z.number(),
   padding: sides,
-  align: z.enum(['start', 'center', 'end', 'stretch', 'baseline']),
+  align: layoutAlign,
   justify: z.enum([
     'start', 'center', 'end', 'space-between', 'space-around', 'space-evenly',
   ]),
   wrap: z.boolean(),
 })
 
+const selfLayout = z.object({
+  positioning: z.enum(['flow', 'absolute', 'fixed', 'sticky', 'float']),
+  align: layoutAlign.nullable(),
+  grow: z.number(),
+  shrink: z.number(),
+})
+
 const textRun = z.object({
   text: z.string(),
-  fontFamily: z.string(),
+  fontStack: z.array(z.string()).min(1),
+  usedFamily: z.string().min(1),
   fontWeight: z.number(),
   fontStyle: z.enum(['normal', 'italic']),
   fontSize: z.number(),
-  lineHeight: z.number(),
   letterSpacing: z.number(),
-  color: rgba,
+  color: rgba8,
   decoration: z.enum(['none', 'underline', 'strikethrough']),
-  align: z.enum(['left', 'center', 'right', 'justify']),
+  shadows: z.array(shadow),
 })
 
 const lineBox = z.object({
   x: z.number(), y: z.number(), w: z.number(), h: z.number(), text: z.string(),
 })
 
-const nodeText = z.object({ runs: z.array(textRun), lines: z.array(lineBox) })
+/** `runs` непустой: текстовый узел без ранов отрендерился бы в ничто,
+ *  и это молчаливая потеря. */
+const nodeText = z.object({
+  runs: z.array(textRun).nonempty(),
+  lines: z.array(lineBox),
+  lineHeight: z.number(),
+  align: z.enum(['left', 'center', 'right', 'justify']),
+})
 
-/** Узел рекурсивен, поэтому объявляется через z.lazy с явным типом. */
-export const irNodeSchema: z.ZodType<unknown> = z.lazy(() =>
-  z.object({
-    id: z.string(),
+const vectorPath = z.object({
+  data: z.string(),
+  fill: rgba8.nullable(),
+  stroke: stroke.nullable(),
+})
+
+/** Приведение к непустому кортежу — единственное допущенное здесь,
+ *  и оно безопасно: `ALL_DIAGNOSTIC_CODES` собран из `Object.values`
+ *  непустого литерала. Альтернатива — дублировать список строк в схеме,
+ *  то есть завести второй источник истины. */
+const diagnosticCode = z.enum(
+  ALL_DIAGNOSTIC_CODES as readonly [DiagnosticCode, ...DiagnosticCode[]],
+)
+
+/** Аннотация `z.ZodType<IrNode>` — несущая, а не декоративная: если схема
+ *  разойдётся с типом, это ошибка компиляции здесь, а не пропущенный
+ *  бандл и падение Figma посреди построения. */
+export const irNodeSchema: z.ZodType<IrNode> = z.lazy(() => {
+  const base = z.object({
+    id: z.string().min(1),
     sourceTag: z.string(),
     name: z.string(),
     rect,
-    paintOrder: z.number(),
+    paintOrder: z.number().int().min(0),
+    isStackingContext: z.boolean(),
+    transform: transform.nullable(),
     layout: nodeLayout,
+    selfLayout,
     style: nodeStyle,
-    text: nodeText.nullable(),
-    image: z.object({ assetId: z.string(), fit: imageFit }).nullable(),
     children: z.array(irNodeSchema),
-  }),
-)
+  })
+
+  return z.discriminatedUnion('kind', [
+    base.extend({ kind: z.literal('frame') }),
+    base.extend({ kind: z.literal('text'), text: nodeText }),
+    base.extend({ kind: z.literal('image'), image: imageRef }),
+    base.extend({ kind: z.literal('vector'), paths: z.array(vectorPath) }),
+    base.extend({
+      kind: z.literal('placeholder'),
+      placeholder: z.object({ code: diagnosticCode, label: z.string().min(1) }),
+    }),
+  ])
+})
 
 const screen = z.object({
+  id: z.string().min(1),
   name: z.string(),
   width: z.number().positive(),
   height: z.number().positive(),
   dpr: z.number().positive(),
+  scroll: z.object({ x: z.number(), y: z.number() }),
   root: irNodeSchema,
   screenshotId: z.string().nullable(),
 })
 
 const diagnostic = z.object({
   level: z.enum(['info', 'warning', 'error']),
-  code: z.string(),
+  code: diagnosticCode,
   message: z.string(),
   nodeId: z.string().nullable(),
-  screen: z.string().nullable(),
+  screenId: z.string().nullable(),
+  needsPlaceholder: z.boolean(),
 })
 
-export const bundleSchema = z.object({
+export const bundleSchema: z.ZodType<Bundle> = z.object({
+  format: z.literal('h2d'),
   version: z.literal(IR_VERSION),
   capturedAt: z.string(),
   url: z.string(),
@@ -903,14 +1410,14 @@ export const bundleSchema = z.object({
   userAgent: z.string(),
   screens: z.array(screen).min(1),
   assets: z.array(z.object({
-    id: z.string(),
+    id: z.string().min(1),
     mimeType: z.string(),
     width: z.number(),
     height: z.number(),
     path: z.string(),
   })),
   fonts: z.array(z.object({
-    family: z.string(),
+    family: z.string().min(1),
     weight: z.number(),
     style: z.enum(['normal', 'italic']),
   })),
@@ -923,62 +1430,217 @@ export const bundleSchema = z.object({
 })
 ```
 
-- [ ] **Step 4: Создать `packages/ir/src/validate.ts`**
+- [ ] **Step 7: Написать падающие тесты валидатора**
 
 ```ts
+// packages/ir/test/validate.test.ts
+import { describe, expect, it } from 'vitest'
+import { IR_VERSION } from '../src/version.js'
+import { parseBundle } from '../src/validate.js'
+import { bundle, frameNode, screen } from './fixtures.js'
+
+describe('parseBundle: конверт', () => {
+  it('принимает валидный бандл и возвращает типизированный объект', () => {
+    const result = parseBundle(bundle())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.bundle.screens[0]?.width).toBe(1440)
+  })
+
+  it('отклоняет не-объект', () => {
+    expect(parseBundle('не бандл').ok).toBe(false)
+  })
+
+  it('отличает чужой файл от чужой версии', () => {
+    const result = parseBundle({ foo: 'bar' })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('не похож на бандл html2design')
+    expect(result.error).not.toContain('undefined')
+  })
+
+  it('отклоняет чужую версию с внятным сообщением', () => {
+    const result = parseBundle({ ...bundle(), version: 999 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('версия IR')
+    expect(result.error).toContain(String(IR_VERSION))
+  })
+})
+
+describe('parseBundle: схема', () => {
+  it('отклоняет сломанный rect, указывая путь', () => {
+    const broken = structuredClone(bundle()) as Record<string, unknown>
+    const screens = broken['screens'] as { root: { rect: unknown } }[]
+    const first = screens[0]
+    if (first === undefined) throw new Error('фикстура без экранов')
+    first.root.rect = { x: 0, y: 0 }
+    const result = parseBundle(broken)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('rect')
+  })
+
+  it('отклоняет дробный канал цвета — это единицы Figma, а не наши', () => {
+    const b = bundle({
+      screens: [screen({
+        root: frameNode({
+          style: {
+            ...frameNode().style,
+            fills: [{ kind: 'solid', color: { r: 0.5, g: 1, b: 1, a: 1 } }],
+          },
+        }),
+      })],
+    })
+    expect(parseBundle(b).ok).toBe(false)
+  })
+
+  it('отклоняет неизвестный kind узла', () => {
+    const b = bundle({
+      screens: [screen({ root: { ...frameNode(), kind: 'нечто' } as never })],
+    })
+    expect(parseBundle(b).ok).toBe(false)
+  })
+
+  it('отклоняет неизвестный код диагностики', () => {
+    const b = bundle({
+      report: [{
+        level: 'info', code: 'нет.такого', message: 'x',
+        nodeId: null, screenId: null, needsPlaceholder: false,
+      } as never],
+    })
+    expect(parseBundle(b).ok).toBe(false)
+  })
+})
+
+describe('parseBundle: инварианты', () => {
+  it('отклоняет бандл, валидный по форме, но с дыркой в paintOrder', () => {
+    const b = bundle({
+      screens: [screen({
+        root: frameNode({
+          id: 'a', paintOrder: 0,
+          children: [frameNode({ id: 'b', paintOrder: 7 })],
+        }),
+      })],
+    })
+    const result = parseBundle(b)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('порядке отрисовки')
+  })
+
+  it('сообщает обо всех нарушенных инвариантах, а не только о первом', () => {
+    const b = bundle({
+      screens: [screen({
+        screenshotId: 'нет-такого',
+        root: frameNode({
+          id: 'dup', paintOrder: 0,
+          children: [frameNode({ id: 'dup', paintOrder: 1 })],
+        }),
+      })],
+    })
+    const result = parseBundle(b)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('screenshotId')
+    expect(result.error).toContain('id узла')
+  })
+})
+```
+
+- [ ] **Step 8: Запустить тесты и убедиться, что они падают**
+
+Run: `pnpm vitest run packages/ir/test/validate.test.ts`
+Expected: FAIL — `Failed to resolve import "../src/validate.js"`.
+
+- [ ] **Step 9: Создать `packages/ir/src/validate.ts`**
+
+```ts
+import { checkInvariants } from './invariants.js'
 import { bundleSchema } from './schema.js'
 import type { Bundle } from './types.js'
-import { IR_VERSION } from './version.js'
+import { IR_VERSION, type BundleEnvelope } from './version.js'
 
 export type ParseResult =
   | { ok: true; bundle: Bundle }
   | { ok: false; error: string }
 
-/** Версия проверяется до схемы, чтобы несовпадение половин системы давало
- *  понятное сообщение вместо простыни ошибок валидации. */
+/** Порядок проверок продуман: конверт, потом версия, потом форма, потом смысл.
+ *  Каждая ступень даёт сообщение, которое человек может прочитать, вместо
+ *  простыни zod поверх файла, который вообще не наш. */
 export const parseBundle = (input: unknown): ParseResult => {
   if (typeof input !== 'object' || input === null) {
     return { ok: false, error: 'Бандл не является объектом.' }
   }
 
-  const version = (input as { version?: unknown }).version
-  if (version !== IR_VERSION) {
+  const envelope = input as BundleEnvelope
+
+  if (envelope.format !== 'h2d') {
     return {
       ok: false,
       error:
-        `Несовместимая версия IR: в файле ${String(version)}, ` +
+        'Файл не похож на бандл html2design: отсутствует маркер формата. ' +
+        'Выбери файл .h2d, созданный расширением.',
+    }
+  }
+
+  if (envelope.version !== IR_VERSION) {
+    return {
+      ok: false,
+      error:
+        `Несовместимая версия IR: в файле ${String(envelope.version)}, ` +
         `эта половина ожидает ${IR_VERSION}. ` +
-        `Обнови extension и плагин Figma до одной версии.`,
+        `Обнови extension и плагин Figma до одной версии — бандл ` +
+        `односверсионный артефакт, миграции не предусмотрены.`,
     }
   }
 
   const parsed = bundleSchema.safeParse(input)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
-    const path = first ? first.path.join('.') : '<корень>'
-    const message = first ? first.message : 'неизвестная ошибка'
+    const path = first === undefined ? '<корень>' : first.path.join('.')
+    const message = first === undefined ? 'неизвестная ошибка' : first.message
     return { ok: false, error: `Бандл повреждён в поле "${path}": ${message}` }
   }
 
-  return { ok: true, bundle: parsed.data as Bundle }
+  /** Инварианты сообщаются ВСЕ, а не до первого: они обычно следствие одной
+   *  причины, и полный список экономит цикл «починил — снова упало». */
+  const violations = checkInvariants(parsed.data)
+  if (violations.length > 0) {
+    const lines = violations.map((v) => `  • ${v.path}: ${v.message}`).join('\n')
+    return {
+      ok: false,
+      error: `Бандл валиден по форме, но нарушает инварианты:\n${lines}`,
+    }
+  }
+
+  return { ok: true, bundle: parsed.data }
 }
 ```
 
-- [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
+- [ ] **Step 10: Обновить `packages/ir/src/index.ts`**
 
-Run: `pnpm vitest run packages/ir/test/validate.test.ts`
-Expected: PASS, 4 теста.
+```ts
+export * from './version.js'
+export * from './codes.js'
+export * from './types.js'
+export * from './schema.js'
+export * from './invariants.js'
+export * from './validate.js'
+```
 
-- [ ] **Step 6: Проверить typecheck**
+- [ ] **Step 11: Запустить всё и проверить typecheck**
 
-Run: `pnpm typecheck`
-Expected: без ошибок.
+Run: `pnpm typecheck && pnpm vitest run packages/ir`
+Expected: typecheck без ошибок — впервые с Task 2, потому что отсутствующие модули появились. Тесты: PASS, 14 + 10 тестов.
 
-- [ ] **Step 7: Коммит**
+**Если аннотация `z.ZodType<IrNode>` или `z.ZodType<Bundle>` не проходит проверку типов — это сигнал, а не помеха.** Он означает, что зеркало разошлось с оригиналом. Найти расхождение и исправить схему. Убрать аннотацию или добавить приведение **запрещено**: именно она делает расхождение ошибкой компиляции вместо пропущенного бандла.
+
+- [ ] **Step 12: Коммит**
 
 ```bash
 git add packages/ir
-git commit -m "feat(ir): zod-валидация бандла с проверкой версии"
+git commit -m "feat(ir): валидация формы и инвариантов бандла"
 ```
 
 ---
@@ -3648,6 +4310,8 @@ Design-ревью контракта IR (после реализации пер�
 Спека §9 обещала «миграции версий» в `packages/ir`. Обещание снимается: бандл — **односверсионный артефакт**, и отказ при несовпадении версий — правильное поведение для двух половин, которые всегда поставляются вместе. `BundleEnvelope` из Task 2 существует не для миграции, а чтобы сообщение об ошибке отличало «это не наш файл» от «наш файл чужой версии». Строгий литерал `IrVersion` на валидированном `Bundle` сохраняется.
 
 ### Task 3 — схема и валидация
+
+**Тело задачи переписано полностью, дельта применена в нём.** Оставлено здесь для истории: перечисление того, что именно ревью потребовало.
 
 1. **Связать схему типом.** Было `export const irNodeSchema: z.ZodType<unknown>` и `parsed.data as Bundle`. Становится `z.ZodType<IrNode>` на ленивой схеме, а приведение `as Bundle` удаляется. Причина: с `unknown` и приведением схема и типы расходятся при зелёном typecheck. Добавили поле в `types.ts`, забыли в `schema.ts` — валидация пропускает бандл без него, плагин читает `node.transform.angle`, Figma падает **посреди построения**. Это ровно «половинчатый импорт», который преамбула Task 3 называет худшим исходом.
 2. **`z.discriminatedUnion('kind', …)`** для `IrNode`, обёрнутая в `z.lazy` ради рекурсии `children`.
