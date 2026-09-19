@@ -165,7 +165,9 @@ packages:
 
 - [ ] **Step 4: Создать корневой `tsconfig.json`**
 
-Отдельный от `tsconfig.base.json`: базовый наследуют пакеты, а этот обслуживает тесты в корне. Playwright читает `paths` отсюда и по ним резолвит воркспейс-пакеты прямо в исходники TypeScript.
+Отдельный от `tsconfig.base.json`: базовый наследуют пакеты, а этот обслуживает тесты в корне и проверяется скриптом `typecheck:root`.
+
+Разрешение воркспейс-пакетов по именам обеспечивает **не** этот файл, а pnpm-симлинк плюс поле `exports` в `package.json` пакета, указывающее прямо на `src/index.ts`. Проверено эмпирически: с полностью удалённым корневым `tsconfig.json` импорт `@h2d/ir` в Playwright-тесте всё равно резолвится. `paths` остаётся явным отображением для `tsc`, а не несущим механизмом. Записи для `@h2d/serializer` здесь нет: этот пакет нигде не импортируется как модуль, он читается с диска как собранный IIFE.
 
 ```json
 {
@@ -176,7 +178,6 @@ packages:
     "baseUrl": ".",
     "paths": {
       "@h2d/ir": ["packages/ir/src/index.ts"],
-      "@h2d/serializer": ["packages/serializer/src/index.ts"],
       "@h2d/reference-renderer": ["packages/reference-renderer/src/index.ts"]
     }
   },
@@ -186,43 +187,38 @@ packages:
 
 - [ ] **Step 5: Создать `vitest.config.ts`**
 
-Алиасы дублируют `paths` из `tsconfig.json`: Vitest не читает `paths` сам.
-
-`fileURLToPath` вместо `import.meta.dirname`: последнее появилось только в Node 20.11, а требование проекта — Node 20.
+Без `resolve.alias`. Алиасы были бы инертной дубликацией: Vitest разрешает `@h2d/ir` через воркспейс-симлинк и `exports` пакета. Проверено удалением блока — тесты продолжают проходить.
 
 ```ts
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-
-const root = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   test: {
     include: ['packages/*/test/**/*.test.ts'],
     environment: 'node',
   },
-  resolve: {
-    alias: {
-      '@h2d/ir': resolve(root, 'packages/ir/src/index.ts'),
-      '@h2d/serializer': resolve(root, 'packages/serializer/src/index.ts'),
-      '@h2d/reference-renderer': resolve(root, 'packages/reference-renderer/src/index.ts'),
-    },
-  },
 })
 ```
 
 - [ ] **Step 6: Создать `.gitignore`**
 
+`*.tsbuildinfo` обязателен: при `composite: true` компилятор кладёт `tsconfig.tsbuildinfo` в корень пакета, **не** внутрь `dist/`, поэтому правилом `dist/` он не ловится. Без этой строки артефакт сборки уедет в коммит на первом же `git add packages/ir`.
+
 ```
 node_modules/
 dist/
+*.tsbuildinfo
 .turbo/
 test-results/
 playwright-report/
 *.actual.png
 *.diff.png
 ```
+
+Проверить правилом, а не созданием файла:
+
+Run: `git check-ignore -v packages/ir/tsconfig.tsbuildinfo`
+Expected: строка с совпадением на `*.tsbuildinfo`.
 
 - [ ] **Step 7: Создать `packages/ir/package.json`**
 
@@ -3100,10 +3096,23 @@ Expected: PASS. Затем открой `fixtures/boxes/ir/1440.json` и про�
 Run: `pnpm test:e2e`
 Expected: PASS, все тесты.
 
-- [ ] **Step 11: Коммит**
+- [ ] **Step 11: Включить проверку типов тестов в конвейер**
+
+Task 1 завёл скрипт `typecheck:root`, но не подключил его: `tsconfig.json` перечисляет `tests/**/*.ts` и `playwright.config.ts`, которых тогда не существовало. Теперь они есть, и проверку надо включить — иначе весь каталог `tests/` за весь проект не получит ни одной проверки типов. Vitest и Playwright только стирают типы, они их не проверяют, поэтому `any` и обращение к несуществующему полю `IrNode` в тестах прошли бы незамеченными, нарушая правило проекта.
+
+В корневом `package.json` расширить составной скрипт:
+
+```json
+    "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
+```
+
+Run: `pnpm typecheck:root`
+Expected: без ошибок. Если ошибки есть — это настоящие ошибки типов в тестах, написанных в этой задаче, и их надо исправить, а не обойти.
+
+- [ ] **Step 12: Коммит**
 
 ```bash
-git add fixtures playwright.config.ts tests
+git add fixtures playwright.config.ts tests package.json
 git commit -m "test: фикстуры и IR-снапшоты в настоящем Chrome на пяти ширинах"
 ```
 
@@ -3391,7 +3400,8 @@ git commit -m "docs: README и запись в базу знаний по ито
 - [ ] `pnpm test` проходит целиком от чистой установки
 - [ ] 20 pixel-diff тестов зелёные (4 фикстуры × 5 ширин), пороги не поднимались без объяснённой причины в `threshold.json`
 - [ ] IR-снапшоты закоммичены и просмотрены глазами
-- [ ] Ни одного `any` в коде: `grep -rn ": any\|as any" packages/` пусто
+- [ ] Ни одного `any` в коде: `grep -rn ": any\|as any" packages/ tests/` пусто
+- [ ] `pnpm typecheck:root` проходит и входит в составной скрипт `test` — каталог `tests/` проверяется типами, а не только транспилируется
 - [ ] Резолвер стекинга проходит все 15 тестов, включая изоляцию `z-index` во вложенном контексте
 - [ ] Цвет в синтаксисе `oklch()` разобран через канвас-путь, диагностика `fidelity.color-unparsed` пуста
 - [ ] Внутренняя тень либо отрендерена, либо порог `boxes` поднят с объяснением в `reason`
