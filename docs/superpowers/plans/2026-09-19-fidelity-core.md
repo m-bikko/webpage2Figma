@@ -2011,9 +2011,9 @@ export const parsePx = (value: string): number => {
 - [ ] **Step 7: Создать `packages/serializer/src/css/color.ts`**
 
 ```ts
-import type { Rgba } from '@h2d/ir'
+import type { Rgba8 } from '@h2d/ir'
 
-export const TRANSPARENT: Rgba = { r: 0, g: 0, b: 0, a: 0 }
+export const TRANSPARENT: Rgba8 = { r: 0, g: 0, b: 0, a: 0 }
 
 const RGB_FUNCTIONAL =
   /^rgba?\(\s*(-?[\d.]+)[\s,]+(-?[\d.]+)[\s,]+(-?[\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i
@@ -2026,7 +2026,7 @@ const parseAlpha = (raw: string | undefined): number => {
 
 /** Резолв через растеризацию браузером: единственный способ уверенно
  *  разобрать oklch(), color-mix(), lab() и всё, что Chrome добавит позже. */
-const resolveViaCanvas = (value: string): Rgba | null => {
+const resolveViaCanvas = (value: string): Rgba8 | null => {
   if (typeof OffscreenCanvas === 'undefined') return null
   try {
     const canvas = new OffscreenCanvas(1, 1)
@@ -2064,7 +2064,7 @@ const resolveViaCanvas = (value: string): Rgba | null => {
 
 /** Возвращает null, если цвет разобрать не удалось. Вызывающий обязан
  *  породить Diagnostic — молчаливая подстановка чёрного запрещена. */
-export const parseColor = (value: string): Rgba | null => {
+export const parseColor = (value: string): Rgba8 | null => {
   const trimmed = value.trim()
   if (trimmed === '' || trimmed === 'none') return null
   if (trimmed === 'transparent') return TRANSPARENT
@@ -2082,7 +2082,7 @@ export const parseColor = (value: string): Rgba | null => {
   return resolveViaCanvas(trimmed)
 }
 
-export const isInvisible = (color: Rgba): boolean => color.a === 0
+export const isInvisible = (color: Rgba8): boolean => color.a === 0
 ```
 
 - [ ] **Step 8: Запустить тесты и убедиться, что они проходят**
@@ -3925,7 +3925,7 @@ Expected: FAIL — `Failed to resolve import "../src/render.js"`.
 - [ ] **Step 6: Создать `packages/reference-renderer/src/render.ts`**
 
 ```ts
-import type { Corner, IrNode, Rect, Rgba, Screen, Shadow } from '@h2d/ir'
+import type { Corner, IrNode, Rect, Rgba8, Screen, Shadow } from '@h2d/ir'
 
 const escapeXml = (value: string): string =>
   value
@@ -3934,7 +3934,7 @@ const escapeXml = (value: string): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 
-const rgb = (color: Rgba): string => `rgb(${color.r},${color.g},${color.b})`
+const rgb = (color: Rgba8): string => `rgb(${color.r},${color.g},${color.b})`
 
 const uniformCorner = (corner: Corner): number | null => {
   if (corner.tl === corner.tr && corner.tr === corner.br && corner.br === corner.bl) {
@@ -4752,6 +4752,15 @@ git commit -m "docs: README и запись в базу знаний по ито
 ---
 
 ## Ревизия контракта — дельты к задачам 3–14
+
+> **ВНИМАНИЕ исполнителям задач 9, 10 и 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
+>
+> - Task 9 всё ещё **определяет** `DIAGNOSTIC_CODES` в сериализаторе. Они переехали в `@h2d/ir` (файл `codes.ts`) — задача обязана их импортировать, а не создавать заново. `DiagnosticSink` принимает `screenId`, а `report()` — параметр `needsPlaceholder`.
+> - Task 10 собирает `TextRun` с полем `fontFamily` и кладёт `lineHeight`/`align` в ран. В контракте вместо `fontFamily` — `fontStack: string[]` и `usedFamily: string`, а `lineHeight` и `align` переехали в `NodeText`. Плюс `run.text` — только собственный текст узла, и требуется применять `text-transform`.
+> - Task 12 читает `run.fontFamily` и строит узлы без `kind`. Рендерер обязан переключаться по `kind`, рисовать `placeholder` видимо и подставлять `usedFamily` в `font-family`.
+>
+> Эти тела переписываются координатором перед запуском задачи, как это было сделано для Task 2 и Task 3. Если задача досталась тебе с непереписанным телом — **останови работу и сообщи**, не пытайся сам согласовать код с контрактом: расхождений больше, чем видно из одного файла.
+
 
 Design-ревью контракта IR (после реализации первой редакции в `5e09c07`) вернуло **changes required**. Task 2 переписан полностью. Ниже — что именно меняется в остальных задачах. **Исполнитель каждой задачи обязан прочитать свою дельту вместе с телом задачи**: тела задач ниже написаны против первой редакции контракта и в перечисленных местах устарели.
 

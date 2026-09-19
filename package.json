@@ -4,7 +4,7 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "typecheck": "tsc -b packages/ir",
+    "typecheck": "tsc -b packages/ir packages/serializer",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
