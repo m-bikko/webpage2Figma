@@ -2301,7 +2301,7 @@ git commit -m "feat(serializer): парсер box-shadow"
 ```ts
 // packages/serializer/test/stroke.test.ts
 import { describe, expect, it } from 'vitest'
-import { readStroke } from '../src/css/stroke.js'
+import { hasNonSolidStroke, readStroke } from '../src/css/stroke.js'
 import { readCorner } from '../src/css/corner.js'
 
 type FakeStyle = Record<string, string>
@@ -2363,6 +2363,70 @@ describe('readStroke', () => {
     }))
     expect(result?.color).toEqual({ r: 0, g: 0, b: 255, a: 1 })
   })
+
+  it('всегда выставляет align: inside', () => {
+    const result = readStroke(style({ borderTopWidth: '1px' }))
+    // CSS рисует границу внутрь бокса, а Figma по умолчанию по центру.
+    // При значении по умолчанию каждый элемент с границей сдвинулся бы
+    // на половину толщины — поле существует, чтобы плагин обязан был
+    // выставить strokeAlign, а не забыть про него.
+    expect(result?.align).toBe('inside')
+  })
+
+  it('читает solid по умолчанию', () => {
+    expect(readStroke(style({ borderTopWidth: '1px' }))?.style).toBe('solid')
+  })
+
+  it('читает dashed и dotted вместо молчаливого приведения к solid', () => {
+    expect(readStroke(style({
+      borderTopWidth: '2px', borderTopStyle: 'dashed',
+    }))?.style).toBe('dashed')
+    expect(readStroke(style({
+      borderTopWidth: '2px', borderTopStyle: 'dotted',
+    }))?.style).toBe('dotted')
+  })
+
+  it('берёт стиль первой видимой стороны', () => {
+    const result = readStroke(style({
+      borderBottomWidth: '3px', borderBottomStyle: 'dotted',
+    }))
+    expect(result?.style).toBe('dotted')
+  })
+
+  it('сводит редкие стили CSS к solid — Figma их не имеет', () => {
+    // double, groove, ridge, inset, outset в Figma невыразимы.
+    // Приведение к solid допустимо только вместе с диагностикой,
+    // которую порождает вызывающий через hasNonSolidStroke.
+    expect(readStroke(style({
+      borderTopWidth: '4px', borderTopStyle: 'double',
+    }))?.style).toBe('solid')
+  })
+})
+
+describe('hasNonSolidStroke', () => {
+  it('false при отсутствии границ', () => {
+    expect(hasNonSolidStroke(style({}))).toBe(false)
+  })
+
+  it('false для solid', () => {
+    expect(hasNonSolidStroke(style({ borderTopWidth: '1px' }))).toBe(false)
+  })
+
+  it('true для dashed — рендерер плана 1 штрихи не рисует', () => {
+    expect(hasNonSolidStroke(style({
+      borderTopWidth: '2px', borderTopStyle: 'dashed',
+    }))).toBe(true)
+  })
+
+  it('true для стиля, невыразимого в Figma', () => {
+    expect(hasNonSolidStroke(style({
+      borderTopWidth: '2px', borderTopStyle: 'groove',
+    }))).toBe(true)
+  })
+
+  it('не срабатывает на невидимой границе нулевой толщины', () => {
+    expect(hasNonSolidStroke(style({ borderTopStyle: 'dashed' }))).toBe(false)
+  })
 })
 
 describe('readCorner', () => {
@@ -2419,7 +2483,7 @@ export const isEllipticalCorner = (cs: CSSStyleDeclaration): boolean =>
 - [ ] **Step 4: Создать `packages/serializer/src/css/stroke.ts`**
 
 ```ts
-import type { Stroke } from '@h2d/ir'
+import type { Stroke, StrokeStyle } from '@h2d/ir'
 import { parseColor } from './color.js'
 import { parsePx } from './length.js'
 
@@ -2432,9 +2496,22 @@ const widthOf = (cs: CSSStyleDeclaration, side: Side): number => {
   return parsePx(cs.getPropertyValue(`border-${side.toLowerCase()}-width`))
 }
 
+const styleOf = (cs: CSSStyleDeclaration, side: Side): string =>
+  cs.getPropertyValue(`border-${side.toLowerCase()}-style`)
+
+/** Из стилей границ CSS у Figma есть только сплошная и пунктир через
+ *  `dashPattern`. `double`, `groove`, `ridge`, `inset`, `outset`
+ *  невыразимы и сводятся к `solid` — но только вместе с диагностикой,
+ *  которую порождает вызывающий через `hasNonSolidStroke`. */
+const strokeStyleOf = (value: string): StrokeStyle => {
+  if (value === 'dashed') return 'dashed'
+  if (value === 'dotted') return 'dotted'
+  return 'solid'
+}
+
 /** Figma поддерживает разную толщину обводки по сторонам, но только один
- *  цвет на узел. Берём цвет первой видимой стороны; расхождение по цветам
- *  сторон фиксирует вызывающий через Diagnostic. */
+ *  цвет и один стиль на узел. Берём цвет и стиль первой видимой стороны;
+ *  расхождение по сторонам фиксирует вызывающий через Diagnostic. */
 export const readStroke = (cs: CSSStyleDeclaration): Stroke | null => {
   const weight = {
     top: widthOf(cs, 'Top'),
@@ -2449,10 +2526,26 @@ export const readStroke = (cs: CSSStyleDeclaration): Stroke | null => {
   for (const side of SIDES) {
     if (widthOf(cs, side) === 0) continue
     const color = parseColor(cs.getPropertyValue(`border-${side.toLowerCase()}-color`))
-    if (color !== null && color.a > 0) return { color, weight }
+    if (color !== null && color.a > 0) {
+      return {
+        color,
+        weight,
+        style: strokeStyleOf(styleOf(cs, side)),
+        // Всегда 'inside': CSS рисует границу внутрь бокса. Значение
+        // по умолчанию Figma ('CENTER') сдвинуло бы каждый элемент
+        // с границей на половину толщины.
+        align: 'inside',
+      }
+    }
   }
   return null
 }
+
+/** Видимая граница имеет стиль, который рендерер плана 1 не воспроизводит
+ *  либо Figma не имеет вовсе. Вызывающий обязан породить `strokeStyleFlattened`:
+ *  пунктирный разделитель, приехавший сплошным, — молчаливая потеря. */
+export const hasNonSolidStroke = (cs: CSSStyleDeclaration): boolean =>
+  SIDES.some((side) => widthOf(cs, side) > 0 && styleOf(cs, side) !== 'solid')
 
 export const hasMixedBorderColors = (cs: CSSStyleDeclaration): boolean => {
   const visible = SIDES.filter((side) => widthOf(cs, side) > 0)
@@ -2466,13 +2559,13 @@ export const hasMixedBorderColors = (cs: CSSStyleDeclaration): boolean => {
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/stroke.test.ts`
-Expected: PASS, 8 тестов.
+Expected: PASS, 19 тестов.
 
 - [ ] **Step 6: Коммит**
 
 ```bash
 git add packages/serializer
-git commit -m "feat(serializer): чтение обводок и радиусов углов"
+git commit -m "feat(serializer): чтение обводок со стилем и радиусов углов"
 ```
 
 ---
