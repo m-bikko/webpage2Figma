@@ -107,6 +107,7 @@ tests/
   "engines": { "node": ">=20" },
   "scripts": {
     "typecheck": "tsc -b packages/ir",
+    "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm test:unit && pnpm test:e2e",

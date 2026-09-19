@@ -5,3 +5,4 @@ test-results/
 playwright-report/
 *.actual.png
 *.diff.png
+*.tsbuildinfo

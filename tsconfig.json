@@ -6,7 +6,6 @@
     "baseUrl": ".",
     "paths": {
       "@h2d/ir": ["packages/ir/src/index.ts"],
-      "@h2d/serializer": ["packages/serializer/src/index.ts"],
       "@h2d/reference-renderer": ["packages/reference-renderer/src/index.ts"]
     }
   },
