@@ -2337,9 +2337,14 @@ describe('readStroke', () => {
       borderTopColor: 'rgb(255, 0, 0)', borderRightColor: 'rgb(255, 0, 0)',
       borderBottomColor: 'rgb(255, 0, 0)', borderLeftColor: 'rgb(255, 0, 0)',
     }))
+    // Сравнение объекта ЦЕЛИКОМ, а не частичное: так тест поймает поле,
+    // которое добавят в Stroke и забудут здесь. Именно поэтому style и
+    // align перечислены явно, хотя ниже есть и отдельные тесты на них.
     expect(result).toEqual({
       color: { r: 255, g: 0, b: 0, a: 1 },
       weight: { top: 2, right: 2, bottom: 2, left: 2 },
+      style: 'solid',
+      align: 'inside',
     })
   })
 
@@ -2559,7 +2564,7 @@ export const hasMixedBorderColors = (cs: CSSStyleDeclaration): boolean => {
 - [ ] **Step 5: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/stroke.test.ts`
-Expected: PASS, 19 тестов.
+Expected: PASS, 18 тестов.
 
 - [ ] **Step 6: Коммит**
 
