@@ -1,0 +1,25 @@
+{
+  "name": "html2design",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "typecheck": "tsc -b packages/ir",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "pnpm typecheck && pnpm test:unit && pnpm test:e2e",
+    "build:serializer": "pnpm --filter @h2d/serializer build"
+  },
+  "devDependencies": {
+    "@h2d/ir": "workspace:*",
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.7.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

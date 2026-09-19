@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.turbo/
+test-results/
+playwright-report/
+*.actual.png
+*.diff.png
