@@ -33,6 +33,86 @@ export const parseFontStack = (value: string): string[] =>
     .map((part) => part.trim().replace(/^["']|["']$/g, ''))
     .filter((part) => part !== '')
 
+/** Generic-семейства CSS. Доступны всегда и в CSS НЕ кавычатся:
+ *  `"sans-serif"` в кавычках — литеральное имя семейства, которого нет
+ *  ни в одной системе, а не ключевое слово. */
+const GENERIC_FAMILIES = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+  'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+  'math', 'emoji', 'fangsong',
+])
+
+/** Строка содержит и узкие, и широкие глифы, и латиницу, и кириллицу:
+ *  чем больше метрической разницы между шрифтами она вскрывает, тем
+ *  надёжнее различение. */
+const PROBE_TEXT = 'mmmmmwwwwwiiiii0123 МЖЩ'
+
+/** Три подложки, а не одна: семейство может случайно совпасть по
+ *  метрикам с одной из них, и тогда одиночная проверка дала бы ложное
+ *  «семейства нет». */
+const PROBE_FALLBACKS = ['monospace', 'serif', 'sans-serif'] as const
+
+const availability = new Map<string, boolean>()
+
+/** `undefined` — ещё не пробовали, `null` — canvas недоступен. */
+let probeCtx: CanvasRenderingContext2D | null | undefined
+
+const measure = (font: string): number | null => {
+  if (probeCtx === undefined) {
+    probeCtx = document.createElement('canvas').getContext('2d')
+  }
+  if (probeCtx === null) return null
+  probeCtx.font = font
+  return probeCtx.measureText(PROBE_TEXT).width
+}
+
+/** Имя семейства в кавычках, пригодное для шорткода `font`.
+ *  Без экранирования имя с кавычкой давало бы невалидный шорткод, а
+ *  `ctx.font` при невалидном значении молча сохраняет предыдущее — то
+ *  есть измерение вернуло бы ширину чужого шрифта. */
+const quoted = (family: string): string =>
+  `"${family.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+
+/** Доступно ли семейство для рисования.
+ *
+ *  `document.fonts.check()` для этого НЕ годится, хотя выглядит ровно как
+ *  нужный вопрос. `FontFaceSet` содержит только `@font-face`, а для
+ *  незнакомого имени спецификация предписывает считать шрифт доступным.
+ *  Измерено в настоящем Chrome: `document.fonts.check('18px "NoSuchFontQQQ"')`
+ *  возвращает `true`, как и для любой бессмыслицы. Из-за этого fallback не
+ *  обнаруживался НИКОГДА, `usedFamily` всегда равнялся объявленному, а
+ *  `fidelity.font-fallback` не мог сработать ни на одной странице.
+ *
+ *  Работающий приём — измерение на canvas: недоступное семейство даёт
+ *  ровно ширину подложки, доступное отличается хотя бы от одной из трёх. */
+const isFamilyAvailable = (family: string, fontSize: number): boolean => {
+  if (GENERIC_FAMILIES.has(family.toLowerCase())) return true
+
+  const key = `${family}|${fontSize}`
+  const cached = availability.get(key)
+  if (cached !== undefined) return cached
+
+  let available = false
+  for (const fallback of PROBE_FALLBACKS) {
+    const base = measure(`${fontSize}px ${fallback}`)
+    const probe = measure(`${fontSize}px ${quoted(family)}, ${fallback}`)
+    /** Canvas недоступен — различить нечем. Считаем семейство доступным:
+     *  иначе на каждом текстовом узле появилась бы ложная диагностика
+     *  fallback, а ложная диагностика на всём подряд читается как шум
+     *  и обесценивает отчёт целиком. */
+    if (base === null || probe === null) {
+      available = true
+      break
+    }
+    if (probe !== base) {
+      available = true
+      break
+    }
+  }
+  availability.set(key, available)
+  return available
+}
+
 /** Находит семейство, которым браузер РЕАЛЬНО рисовал.
  *
  *  Это не педантизм: если объявлено `"Söhne", Helvetica` и Söhne в системе
@@ -42,19 +122,11 @@ export const parseFontStack = (value: string): string[] =>
  *  вылезающий текст — причём с точки зрения IR шрифт был бы «найден»,
  *  и диагностика бы не сработала.
  *
- *  `document.fonts.check` отвечает на вопрос «доступно ли это семейство
- *  для рисования». Первое доступное из стека и есть использованное. */
+ *  Первое доступное из стека и есть использованное. */
 export const findUsedFamily = (stack: string[], fontSize: number): string => {
-  if (typeof document === 'undefined' || document.fonts === undefined) {
-    return stack[0] ?? 'sans-serif'
-  }
+  if (typeof document === 'undefined') return stack[0] ?? 'sans-serif'
   for (const family of stack) {
-    try {
-      if (document.fonts.check(`${fontSize}px "${family}"`)) return family
-    } catch {
-      // Некорректное для CSS имя семейства: пропускаем, не роняя захват.
-      continue
-    }
+    if (isFamilyAvailable(family, fontSize)) return family
   }
   return stack[0] ?? 'sans-serif'
 }

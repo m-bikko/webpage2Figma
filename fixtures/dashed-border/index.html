@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>dashed-border</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px;display:flex;gap:16px}
+  .b{width:120px;height:80px;background:#fff}
+  .dashed{border:2px dashed #111}
+  .dotted{border:3px dotted #111}
+  /* double в Figma невыразим вовсе — обязан свестись к solid и диагностике */
+  .double{border:6px double #111}
+</style></head>
+<body>
+  <div class="b dashed"></div><div class="b dotted"></div><div class="b double"></div>
+</body></html>

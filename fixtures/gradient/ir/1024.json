@@ -1,0 +1,193 @@
+{
+  "screen": {
+    "id": "s-1024",
+    "name": "Tablet L",
+    "width": 1024,
+    "height": 1366,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1024,
+        "h": 280
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "w": 1024,
+            "h": 160
+          },
+          "paintOrder": 1,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n2",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 160,
+            "w": 1024,
+            "h": 120
+          },
+          "paintOrder": 2,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": [
+    {
+      "level": "info",
+      "code": "deferred.gradient",
+      "message": "background-image \"linear-gradient(135deg, rgb(99, 102, 241), rgb(236, 72, 153)\" не переносится в этом плане.",
+      "nodeId": "n1",
+      "screenId": "s-1024",
+      "needsPlaceholder": false
+    },
+    {
+      "level": "info",
+      "code": "deferred.gradient",
+      "message": "background-image \"radial-gradient(circle, rgb(34, 197, 94), rgb(15, 118, 110))\" не переносится в этом плане.",
+      "nodeId": "n2",
+      "screenId": "s-1024",
+      "needsPlaceholder": false
+    }
+  ]
+}

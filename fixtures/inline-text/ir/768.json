@@ -1,0 +1,433 @@
+{
+  "screen": {
+    "id": "s-768",
+    "name": "Tablet",
+    "width": 768,
+    "height": 1024,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 768,
+        "h": 120
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 24,
+            "w": 320,
+            "h": 24
+          },
+          "paintOrder": 1,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [
+            {
+              "id": "n2",
+              "sourceTag": "b",
+              "name": "b",
+              "rect": {
+                "x": 64.90625,
+                "y": 27,
+                "w": 42.671875,
+                "h": 17
+              },
+              "paintOrder": 3,
+              "isStackingContext": false,
+              "transform": null,
+              "layout": {
+                "mode": "none",
+                "gap": 0,
+                "padding": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "align": "start",
+                "justify": "start",
+                "wrap": false
+              },
+              "selfLayout": {
+                "positioning": "flow",
+                "align": null,
+                "grow": 0,
+                "shrink": 1
+              },
+              "style": {
+                "fills": [],
+                "stroke": null,
+                "corner": {
+                  "tl": 0,
+                  "tr": 0,
+                  "br": 0,
+                  "bl": 0
+                },
+                "shadows": [],
+                "opacity": 1,
+                "blend": "normal",
+                "blur": null,
+                "clip": false
+              },
+              "children": [],
+              "kind": "text",
+              "text": {
+                "runs": [
+                  {
+                    "text": "world",
+                    "fontStack": [
+                      "Arial",
+                      "sans-serif"
+                    ],
+                    "usedFamily": "Arial",
+                    "fontWeight": 700,
+                    "fontStyle": "normal",
+                    "fontSize": 16,
+                    "letterSpacing": 0,
+                    "color": {
+                      "r": 0,
+                      "g": 0,
+                      "b": 0,
+                      "a": 1
+                    },
+                    "decoration": "none",
+                    "shadows": []
+                  }
+                ],
+                "lines": [
+                  {
+                    "x": 64.90625,
+                    "y": 27,
+                    "w": 42.671875,
+                    "h": 17,
+                    "text": "world"
+                  }
+                ],
+                "lineHeight": 24,
+                "align": "left"
+              }
+            },
+            {
+              "id": "n3",
+              "sourceTag": "span",
+              "name": "span",
+              "rect": {
+                "x": 143.171875,
+                "y": 27,
+                "w": 23.125,
+                "h": 17
+              },
+              "paintOrder": 4,
+              "isStackingContext": false,
+              "transform": null,
+              "layout": {
+                "mode": "none",
+                "gap": 0,
+                "padding": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "align": "start",
+                "justify": "start",
+                "wrap": false
+              },
+              "selfLayout": {
+                "positioning": "flow",
+                "align": null,
+                "grow": 0,
+                "shrink": 1
+              },
+              "style": {
+                "fills": [],
+                "stroke": null,
+                "corner": {
+                  "tl": 0,
+                  "tr": 0,
+                  "br": 0,
+                  "bl": 0
+                },
+                "shadows": [],
+                "opacity": 1,
+                "blend": "normal",
+                "blur": null,
+                "clip": false
+              },
+              "children": [],
+              "kind": "text",
+              "text": {
+                "runs": [
+                  {
+                    "text": "red",
+                    "fontStack": [
+                      "Arial",
+                      "sans-serif"
+                    ],
+                    "usedFamily": "Arial",
+                    "fontWeight": 400,
+                    "fontStyle": "normal",
+                    "fontSize": 16,
+                    "letterSpacing": 0,
+                    "color": {
+                      "r": 255,
+                      "g": 0,
+                      "b": 0,
+                      "a": 1
+                    },
+                    "decoration": "none",
+                    "shadows": []
+                  }
+                ],
+                "lines": [
+                  {
+                    "x": 143.171875,
+                    "y": 27,
+                    "w": 23.125,
+                    "h": 17,
+                    "text": "red"
+                  }
+                ],
+                "lineHeight": 24,
+                "align": "left"
+              }
+            }
+          ],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Hello  and ",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 16,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 27,
+                "w": 40.90625,
+                "h": 17,
+                "text": "Hello "
+              },
+              {
+                "x": 107.578125,
+                "y": 27,
+                "w": 35.59375,
+                "h": 17,
+                "text": " and "
+              }
+            ],
+            "lineHeight": 24,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n4",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 60,
+            "w": 320,
+            "h": 24
+          },
+          "paintOrder": 2,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Просто абзац без вложенных элементов",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 16,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 63,
+                "w": 301.578125,
+                "h": 17,
+                "text": "Просто абзац без вложенных элементов"
+              }
+            ],
+            "lineHeight": 24,
+            "align": "left"
+          }
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": [
+    {
+      "level": "warning",
+      "code": "fidelity.paint-order-interleaved",
+      "message": "Поддерево красится с разрывом: дерево Figma такой порядок выразить не может, потому что там z-порядок задаётся порядком среди сиблингов.",
+      "nodeId": "n1",
+      "screenId": "s-768",
+      "needsPlaceholder": false
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>missing-font</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#fff;padding:24px}
+  /* Первое семейство заведомо отсутствует: браузер нарисует Arial,
+     и боксы строк будут содержать метрики Arial, а не выдуманного шрифта. */
+  .missing{font-family:"Заведомо Отсутствующий Шрифт XYZ",Arial,sans-serif;
+    font-size:18px;line-height:26px}
+  .present{font-family:Arial,sans-serif;font-size:18px;line-height:26px}
+</style></head>
+<body>
+  <p class="missing">Текст семейством, которого нет в системе</p>
+  <p class="present">Текст существующим семейством</p>
+</body></html>

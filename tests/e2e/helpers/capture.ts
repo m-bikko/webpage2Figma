@@ -1,0 +1,72 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { dirname, resolve } from 'node:path'
+import type { Page } from '@playwright/test'
+import type { Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+
+/** То же, что отдаёт сериализатор. Объявлено здесь, потому что тесты
+ *  не импортируют сам сериализатор: он читается с диска как текст. */
+export type CaptureResult = {
+  screen: Screen
+  report: Diagnostic[]
+  fonts: FontRequirement[]
+}
+
+/** Поверхность, которую бандл ставит на `window` внутри страницы.
+ *  Объявление обязано жить здесь: `declare global` из `src/global.ts`
+ *  сериализатора в область типов тестов не попадает — тесты его не
+ *  импортируют. Без этого блока колбэк `page.evaluate` не типизируется
+ *  и `pnpm typecheck:root` падает на `window.__h2d`. */
+declare global {
+  interface Window {
+    __h2d: {
+      beginCapture: () => void
+      captureScreen: (id: string, name: string) => CaptureResult
+    }
+  }
+}
+
+const here = dirname(fileURLToPath(import.meta.url))
+export const repoRoot = resolve(here, '../../..')
+
+const bundlePath = resolve(
+  repoRoot,
+  'packages/serializer/dist/serializer.global.js',
+)
+
+export const SIZES = [
+  { name: 'Desktop XL', width: 1920, height: 1080 },
+  { name: 'Desktop', width: 1440, height: 900 },
+  { name: 'Tablet L', width: 1024, height: 1366 },
+  { name: 'Tablet', width: 768, height: 1024 },
+  { name: 'Mobile', width: 390, height: 844 },
+] as const
+
+export const fixtureUrl = (name: string): string =>
+  pathToFileURL(resolve(repoRoot, 'fixtures', name, 'index.html')).href
+
+/** Инжектит собранный сериализатор и вызывает его внутри страницы.
+ *
+ *  Бандл читается с диска каждый раз, чтобы тест всегда проверял свежую
+ *  сборку, а не закешированную.
+ *
+ *  Аллокатор идентификаторов живёт внутри страницы и передаётся через
+ *  `beginCapture`, а не аргументом: функции не пересекают границу
+ *  `page.evaluate`, поэтому внешний API принимает только строки.
+ *  `beginCapture` вызывается здесь на каждый снимок, потому что каждый
+ *  тест снимает один экран; серию из пяти экранов с общей нумерацией
+ *  собирает extension в плане 2. */
+export const captureScreen = async (
+  page: Page,
+  screenId: string,
+  screenName: string,
+): Promise<CaptureResult> => {
+  const source = readFileSync(bundlePath, 'utf8')
+  await page.addScriptTag({ content: source })
+  await page.evaluate(() => document.fonts.ready)
+  await page.evaluate(() => { window.__h2d.beginCapture() })
+  return page.evaluate(
+    ([id, name]) => window.__h2d.captureScreen(id ?? '', name ?? ''),
+    [screenId, screenName],
+  )
+}

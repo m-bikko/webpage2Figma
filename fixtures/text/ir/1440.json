@@ -1,0 +1,628 @@
+{
+  "screen": {
+    "id": "s-1440",
+    "name": "Desktop",
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 454
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 24,
+            "w": 1392,
+            "h": 40
+          },
+          "paintOrder": 1,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Заголовок в две строки для проверки переноса",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 700,
+                "fontStyle": "normal",
+                "fontSize": 32,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 15,
+                  "g": 23,
+                  "b": 42,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 26,
+                "w": 761.3125,
+                "h": 36,
+                "text": "Заголовок в две строки для проверки переноса"
+              }
+            ],
+            "lineHeight": 40,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n2",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 80,
+            "w": 260,
+            "h": 96
+          },
+          "paintOrder": 2,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Длинный абзац, который обязан перенестись на несколько\n    строк в узкой колонке, чтобы боксы строк были не тривиальными.",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 16,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 17,
+                  "g": 17,
+                  "b": 17,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 83,
+                "w": 240.671875,
+                "h": 17,
+                "text": "Длинный абзац, который обязан "
+              },
+              {
+                "x": 24,
+                "y": 107,
+                "w": 253.046875,
+                "h": 17,
+                "text": "перенестись на несколько\n    строк в "
+              },
+              {
+                "x": 24,
+                "y": 131,
+                "w": 251.546875,
+                "h": 17,
+                "text": "узкой колонке, чтобы боксы строк "
+              },
+              {
+                "x": 24,
+                "y": 155,
+                "w": 179.453125,
+                "h": 17,
+                "text": "были не тривиальными."
+              }
+            ],
+            "lineHeight": 24,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n3",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 192,
+            "w": 1392,
+            "h": 16
+          },
+          "paintOrder": 3,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "РАЗРЯДКА ДВА ПИКСЕЛЯ",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 14,
+                "letterSpacing": 2,
+                "color": {
+                  "r": 71,
+                  "g": 85,
+                  "b": 105,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 192,
+                "w": 214.5,
+                "h": 16,
+                "text": "РАЗРЯДКА ДВА ПИКСЕЛЯ"
+              }
+            ],
+            "lineHeight": 16.8,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n4",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 224,
+            "w": 300,
+            "h": 84
+          },
+          "paintOrder": 4,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Текст по центру, тоже в несколько строк для проверки\n    привязки анкера",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 18,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 31.765625,
+                "y": 228,
+                "w": 284.46875,
+                "h": 20,
+                "text": "Текст по центру, тоже в несколько "
+              },
+              {
+                "x": 52.453125,
+                "y": 256,
+                "w": 243.09375,
+                "h": 20,
+                "text": "строк для проверки\n    привязки "
+              },
+              {
+                "x": 144.96875,
+                "y": 284,
+                "w": 58.0625,
+                "h": 20,
+                "text": "анкера"
+              }
+            ],
+            "lineHeight": 28,
+            "align": "center"
+          }
+        },
+        {
+          "id": "n5",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 324,
+            "w": 300,
+            "h": 56
+          },
+          "paintOrder": 5,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Текст по правому краю в несколько строк",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 18,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 27.625,
+                "y": 328,
+                "w": 296.375,
+                "h": 20,
+                "text": "Текст по правому краю в несколько "
+              },
+              {
+                "x": 278.859375,
+                "y": 356,
+                "w": 45.140625,
+                "h": 20,
+                "text": "строк"
+              }
+            ],
+            "lineHeight": 28,
+            "align": "right"
+          }
+        },
+        {
+          "id": "n6",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 396,
+            "w": 1392,
+            "h": 18
+          },
+          "paintOrder": 6,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Подчёркнутая строка",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 16,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "underline",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 396,
+                "w": 157.890625,
+                "h": 17,
+                "text": "Подчёркнутая строка"
+              }
+            ],
+            "lineHeight": 19.2,
+            "align": "left"
+          }
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": []
+}

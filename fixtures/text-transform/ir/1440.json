@@ -1,0 +1,331 @@
+{
+  "screen": {
+    "id": "s-1440",
+    "name": "Desktop",
+    "width": 1440,
+    "height": 900,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1440,
+        "h": 150
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 24,
+            "w": 1392,
+            "h": 26
+          },
+          "paintOrder": 1,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "СТРОЧНЫЙ ИСХОДНИК СТАНЕТ ПРОПИСНЫМ",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 18,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 27,
+                "w": 408.203125,
+                "h": 20,
+                "text": "СТРОЧНЫЙ ИСХОДНИК СТАНЕТ ПРОПИСНЫМ"
+              }
+            ],
+            "lineHeight": 26,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n2",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 58,
+            "w": 1392,
+            "h": 26
+          },
+          "paintOrder": 2,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "Каждое Слово С Большой Буквы",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 18,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 61,
+                "w": 275.765625,
+                "h": 20,
+                "text": "Каждое Слово С Большой Буквы"
+              }
+            ],
+            "lineHeight": 26,
+            "align": "left"
+          }
+        },
+        {
+          "id": "n3",
+          "sourceTag": "p",
+          "name": "p",
+          "rect": {
+            "x": 24,
+            "y": 92,
+            "w": 1392,
+            "h": 26
+          },
+          "paintOrder": 3,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "text",
+          "text": {
+            "runs": [
+              {
+                "text": "прописной исходник станет строчным",
+                "fontStack": [
+                  "Arial",
+                  "sans-serif"
+                ],
+                "usedFamily": "Arial",
+                "fontWeight": 400,
+                "fontStyle": "normal",
+                "fontSize": 18,
+                "letterSpacing": 0,
+                "color": {
+                  "r": 0,
+                  "g": 0,
+                  "b": 0,
+                  "a": 1
+                },
+                "decoration": "none",
+                "shadows": []
+              }
+            ],
+            "lines": [
+              {
+                "x": 24,
+                "y": 95,
+                "w": 315.578125,
+                "h": 20,
+                "text": "прописной исходник станет строчным"
+              }
+            ],
+            "lineHeight": 26,
+            "align": "left"
+          }
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": []
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>flex</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font-family:Arial,sans-serif}
+  .row{display:flex;gap:12px;padding:20px;background:#f1f5f9}
+  .col{display:flex;flex-direction:column;gap:8px;padding:16px;background:#e2e8f0}
+  .center{display:flex;align-items:center;justify-content:center;
+    height:120px;background:#cbd5e1}
+  .between{display:flex;justify-content:space-between;padding:12px 24px;
+    background:#94a3b8}
+  .wrapped{display:flex;flex-wrap:wrap;gap:10px;padding:10px;background:#f8fafc}
+  .cell{width:100px;height:60px;background:#0ea5e9}
+  .tall{width:80px;height:100px;background:#14b8a6}
+  /* при 390px этот блок обязан переехать в колонку */
+  @media (max-width:420px){ .row{flex-direction:column} }
+</style></head>
+<body>
+  <div class="row"><div class="cell"></div><div class="cell"></div><div class="cell"></div></div>
+  <div class="col"><div class="cell"></div><div class="cell"></div></div>
+  <div class="center"><div class="tall"></div></div>
+  <div class="between"><div class="cell"></div><div class="cell"></div></div>
+  <div class="wrapped">
+    <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+  </div>
+</body></html>

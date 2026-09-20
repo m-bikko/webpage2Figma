@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>absolute-in-flex</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  .card{position:relative;display:flex;gap:12px;padding:16px;background:#f1f5f9}
+  .cell{width:100px;height:60px;background:#0ea5e9}
+  .badge{position:absolute;top:4px;right:4px;width:40px;height:20px;background:#ef4444}
+  .grower{flex-grow:2;height:60px;background:#14b8a6}
+</style></head>
+<body><div class="card">
+  <div class="cell"></div><div class="grower"></div><div class="badge"></div>
+</div></body></html>
