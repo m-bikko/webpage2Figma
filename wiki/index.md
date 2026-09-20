@@ -26,6 +26,7 @@ sources: []
 - [[ir-bundle]] — формат обмена между extension и плагином Figma
 - [[component-detection]] — слои B и C, как рождаются компоненты Figma
 - [[fixture-suite]] — 11 фикстур и 55 снапшотов IR в настоящем Chrome
+- [[pixel-diff-gate]] — сравнение скриншота браузера с рендером IR, замыкание контура
 
 ## Sources
 

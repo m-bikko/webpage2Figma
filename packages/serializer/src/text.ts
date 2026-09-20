@@ -131,6 +131,40 @@ export const findUsedFamily = (stack: string[], fontSize: number): string => {
   return stack[0] ?? 'sans-serif'
 }
 
+/** Значения `white-space`, при которых браузер СХЛОПЫВАЕТ пробельные
+ *  последовательности. Для `pre`, `pre-wrap`, `pre-line` и `break-spaces`
+ *  пробелы значимы и трогать их нельзя. */
+const COLLAPSING_WHITE_SPACE = new Set(['normal', 'nowrap'])
+
+/** Схлопывает пробелы так же, как это делает браузер.
+ *
+ *  Иначе перенос строки и отступ из ИСХОДНИКА едут в IR как есть.
+ *  Браузер рисует на их месте один пробел, а Figma пробелы не схлопывает
+ *  — значит в макете появилась бы дыра там, где в разметке был перенос.
+ *  Обнаружено именно pixel-diff'ом: в опорном рендере фикстуры `text`
+ *  посреди строки зиял провал шириной в четыре пробела, и у строки с
+ *  выравниванием по центру из-за лишней ширины уезжал анкер. */
+export const collapseWhiteSpace = (text: string, cs: CSSStyleDeclaration): string =>
+  COLLAPSING_WHITE_SPACE.has(cs.whiteSpace) ? text.replace(/\s+/g, ' ') : text
+
+/** Убирает пробел, съеденный САМИМ переносом строки.
+ *
+ *  Обрезается только та граница, за которой есть ещё одна строка этого же
+ *  текстового узла: там перенос, и пробел на нём браузер не рисует.
+ *  Внешние границы узла остаются нетронутыми — пробел в конце `"Hello "`
+ *  перед вложенным `<b>world</b>` разделяет слова, и его удаление склеило
+ *  бы их в Figma. */
+const trimAtLineBreaks = (
+  text: string,
+  cs: CSSStyleDeclaration,
+  lineBefore: boolean,
+  lineAfter: boolean,
+): string => {
+  if (!COLLAPSING_WHITE_SPACE.has(cs.whiteSpace)) return text
+  const head = lineBefore ? text.replace(/^ +/, '') : text
+  return lineAfter ? head.replace(/ +$/, '') : head
+}
+
 /** Применяет `text-transform` к самой строке.
  *
  *  В Figma этого свойства нет, поэтому преобразование обязано произойти
@@ -204,9 +238,13 @@ const readLines = (
     )
 
     let cursor = 0
-    for (const rect of rects) {
+    for (const [index, rect] of rects.entries()) {
       const raw = sliceForRect(node, rect, cursor)
       cursor += raw.length
+      const visible = trimAtLineBreaks(
+        collapseWhiteSpace(raw, cs), cs,
+        index > 0, index < rects.length - 1,
+      )
       lines.push({
         x: rect.left + scrollX,
         y: rect.top + scrollY,
@@ -214,7 +252,7 @@ const readLines = (
         h: rect.height,
         // Преобразование применяется и к строкам, и к рану — инвариант
         // контракта сверяет их конкатенации между собой.
-        text: applyTextTransform(raw, cs),
+        text: applyTextTransform(visible, cs),
       })
     }
     range.detach()
@@ -244,7 +282,7 @@ export const readText = (
   const color = parseColor(cs.color)
 
   const run: TextRun = {
-    text: applyTextTransform(own, cs),
+    text: applyTextTransform(collapseWhiteSpace(own, cs), cs),
     fontStack: stack.length > 0 ? stack : ['sans-serif'],
     usedFamily: findUsedFamily(stack, fontSize),
     fontWeight: weightOf(cs),

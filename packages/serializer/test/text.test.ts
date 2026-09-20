@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { applyTextTransform, parseFontStack } from '../src/text.js'
+import { applyTextTransform, collapseWhiteSpace, parseFontStack } from '../src/text.js'
 
 const cs = (textTransform: string): CSSStyleDeclaration =>
   ({ textTransform }) as unknown as CSSStyleDeclaration
+
+const ws = (whiteSpace: string): CSSStyleDeclaration =>
+  ({ whiteSpace }) as unknown as CSSStyleDeclaration
 
 describe('parseFontStack', () => {
   it('разбирает список и снимает кавычки', () => {
@@ -47,5 +50,32 @@ describe('applyTextTransform', () => {
 
   it('capitalize не трогает буквы внутри слова', () => {
     expect(applyTextTransform('iPhone', cs('capitalize'))).toBe('IPhone')
+  })
+})
+
+describe('collapseWhiteSpace', () => {
+  it('сводит перенос строки с отступом к одному пробелу', () => {
+    expect(collapseWhiteSpace('несколько\n    строк', ws('normal')))
+      .toBe('несколько строк')
+  })
+
+  it('схлопывает и подряд идущие пробелы', () => {
+    expect(collapseWhiteSpace('раз   два', ws('normal'))).toBe('раз два')
+  })
+
+  it('nowrap тоже схлопывает: он запрещает перенос, а не сохраняет пробелы', () => {
+    expect(collapseWhiteSpace('раз\n  два', ws('nowrap'))).toBe('раз два')
+  })
+
+  it('одиночный пробел на границе сохраняется: он разделяет inline-соседей', () => {
+    expect(collapseWhiteSpace('Hello ', ws('normal'))).toBe('Hello ')
+  })
+
+  it('pre не трогает ничего: там пробелы значимы', () => {
+    expect(collapseWhiteSpace('раз\n  два', ws('pre'))).toBe('раз\n  два')
+  })
+
+  it('pre-wrap не трогает ничего', () => {
+    expect(collapseWhiteSpace('раз\n  два', ws('pre-wrap'))).toBe('раз\n  два')
   })
 })

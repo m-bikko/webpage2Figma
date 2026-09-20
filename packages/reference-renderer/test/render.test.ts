@@ -111,6 +111,114 @@ describe('renderScreenToSvg: обводка', () => {
   it('сплошная обводка без dasharray', () => {
     expect(renderScreenToSvg(screen(stroked('solid')))).not.toContain('stroke-dasharray')
   })
+
+  /** Неравные стороны через одиночную обводку SVG невыразимы вовсе:
+   *  у неё одна ширина на весь путь. Рендерер брал максимум и рисовал
+   *  рамку 8px там, где CSS рисует 2px, — pixel-diff фикстуры `boxes`
+   *  показывал это как 1744 расходящихся пикселя. */
+  const uneven = (): IrNode => {
+    const node = frame()
+    node.style.stroke = {
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      weight: { top: 2, right: 0, bottom: 8, left: 0 },
+      style: 'solid', align: 'inside',
+    }
+    return node
+  }
+
+  it('неравные стороны рисуются кольцом, а не обводкой одной ширины', () => {
+    const svg = renderScreenToSvg(screen(uneven()))
+    expect(svg).toContain('fill-rule="evenodd"')
+    expect(svg).not.toContain('stroke-width="8"')
+  })
+
+  it('кольцо строится по padding box: внутренний контур сдвинут на толщину сторон', () => {
+    // Бокс 100×50, верх 2, низ 8 — внутренний контур начинается на y = 2
+    // и кончается на y = 42, то есть высота 40, а НЕ 50 - 8 - 8.
+    const svg = renderScreenToSvg(screen(uneven()))
+    expect(svg).toContain('M 0 2')
+    expect(svg).toContain('V 42')
+  })
+
+  it('равные стороны кольцом НЕ рисуются: обводка их выражает точно', () => {
+    expect(renderScreenToSvg(screen(stroked('solid')))).not.toContain('evenodd')
+  })
+})
+
+describe('renderScreenToSvg: тени', () => {
+  const shadowed = (kind: 'outer' | 'inner'): IrNode => {
+    const node = frame()
+    node.style.fills = [{ kind: 'solid', color: { r: 255, g: 255, b: 255, a: 1 } }]
+    node.style.shadows = [{
+      kind, color: { r: 0, g: 0, b: 0, a: 0.45 },
+      offsetX: 0, offsetY: 4, blur: 8, spread: 0,
+    }]
+    return node
+  }
+
+  it('внешняя тень — feDropShadow', () => {
+    expect(renderScreenToSvg(screen(shadowed('outer')))).toContain('<feDropShadow')
+  })
+
+  /** Прямого примитива для внутренней тени в SVG нет, и раньше
+   *  `shadowFilter` просто игнорировал `kind: 'inner'`: узел приезжал
+   *  вообще без фильтра, а вместе с ним исчезала тень, которую Figma
+   *  через INNER_SHADOW поддерживает. */
+  it('внутренняя тень собирается из инверсии альфы, а не игнорируется', () => {
+    const svg = renderScreenToSvg(screen(shadowed('inner')))
+    expect(svg).toContain('<filter')
+    expect(svg).toContain('<feComponentTransfer')
+    expect(svg).toContain('tableValues="1 0"')
+  })
+
+  it('внутренняя тень обрезается по исходной альфе: она внутри фигуры', () => {
+    expect(renderScreenToSvg(screen(shadowed('inner'))))
+      .toContain('in2="SourceAlpha" operator="in"')
+  })
+
+  /** Фильтры SVG по умолчанию считают в linearRGB, CSS композитит тень
+   *  в sRGB. Без этого атрибута градиент тени идёт по другой кривой:
+   *  на фикстуре `boxes` это были последние 470 расходящихся пикселей. */
+  it('фильтр считается в sRGB, а не в linearRGB по умолчанию', () => {
+    expect(renderScreenToSvg(screen(shadowed('outer'))))
+      .toContain('color-interpolation-filters="sRGB"')
+  })
+})
+
+describe('renderScreenToSvg: обрезка содержимого', () => {
+  const clipping = (): IrNode => {
+    const parent = filled({ r: 200, g: 200, b: 200, a: 1 }, {
+      id: 'parent', paintOrder: 0,
+      children: [filled({ r: 0, g: 0, b: 255, a: 1 }, {
+        id: 'child', paintOrder: 1,
+        rect: { x: 0, y: 0, w: 500, h: 40 },
+      })],
+    })
+    parent.style.clip = true
+    return parent
+  }
+
+  /** Рисование плоское: узлы сортируются по `paintOrder` и теряют
+   *  вложенность, а с ней и область обрезки родителя. Пока этого не было,
+   *  вылезающий потомок рисовался целиком — на фикстуре `boxes` при
+   *  390px это давало 3199 расходящихся пикселей. */
+  it('потомок обрезающего узла обёрнут в clip-path', () => {
+    const svg = renderScreenToSvg(screen(clipping()))
+    expect(svg).toContain('<clipPath id="clip-parent">')
+    expect(svg).toContain('<g clip-path="url(#clip-parent)">')
+  })
+
+  it('сам обрезающий узел не обрезан: overflow режет содержимое, не себя', () => {
+    const svg = renderScreenToSvg(screen(clipping()))
+    // Обёртка ровно одна — у потомка.
+    expect(svg.match(/<g clip-path=/g)).toHaveLength(1)
+  })
+
+  it('без clip обёртки не появляется', () => {
+    const node = clipping()
+    node.style.clip = false
+    expect(renderScreenToSvg(screen(node))).not.toContain('clip-path')
+  })
 })
 
 describe('renderScreenToSvg: текст', () => {
@@ -137,6 +245,38 @@ describe('renderScreenToSvg: текст', () => {
   it('берёт выравнивание из NodeText', () => {
     const svg = renderScreenToSvg(screen(withText(text({ align: 'center' }))))
     expect(svg).toContain('text-anchor="middle"')
+  })
+
+  /** `decoration` сериализатор снимал, но рендерер не использовал:
+   *  подчёркнутая строка приезжала без линии. Pixel-diff фикстуры `text`
+   *  показывал ровно её отсутствие. */
+  it('рисует подчёркивание, когда оно есть в ране', () => {
+    const svg = renderScreenToSvg(screen(withText(text({
+      runs: [{ ...text().runs[0], decoration: 'underline' }],
+    }))))
+    expect(svg).toContain('text-decoration="underline"')
+  })
+
+  it('зачёркивание называется в SVG иначе, чем в контракте', () => {
+    const svg = renderScreenToSvg(screen(withText(text({
+      runs: [{ ...text().runs[0], decoration: 'strikethrough' }],
+    }))))
+    expect(svg).toContain('text-decoration="line-through"')
+  })
+
+  it('без decoration атрибут не ставится', () => {
+    expect(renderScreenToSvg(screen(withText(text()))))
+      .not.toContain('text-decoration')
+  })
+
+  /** Базовая линия — `y + (h + fontSize * (asc - desc)) / 2`. Для бокса
+   *  h = 20 при кегле 16 и Arial это 10 + 5.547 = 15.547. Проверка
+   *  пришпиливает и формулу, и значение константы: сдвиг базовой линии
+   *  на 0.013 кегля тонет в сглаживании глифов и pixel-diff'ом ловится
+   *  только через подчёркивание. */
+  it('ставит базовую линию по метрике шрифта, а не по центру бокса', () => {
+    const svg = renderScreenToSvg(screen(withText(text())))
+    expect(svg).toContain('y="15.5472"')
   })
 
   it('экранирует спецсимволы XML', () => {
