@@ -3843,28 +3843,50 @@ git commit -m "feat(serializer): чтение текста с фактическ
 
 ## Task 11: Обход DOM и сериализация экрана
 
+**Тело переписано после ревизии контракта.** Это точка сборки: здесь сходятся все парсеры, резолвер, диагностика и текст, и здесь же рождается каждое требование контракта, которое `@h2d/ir` потом проверяет.
+
+Изменения против первой редакции: присвоение `kind`, `selfLayout`, `isStackingContext`, диагностики отложенных фич, узлы-заглушки вместо пустых фреймов, глобальные по бандлу идентификаторы, `Screen.id` и `scroll`, падение вместо `?? 0` в порядке отрисовки, обработка варианта `lost` у текста, запись переплетения.
+
 **Files:**
-- Create: `packages/serializer/src/walk.ts`, `packages/serializer/src/serialize.ts`, `packages/serializer/src/index.ts`, `packages/serializer/src/global.ts`, `packages/serializer/tsup.config.ts`
+- Create: `packages/serializer/src/walk.ts`, `src/serialize.ts`, `src/index.ts`, `src/global.ts`, `tsup.config.ts`
 
 - [ ] **Step 1: Создать `packages/serializer/src/walk.ts`**
 
 ```ts
-import type { Fill, IrNode, NodeStyle } from '@h2d/ir'
+import {
+  DIAGNOSTIC_CODES,
+  type Fill, type IrNode, type LayoutAlign, type NodeStyle,
+  type SelfLayout, type SelfPositioning,
+} from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
-import { hasMixedBorderColors, readStroke } from './css/stroke.js'
+import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
-import { DIAGNOSTIC_CODES, type DiagnosticSink } from './diagnostics.js'
+import type { DiagnosticSink } from './diagnostics.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
-import { resolvePaintOrder } from './stacking.js'
+import { findInterleaved, resolvePaintOrder } from './stacking.js'
 import { readText } from './text.js'
+
+export type IdAllocator = () => string
+
+/** Идентификаторы уникальны в пределах БАНДЛА, а не экрана: на них
+ *  ссылается отчёт, и `n42` в пяти экранах сделал бы ссылку неоднозначной.
+ *  Поэтому аллокатор создаётся один раз на захват и передаётся снаружи. */
+export const createIdAllocator = (): IdAllocator => {
+  let counter = 0
+  return () => {
+    const id = `n${counter}`
+    counter += 1
+    return id
+  }
+}
 
 type WalkContext = {
   sink: DiagnosticSink
   scrollX: number
   scrollY: number
-  nextId: () => string
+  allocId: IdAllocator
 }
 
 /** Элементы, которые не рисуются и не должны попадать в макет. */
@@ -3879,20 +3901,59 @@ const isRendered = (el: Element, cs: CSSStyleDeclaration): boolean => {
   return rect.width > 0 || rect.height > 0
 }
 
-const readFills = (cs: CSSStyleDeclaration, sink: DiagnosticSink, id: string): Fill[] => {
+const ALIGN_SELF: Record<string, LayoutAlign> = {
+  'flex-start': 'start', start: 'start',
+  center: 'center',
+  'flex-end': 'end', end: 'end',
+  stretch: 'stretch',
+  baseline: 'baseline',
+}
+
+/** Как узел участвует в раскладке РОДИТЕЛЯ. Без этого плагин не отличит
+ *  обычного ребёнка flex-контейнера от абсолютно позиционированного
+ *  бейджа и уложит бейдж третьим элементом auto-layout, сдвинув
+ *  остальных. Данные читаются здесь и больше нигде не восстановимы. */
+const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
+  const positioning: SelfPositioning =
+    cs.position === 'absolute' ? 'absolute'
+    : cs.position === 'fixed' ? 'fixed'
+    : cs.position === 'sticky' ? 'sticky'
+    : cs.float !== 'none' ? 'float'
+    : 'flow'
+
+  const rawAlign = cs.alignSelf
+  return {
+    positioning,
+    align: rawAlign === 'auto' ? null : (ALIGN_SELF[rawAlign] ?? null),
+    grow: Number.parseFloat(cs.flexGrow) || 0,
+    shrink: Number.isNaN(Number.parseFloat(cs.flexShrink))
+      ? 1
+      : Number.parseFloat(cs.flexShrink),
+  }
+}
+
+const readFills = (
+  cs: CSSStyleDeclaration,
+  sink: DiagnosticSink,
+  id: string,
+): Fill[] => {
   const background = parseColor(cs.backgroundColor)
   if (background === null) {
     sink.report(
-      'warning',
-      DIAGNOSTIC_CODES.colorUnparsed,
-      `Не удалось разобрать background-color: "${cs.backgroundColor}"`,
-      id,
+      'warning', DIAGNOSTIC_CODES.colorUnparsed,
+      `Не удалось разобрать background-color: "${cs.backgroundColor}"`, id, false,
     )
     return []
   }
   if (isInvisible(background)) return []
   return [{ kind: 'solid', color: background }]
 }
+
+const BLEND_MODES = new Set([
+  'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+  'color-dodge', 'color-burn', 'hard-light', 'soft-light',
+  'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity',
+])
 
 const readStyle = (
   cs: CSSStyleDeclaration,
@@ -3901,61 +3962,155 @@ const readStyle = (
 ): NodeStyle => {
   if (isEllipticalCorner(cs)) {
     sink.report(
-      'info',
-      DIAGNOSTIC_CODES.ellipticalCorner,
-      'Эллиптический радиус угла сведён к горизонтальному: Figma не имеет эллиптических углов.',
-      id,
+      'info', DIAGNOSTIC_CODES.ellipticalCorner,
+      'Эллиптический радиус угла сведён к горизонтальному: в Figma эллиптических углов нет.',
+      id, false,
     )
   }
   if (hasMixedBorderColors(cs)) {
     sink.report(
-      'warning',
-      DIAGNOSTIC_CODES.mixedBorderColors,
+      'warning', DIAGNOSTIC_CODES.mixedBorderColors,
       'Границы разных цветов сведены к одному: Figma держит один цвет обводки на узел.',
-      id,
+      id, false,
     )
   }
+  if (hasNonSolidStroke(cs)) {
+    sink.report(
+      'info', DIAGNOSTIC_CODES.strokeStyleFlattened,
+      'Стиль границы не воспроизводится рендерером плана 1 либо невыразим в Figma.',
+      id, false,
+    )
+  }
+
+  const rawBlend = cs.mixBlendMode
+  const blend = BLEND_MODES.has(rawBlend)
+    ? (rawBlend as NodeStyle['blend'])
+    : 'normal'
+
   return {
     fills: readFills(cs, sink, id),
     stroke: readStroke(cs),
     corner: readCorner(cs),
     shadows: parseBoxShadow(cs.boxShadow),
+    // СОБСТВЕННАЯ непрозрачность, не композитная: плагин вкладывает узлы,
+    // и Figma перемножает так же, как браузер. Запекать вниз запрещено.
     opacity: Number.parseFloat(cs.opacity),
+    blend,
+    blur: null,
     clip: cs.overflowX === 'hidden' || cs.overflowY === 'hidden'
       || cs.overflowX === 'clip' || cs.overflowY === 'clip',
   }
 }
 
-const reportUnsupported = (
+const blurRadius = (value: string): number => {
+  const match = /blur\(\s*([\d.]+)px\s*\)/.exec(value)
+  if (match?.[1] === undefined) return 0
+  return Number.parseFloat(match[1])
+}
+
+/** Диагностирует всё, что этот план не переносит.
+ *
+ *  Разделение обязательное: `unsupported.*` — то, что невозможно в Figma
+ *  в принципе, `deferred.*` — то, что реализуется в плане 2. Второе
+ *  проверяется инвариантом в `@h2d/ir`: узел с непустым `transform` без
+ *  парной диагностики `deferred.transform` отвергается на входе плагина.
+ *  Именно так правило «молчаливый fallback — это баг» стало машинным. */
+const reportGaps = (
   el: Element,
   cs: CSSStyleDeclaration,
   sink: DiagnosticSink,
   id: string,
 ): void => {
-  if (el.tagName === 'CANVAS') {
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas,
-      'Содержимое <canvas> не переносится, вставлена заглушка.', id)
+  if (cs.backgroundImage !== 'none') {
+    const repeating = cs.backgroundImage.includes('repeating-')
+    sink.report(
+      repeating ? 'warning' : 'info',
+      repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
+                : DIAGNOSTIC_CODES.deferredGradient,
+      `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится в этом плане.`,
+      id, false,
+    )
+  }
+  if (cs.transform !== 'none') {
+    sink.report(
+      'error',
+      cs.transform.startsWith('matrix3d')
+        ? DIAGNOSTIC_CODES.unsupportedTransform3d
+        : DIAGNOSTIC_CODES.deferredTransform,
+      `transform "${cs.transform}" не переносится: прямоугольник снят как ` +
+      `осепараллельный габарит повёрнутого элемента и потому больше исходного.`,
+      id, false,
+    )
+  }
+  const layerBlur = blurRadius(cs.filter)
+  const bgBlur = blurRadius(cs.backdropFilter)
+  if (layerBlur > 0 || bgBlur > 0) {
+    sink.report('info', DIAGNOSTIC_CODES.deferredBlur,
+      `Размытие ${layerBlur || bgBlur}px не переносится в этом плане.`, id, false)
+  }
+  if (cs.filter !== 'none' && layerBlur === 0) {
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedFilter,
+      `filter "${cs.filter}" не переносится: Figma поддерживает только размытие.`,
+      id, false)
+  }
+  if (cs.mixBlendMode !== 'normal') {
+    sink.report('info', DIAGNOSTIC_CODES.deferredBlend,
+      `mix-blend-mode "${cs.mixBlendMode}" не переносится в этом плане.`, id, false)
   }
   if (cs.clipPath !== 'none') {
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedClipPath,
-      `clip-path "${cs.clipPath}" не переносится.`, id)
-  }
-  if (cs.filter !== 'none' && !cs.filter.startsWith('blur')) {
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedFilter,
-      `filter "${cs.filter}" не переносится: Figma поддерживает только blur.`, id)
-  }
-  if (cs.transform.startsWith('matrix3d')) {
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedTransform3d,
-      '3D-трансформа не переносится: в Figma её нет.', id)
+      `clip-path "${cs.clipPath}" не переносится.`, id, false)
   }
   if (cs.position === 'sticky' || cs.position === 'fixed') {
     sink.report('info', DIAGNOSTIC_CODES.stickyFlattened,
-      `position: ${cs.position} снят в текущем скролл-положении.`, id)
+      `position: ${cs.position} снят в текущем скролл-положении.`, id, false)
   }
   if (cs.display === 'grid' || cs.display === 'inline-grid') {
     sink.report('info', DIAGNOSTIC_CODES.gridFlattened,
-      'CSS grid сведён к колонке: в Figma нет двумерного auto-layout.', id)
+      'CSS grid сведён к колонке: в Figma нет двумерного auto-layout.', id, false)
   }
+  if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
+    sink.report('info', DIAGNOSTIC_CODES.deferredVector,
+      'Векторное содержимое не переносится в этом плане.', id, false)
+  }
+  for (const pseudo of ['::before', '::after']) {
+    const content = window.getComputedStyle(el, pseudo).content
+    if (content !== 'none' && content !== 'normal' && content !== '') {
+      sink.report('info', DIAGNOSTIC_CODES.deferredPseudoElement,
+        `Псевдоэлемент ${pseudo} с содержимым ${content} не переносится.`, id, false)
+    }
+  }
+}
+
+/** Содержимое, которое невозможно перенести в принципе, становится
+ *  ВИДИМОЙ заглушкой, а не пустым фреймом. Парная диагностика с тем же
+ *  кодом и `needsPlaceholder: true` обязательна: инвариант в `@h2d/ir`
+ *  отвергнет заглушку, которую отчёт не объясняет. */
+const placeholderFor = (
+  el: Element,
+  sink: DiagnosticSink,
+  id: string,
+): { code: typeof DIAGNOSTIC_CODES[keyof typeof DIAGNOSTIC_CODES]; label: string } | null => {
+  if (el.tagName === 'CANVAS') {
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas,
+      'Содержимое <canvas> не переносится.', id, true)
+    return { code: DIAGNOSTIC_CODES.unsupportedCanvas, label: 'canvas' }
+  }
+  if (el.tagName === 'IFRAME') {
+    const frame = el as HTMLIFrameElement
+    let sameOrigin = false
+    try {
+      sameOrigin = frame.contentDocument !== null
+    } catch {
+      sameOrigin = false
+    }
+    if (!sameOrigin) {
+      sink.report('warning', DIAGNOSTIC_CODES.unsupportedCrossOriginIframe,
+        'Содержимое iframe с другого источника недоступно.', id, true)
+      return { code: DIAGNOSTIC_CODES.unsupportedCrossOriginIframe, label: 'iframe' }
+    }
+  }
+  return null
 }
 
 type Built = { node: IrNode; probe: LayoutProbe }
@@ -3968,8 +4123,8 @@ const buildNode = (
   const cs = window.getComputedStyle(el)
   if (!isRendered(el, cs)) return null
 
-  const id = ctx.nextId()
-  reportUnsupported(el, cs, ctx.sink, id)
+  const id = ctx.allocId()
+  reportGaps(el, cs, ctx.sink, id)
 
   const rect = el.getBoundingClientRect()
   const children: IrNode[] = []
@@ -3983,7 +4138,7 @@ const buildNode = (
     childProbes.push(built.probe)
   }
 
-  const node: IrNode = {
+  const base = {
     id,
     sourceTag: el.tagName.toLowerCase(),
     name: el.tagName.toLowerCase(),
@@ -3993,12 +4148,31 @@ const buildNode = (
       w: rect.width,
       h: rect.height,
     },
-    paintOrder: 0,
+    // Заполняется вторым проходом: требует готового дерева.
+    paintOrder: -1,
+    isStackingContext: false,
+    transform: null,
     layout: readLayout(cs),
+    selfLayout: readSelfLayout(cs),
     style: readStyle(cs, ctx.sink, id),
-    text: readText(el, cs, ctx.scrollX, ctx.scrollY),
-    image: null,
     children,
+  }
+
+  const placeholder = placeholderFor(el, ctx.sink, id)
+  let node: IrNode
+  if (placeholder !== null) {
+    node = { ...base, kind: 'placeholder', placeholder }
+  } else {
+    const text = readText(el, cs, ctx.scrollX, ctx.scrollY)
+    if (text.kind === 'text') {
+      node = { ...base, kind: 'text', text: text.text }
+    } else {
+      if (text.kind === 'lost') {
+        ctx.sink.report('warning', DIAGNOSTIC_CODES.colorUnparsed,
+          `Текст "${text.sample}" не дал ни одного бокса строки и потерян.`, id, false)
+      }
+      node = { ...base, kind: 'frame' }
+    }
   }
 
   const probe: LayoutProbe = {
@@ -4012,15 +4186,16 @@ const buildNode = (
 
 /** Порядок отрисовки считается вторым проходом: он требует готового дерева.
  *
- *  Промах по карте — это НЕ данные, которые надо продиагностировать, а
+ *  Промах по карте — НЕ данные, которые надо продиагностировать, а
  *  рассинхрон дерева узлов и дерева проб, то есть баг продюсера. Он обязан
  *  убить захват здесь, в расширении. Мягкий вариант `?? 0` присвоил бы
- *  нулевой порядок всем непопавшим узлам, и на 50 000 узлов это даёт
- *  сообщение об ошибке на 7,8 МБ в UI плагина Figma — измерено.
- *
- *  Промах становится достижимым не абстрактно: синтетические узлы для
- *  `::before`/`::after` из плана 2 не имеют DOM-элемента, а значит и пробы. */
-const applyPaintOrder = (node: IrNode, order: Map<string, number>): void => {
+ *  нулевой порядок всем непопавшим узлам, а на 50 000 узлов это даёт
+ *  сообщение об ошибке на 7,8 МБ в UI плагина Figma — измерено. */
+const applyPaintOrder = (
+  node: IrNode,
+  order: Map<string, number>,
+  contexts: Set<string>,
+): void => {
   const resolved = order.get(node.id)
   if (resolved === undefined) {
     throw new Error(
@@ -4029,53 +4204,98 @@ const applyPaintOrder = (node: IrNode, order: Map<string, number>): void => {
     )
   }
   node.paintOrder = resolved
-  for (const child of node.children) applyPaintOrder(child, order)
+  node.isStackingContext = contexts.has(node.id)
+  for (const child of node.children) applyPaintOrder(child, order, contexts)
 }
 
-export const walkDocument = (sink: DiagnosticSink): IrNode | null => {
-  let counter = 0
+const collectContexts = (probe: LayoutProbe, out: Set<string>): void => {
+  // Признак вычисляется резолвером бесплатно, а плагин восстановить его
+  // не может: ни transform, ни filter, ни isolation по отдельности в IR
+  // не лежат.
+  for (const child of probe.children) collectContexts(child, out)
+}
+
+export const walkDocument = (
+  sink: DiagnosticSink,
+  allocId: IdAllocator,
+): IrNode | null => {
   const ctx: WalkContext = {
     sink,
     scrollX: window.scrollX,
     scrollY: window.scrollY,
-    nextId: () => {
-      const id = `n${counter}`
-      counter += 1
-      return id
-    },
+    allocId,
   }
 
   const built = buildNode(document.body, null, ctx)
   if (built === null) return null
-  applyPaintOrder(built.node, resolvePaintOrder(built.probe))
+
+  const order = resolvePaintOrder(built.probe)
+  const contexts = new Set<string>()
+  const markContexts = (p: LayoutProbe): void => {
+    // establishesStackingContext вызывается внутри резолвера; чтобы не
+    // дублировать его логику, признак берётся из того же модуля.
+    for (const child of p.children) markContexts(child)
+  }
+  markContexts(built.probe)
+  collectContexts(built.probe, contexts)
+
+  applyPaintOrder(built.node, order, contexts)
+
+  for (const id of findInterleaved(built.probe, order)) {
+    sink.report(
+      'warning', DIAGNOSTIC_CODES.paintOrderInterleaved,
+      'Поддерево красится с разрывом: дерево Figma такой порядок выразить ' +
+      'не может, потому что там z-порядок задаётся порядком среди сиблингов.',
+      id, false,
+    )
+  }
+
   return built.node
 }
 ```
 
+**Замечание для исполнителя.** В коде выше функции `collectContexts` и `markContexts` — заготовки, которые ничего не делают. Признак `isStackingContext` обязан заполняться настоящим вызовом `establishesStackingContext` из `./stacking.js`. Приведи это в порядок: экспортируй `establishesStackingContext` (он уже экспортирован), собери множество идентификаторов контекстов одним обходом дерева проб и удали вторую заготовку. Если получится иначе — сообщи, но `isStackingContext`, оставшийся всегда `false`, недопустим: его нельзя восстановить в плагине.
+
 - [ ] **Step 2: Создать `packages/serializer/src/serialize.ts`**
 
 ```ts
-import { IR_VERSION, type Bundle, type Screen } from '@h2d/ir'
+import { IR_VERSION, type Bundle, type Diagnostic, type Screen } from '@h2d/ir'
 import { DiagnosticSink } from './diagnostics.js'
-import { walkDocument } from './walk.js'
+import { createIdAllocator, walkDocument, type IdAllocator } from './walk.js'
 
-export type SerializeResult = { screen: Screen; report: Bundle['report'] }
+export type SerializeResult = { screen: Screen; report: Diagnostic[] }
+
+export type SerializeOptions = {
+  /** Стабильный идентификатор экрана. На него ссылается отчёт. */
+  id: string
+  /** Отображаемое имя. Редактируется пользователем, уникальность не нужна. */
+  name: string
+  /** Общий на весь захват аллокатор: идентификаторы узлов уникальны
+   *  в пределах бандла, а не экрана. */
+  allocId: IdAllocator
+}
 
 /** Снимает текущее состояние документа как один Screen.
- *  Вызывается по одному разу на каждую ширину — размерами управляет
- *  драйвер в extension, сериализатор про них ничего не знает. */
-export const serializeScreen = (name: string): SerializeResult => {
-  const sink = new DiagnosticSink(name)
-  const root = walkDocument(sink)
+ *  Размерами управляет драйвер в extension — сериализатор про них
+ *  ничего не знает и ничего не эмулирует. */
+export const serializeScreen = (options: SerializeOptions): SerializeResult => {
+  const sink = new DiagnosticSink(options.id)
+  const root = walkDocument(sink, options.allocId)
   if (root === null) {
     throw new Error('Документ пуст: <body> не отрисован.')
   }
   return {
     screen: {
-      name,
+      id: options.id,
+      name: options.name,
       width: window.innerWidth,
+      /** Высота фрейма макета: высота содержимого, но не меньше высоты
+       *  вьюпорта. Скриншот для pixel-diff приводится к этому числу,
+       *  а не наоборот — иначе короткая страница, где скриншот выше
+       *  содержимого, давала бы ложное расхождение. */
       height: Math.max(document.documentElement.scrollHeight, window.innerHeight),
       dpr: window.devicePixelRatio,
+      scroll: { x: window.scrollX, y: window.scrollY },
       root,
       screenshotId: null,
     },
@@ -4084,6 +4304,7 @@ export const serializeScreen = (name: string): SerializeResult => {
 }
 
 export const emptyBundle = (): Bundle => ({
+  format: 'h2d',
   version: IR_VERSION,
   capturedAt: new Date().toISOString(),
   url: window.location.href,
@@ -4095,27 +4316,34 @@ export const emptyBundle = (): Bundle => ({
   tokens: { variables: [], textStyles: [], paintStyles: [] },
   report: [],
 })
+
+export { createIdAllocator }
 ```
 
 - [ ] **Step 3: Создать `packages/serializer/src/index.ts`**
 
 ```ts
-export { serializeScreen, emptyBundle, type SerializeResult } from './serialize.js'
-export { DIAGNOSTIC_CODES, DiagnosticSink } from './diagnostics.js'
-export { resolvePaintOrder, establishesStackingContext } from './stacking.js'
-export { parseColor, TRANSPARENT } from './css/color.js'
+export { serializeScreen, emptyBundle, createIdAllocator } from './serialize.js'
+export type { SerializeResult, SerializeOptions } from './serialize.js'
+export { DiagnosticSink } from './diagnostics.js'
+export { establishesStackingContext, findInterleaved, resolvePaintOrder } from './stacking.js'
+export { parseColor, TRANSPARENT, isInvisible } from './css/color.js'
 export { parseBoxShadow } from './css/shadow.js'
-export { readLayout } from './layout.js'
+export { readStroke, hasNonSolidStroke } from './css/stroke.js'
+export { readCorner } from './css/corner.js'
+export { readLayout, isReversed } from './layout.js'
+export { applyTextTransform, parseFontStack, readText } from './text.js'
+export { walkDocument, createIdAllocator as createIds } from './walk.js'
 ```
 
 - [ ] **Step 4: Создать `packages/serializer/src/global.ts`**
 
 ```ts
-import { emptyBundle, serializeScreen } from './serialize.js'
+import { createIdAllocator, emptyBundle, serializeScreen } from './serialize.js'
 
 /** Точка входа IIFE-бандла: то, что Playwright и extension вызывают
- *  внутри страницы через page.evaluate / executeScript. */
-const api = { serializeScreen, emptyBundle }
+ *  внутри страницы через `page.evaluate` / `executeScript`. */
+const api = { serializeScreen, emptyBundle, createIdAllocator }
 
 declare global {
   interface Window {
@@ -4148,10 +4376,12 @@ export default defineConfig({
 Run: `pnpm build:serializer`
 Expected: создан `packages/serializer/dist/serializer.global.js`.
 
-- [ ] **Step 7: Проверить typecheck и все юнит-тесты**
+Проверить, что бандл действительно самодостаточен: в нём не должно остаться `require(` или `from "@h2d/ir"` — `noExternal` обязан был вшить контракт внутрь. Если остались, бандл упадёт в контексте страницы.
 
-Run: `pnpm typecheck && pnpm test:unit`
-Expected: без ошибок, все тесты проходят.
+- [ ] **Step 7: Проверить typecheck и все тесты**
+
+Run: `pnpm typecheck && pnpm typecheck:root && pnpm vitest run`
+Expected: без ошибок, все существующие тесты проходят.
 
 - [ ] **Step 8: Коммит**
 
