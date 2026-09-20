@@ -323,6 +323,10 @@ export const DIAGNOSTIC_CODES = {
   deferredPseudoElement: 'deferred.pseudo-element',
 
   colorUnparsed: 'fidelity.color-unparsed',
+  /** Текст есть, но ни одного бокса строки не получено. Отдельный код
+   *  нужен потому, что молчаливая потеря текста невидима и для
+   *  валидатора, и для pixel-diff: оба сравнивают то, что доехало. */
+  textLost: 'fidelity.text-lost',
   colorClamped: 'fidelity.color-clamped',
   fontFallback: 'fidelity.font-fallback',
   gridFlattened: 'fidelity.grid-flattened',
@@ -3865,7 +3869,9 @@ import { parseBoxShadow } from './css/shadow.js'
 import type { DiagnosticSink } from './diagnostics.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
-import { findInterleaved, resolvePaintOrder } from './stacking.js'
+import {
+  establishesStackingContext, findInterleaved, resolvePaintOrder,
+} from './stacking.js'
 import { readText } from './text.js'
 
 export type IdAllocator = () => string
@@ -4168,7 +4174,7 @@ const buildNode = (
       node = { ...base, kind: 'text', text: text.text }
     } else {
       if (text.kind === 'lost') {
-        ctx.sink.report('warning', DIAGNOSTIC_CODES.colorUnparsed,
+        ctx.sink.report('warning', DIAGNOSTIC_CODES.textLost,
           `Текст "${text.sample}" не дал ни одного бокса строки и потерян.`, id, false)
       }
       node = { ...base, kind: 'frame' }
@@ -4208,11 +4214,14 @@ const applyPaintOrder = (
   for (const child of node.children) applyPaintOrder(child, order, contexts)
 }
 
-const collectContexts = (probe: LayoutProbe, out: Set<string>): void => {
-  // Признак вычисляется резолвером бесплатно, а плагин восстановить его
-  // не может: ни transform, ни filter, ни isolation по отдельности в IR
-  // не лежат.
-  for (const child of probe.children) collectContexts(child, out)
+/** Собирает идентификаторы узлов, создающих stacking context.
+ *  Признак вычисляется тем же предикатом, что использует резолвер, —
+ *  дублировать его логику нельзя, иначе два места разойдутся. Плагин
+ *  восстановить признак не может: ни `transform`, ни `filter`, ни
+ *  `isolation` по отдельности в IR не лежат. */
+const collectStackingContexts = (probe: LayoutProbe, out: Set<string>): void => {
+  if (establishesStackingContext(probe)) out.add(probe.id)
+  for (const child of probe.children) collectStackingContexts(child, out)
 }
 
 export const walkDocument = (
@@ -4231,14 +4240,7 @@ export const walkDocument = (
 
   const order = resolvePaintOrder(built.probe)
   const contexts = new Set<string>()
-  const markContexts = (p: LayoutProbe): void => {
-    // establishesStackingContext вызывается внутри резолвера; чтобы не
-    // дублировать его логику, признак берётся из того же модуля.
-    for (const child of p.children) markContexts(child)
-  }
-  markContexts(built.probe)
-  collectContexts(built.probe, contexts)
-
+  collectStackingContexts(built.probe, contexts)
   applyPaintOrder(built.node, order, contexts)
 
   for (const id of findInterleaved(built.probe, order)) {
@@ -4253,8 +4255,6 @@ export const walkDocument = (
   return built.node
 }
 ```
-
-**Замечание для исполнителя.** В коде выше функции `collectContexts` и `markContexts` — заготовки, которые ничего не делают. Признак `isStackingContext` обязан заполняться настоящим вызовом `establishesStackingContext` из `./stacking.js`. Приведи это в порядок: экспортируй `establishesStackingContext` (он уже экспортирован), собери множество идентификаторов контекстов одним обходом дерева проб и удали вторую заготовку. Если получится иначе — сообщи, но `isStackingContext`, оставшийся всегда `false`, недопустим: его нельзя восстановить в плагине.
 
 - [ ] **Step 2: Создать `packages/serializer/src/serialize.ts`**
 

@@ -20,6 +20,10 @@ export const DIAGNOSTIC_CODES = {
   deferredPseudoElement: 'deferred.pseudo-element',
 
   colorUnparsed: 'fidelity.color-unparsed',
+  /** Текст есть, но ни одного бокса строки не получено. Отдельный код
+   *  нужен потому, что молчаливая потеря текста невидима и для
+   *  валидатора, и для pixel-diff: оба сравнивают то, что доехало. */
+  textLost: 'fidelity.text-lost',
   colorClamped: 'fidelity.color-clamped',
   fontFallback: 'fidelity.font-fallback',
   gridFlattened: 'fidelity.grid-flattened',
