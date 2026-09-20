@@ -1,7 +1,11 @@
-import {
-  DIAGNOSTIC_CODES,
-  type Fill, type IrNode, type LayoutAlign, type NodeStyle,
-  type SelfLayout, type SelfPositioning,
+// Значение берётся из подпути, а не из барреля: баррель тянет schema.ts,
+// то есть zod, который сериализатору не нужен вовсе. Через баррель бандл
+// весил 171 КиБ при ~18 КиБ собственного кода, и всё это впрыскивалось
+// в каждую захватываемую страницу.
+import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
+import type {
+  Fill, FontRequirement, IrNode, LayoutAlign, NodeStyle,
+  SelfLayout, SelfPositioning,
 } from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
@@ -195,9 +199,21 @@ const reportGaps = (
     sink.report('info', DIAGNOSTIC_CODES.deferredBlur,
       `Размытие ${layerBlur || bgBlur}px не переносится в этом плане.`, id, false)
   }
-  if (cs.filter !== 'none' && layerBlur === 0) {
+  /** Проверяется НАЛИЧИЕ не-blur функций, а не отсутствие blur.
+   *  Условие `layerBlur === 0` пропускало `filter: blur(3px) grayscale(1)`:
+   *  размытие диагностировалось, grayscale терялся без записи. То же для
+   *  `backdrop-filter`, который раньше осматривался только на размытие. */
+  const hasNonBlur = (value: string): boolean =>
+    value !== 'none' && value.replace(/blur\([^)]*\)/g, '').trim() !== ''
+
+  if (hasNonBlur(cs.filter)) {
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedFilter,
-      `filter "${cs.filter}" не переносится: Figma поддерживает только размытие.`,
+      `filter "${cs.filter}" содержит функции кроме размытия: Figma их не имеет.`,
+      id, false)
+  }
+  if (hasNonBlur(cs.backdropFilter)) {
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedFilter,
+      `backdrop-filter "${cs.backdropFilter}" содержит функции кроме размытия.`,
       id, false)
   }
   if (cs.mixBlendMode !== 'normal') {
@@ -363,6 +379,35 @@ const applyPaintOrder = (
 const collectStackingContexts = (probe: LayoutProbe, out: Set<string>): void => {
   if (establishesStackingContext(probe)) out.add(probe.id)
   for (const child of probe.children) collectStackingContexts(child, out)
+}
+
+/** Собирает требования к шрифтам из текстовых узлов поддерева.
+ *
+ *  Данные есть только здесь, а нужны на уровне бандла: инвариант
+ *  `font.uncovered` в `@h2d/ir` требует, чтобы каждое использованное в
+ *  тексте семейство было перечислено в `Bundle.fonts`, иначе плагин не
+ *  сможет предзагрузить шрифт и создание текста упадёт посреди
+ *  построения. Обходчик их не записывает — это не его уровень — но
+ *  отдаёт наружу, чтобы сборщику бандла было откуда взять. */
+export const collectFonts = (node: IrNode): FontRequirement[] => {
+  const seen = new Map<string, FontRequirement>()
+  const visit = (current: IrNode): void => {
+    if (current.kind === 'text') {
+      for (const run of current.text.runs) {
+        const key = `${run.usedFamily}|${run.fontWeight}|${run.fontStyle}`
+        if (!seen.has(key)) {
+          seen.set(key, {
+            family: run.usedFamily,
+            weight: run.fontWeight,
+            style: run.fontStyle,
+          })
+        }
+      }
+    }
+    for (const child of current.children) visit(child)
+  }
+  visit(node)
+  return [...seen.values()]
 }
 
 export const walkDocument = (

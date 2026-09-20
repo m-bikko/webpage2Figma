@@ -1,8 +1,19 @@
-import { IR_VERSION, type Bundle, type Diagnostic, type Screen } from '@h2d/ir'
+import { IR_VERSION } from '@h2d/ir/version'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
 import { DiagnosticSink } from './diagnostics.js'
-import { createIdAllocator, walkDocument, type IdAllocator } from './walk.js'
+import {
+  collectFonts, createIdAllocator, walkDocument, type IdAllocator,
+} from './walk.js'
 
-export type SerializeResult = { screen: Screen; report: Diagnostic[] }
+export type SerializeResult = {
+  screen: Screen
+  report: Diagnostic[]
+  /** Шрифты, использованные на этом экране. Отдаются наружу потому, что
+   *  `Bundle.fonts` — уровень бандла, а данные есть только у обходчика.
+   *  Сборщик бандла обязан объединить их по всем экранам: без этого
+   *  инвариант `font.uncovered` отвергнет бандл на входе плагина. */
+  fonts: FontRequirement[]
+}
 
 export type SerializeOptions = {
   /** Стабильный идентификатор экрана. На него ссылается отчёт. */
@@ -39,6 +50,7 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
       screenshotId: null,
     },
     report: sink.drain(),
+    fonts: collectFonts(root),
   }
 }
 
