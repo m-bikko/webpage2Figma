@@ -39,6 +39,42 @@ for (const [fixture, codes] of Object.entries(EXPECTED)) {
   })
 }
 
+test('фон <html> переносится на корневой узел и об этом сообщается', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  // Фикстура не нужна: setContent достаточно, а фон на <html> — единственное,
+  // что здесь проверяется.
+  await page.setContent(
+    '<!doctype html><html style="background:#1e293b"><body>' +
+    '<div style="width:100px;height:50px;background:#fff"></div>' +
+    '</body></html>',
+  )
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  // Без переноса тёмная страница приехала бы на белом фоне, и поймать это
+  // было бы нечем: обход начинается с <body> и до <html> не доходит.
+  expect(screen.root.style.fills).toEqual([
+    { kind: 'solid', color: { r: 30, g: 41, b: 59, a: 1 } },
+  ])
+  const explained = report.some(
+    (item) => item.code === 'fidelity.page-background-moved',
+  )
+  expect(explained, 'перенос фона обязан быть объяснён в отчёте').toBe(true)
+})
+
+test('фон <body> не подменяется фоном <html>', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.setContent(
+    '<!doctype html><html style="background:#1e293b">' +
+    '<body style="background:#f8fafc"></body></html>',
+  )
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+  // У body свой фон — переносить нечего, и диагностики быть не должно.
+  expect(screen.root.style.fills).toEqual([
+    { kind: 'solid', color: { r: 248, g: 250, b: 252, a: 1 } },
+  ])
+  expect(report.some((i) => i.code === 'fidelity.page-background-moved')).toBe(false)
+})
+
 test('transformed: диагностика уровня error на каждом трансформированном узле', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('transformed'))

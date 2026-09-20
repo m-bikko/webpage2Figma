@@ -23,10 +23,23 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
  *  а не в гейте точности. */
 const FIXTURES = ['boxes', 'stacking', 'flex', 'text'] as const
 
-const thresholdOf = (fixture: string): number => {
+/** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.
+ *
+ *  Доля от площади как единственная мера не работает: отключение внутренней
+ *  тени даёт 1234 неверных пикселя, то есть 0.1% изображения в миллион точек,
+ *  и проходит любой разумный относительный порог. Измерено при исполнении
+ *  Task 14: три дефекта из шести, найденных в этой задаче, гейт с одной
+ *  относительной метрикой не поймал бы.
+ *
+ *  Поэтому бюджет задан в пикселях, выведен из измеренного факта плюс запас на
+ *  растеризацию, а доля оставлена вторым рубежом — она ловит случай, когда
+ *  расхождение размазано по всему изображению. */
+type Threshold = { maxDiffPixels: number; maxDiffRatio: number }
+
+const thresholdOf = (fixture: string): Threshold => {
   const file = resolve(repoRoot, 'fixtures', fixture, 'threshold.json')
-  const parsed = JSON.parse(readFileSync(file, 'utf8')) as { maxDiffRatio: number }
-  return parsed.maxDiffRatio
+  const parsed = JSON.parse(readFileSync(file, 'utf8')) as Threshold
+  return parsed
 }
 
 for (const fixture of FIXTURES) {
@@ -47,12 +60,20 @@ for (const fixture of FIXTURES) {
       )
       const result = diffPng(browserShot, renderedShot, out)
 
+      const limit = thresholdOf(fixture)
+      const detail =
+        `${result.diffPixels} из ${result.total} пикселей ` +
+        `(${(result.ratio * 100).toFixed(3)}%). Карта различий: ${out}`
+
+      expect(
+        result.diffPixels,
+        `Расхождение превысило бюджет ${limit.maxDiffPixels} пикселей: ${detail}`,
+      ).toBeLessThanOrEqual(limit.maxDiffPixels)
+
       expect(
         result.ratio,
-        `Расхождение ${(result.ratio * 100).toFixed(3)}% ` +
-        `(${result.diffPixels} из ${result.total} пикселей). ` +
-        `Карта различий: ${out}`,
-      ).toBeLessThanOrEqual(thresholdOf(fixture))
+        `Расхождение размазано по изображению: ${detail}`,
+      ).toBeLessThanOrEqual(limit.maxDiffRatio)
     })
   }
 }

@@ -440,6 +440,27 @@ export const walkDocument = (
   const built = buildNode(document.body, null, ctx)
   if (built === null) return null
 
+  /** Фон страницы часто объявлен на `<html>`, а обход начинается с `<body>`.
+   *  Браузер красит им весь холст, поэтому без переноса тёмная страница
+   *  приехала бы на белом фоне. Поймать это ниже по конвейеру нечем:
+   *  обход просто не доходит до элемента, где фон объявлен, и в бандле не
+   *  остаётся следа — ни валидатору, ни pixel-diff не за что зацепиться. */
+  const htmlStyle = window.getComputedStyle(document.documentElement)
+  const htmlBackground = parseColor(htmlStyle.backgroundColor)
+  if (
+    htmlBackground !== null &&
+    !isInvisible(htmlBackground) &&
+    built.node.style.fills.length === 0
+  ) {
+    built.node.style.fills = [{ kind: 'solid', color: htmlBackground }]
+    sink.report(
+      'info', DIAGNOSTIC_CODES.pageBackgroundMoved,
+      `Фон страницы объявлен на <html> и перенесён на корневой узел: ` +
+      `rgb(${htmlBackground.r},${htmlBackground.g},${htmlBackground.b}).`,
+      built.node.id, false,
+    )
+  }
+
   const order = resolvePaintOrder(built.probe)
   const contexts = new Set<string>()
   collectStackingContexts(built.probe, contexts)

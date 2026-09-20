@@ -24,6 +24,12 @@ export const DIAGNOSTIC_CODES = {
    *  нужен потому, что молчаливая потеря текста невидима и для
    *  валидатора, и для pixel-diff: оба сравнивают то, что доехало. */
   textLost: 'fidelity.text-lost',
+  /** Фон страницы задан на `<html>`, а обход начинается с `<body>`.
+   *  Заливка перенесена на корневой узел. Молчать нельзя: без
+   *  переноса тёмная страница приезжала бы на белом фоне, и ни
+   *  валидатор, ни pixel-diff этого не увидели бы — обход просто
+   *  не дошёл бы до элемента, где фон объявлен. */
+  pageBackgroundMoved: 'fidelity.page-background-moved',
   colorClamped: 'fidelity.color-clamped',
   fontFallback: 'fidelity.font-fallback',
   gridFlattened: 'fidelity.grid-flattened',
