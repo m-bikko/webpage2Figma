@@ -4131,10 +4131,24 @@ git commit -m "feat(serializer): обход DOM, сериализация экр
 
 ## Task 12: Референс-рендерер IR → SVG
 
-Замыкает контур проверки и одновременно служит инструментом отладки: открыл бандл, увидел, что сняли, ещё не заходя в Figma.
+**Тело переписано после ревизии контракта.** Замыкает контур проверки и одновременно служит инструментом отладки: открыл бандл, увидел, что сняли, ещё не заходя в Figma.
+
+Изменения против первой редакции:
+
+**Исчерпывающий `switch` по `kind`.** Контракт стал размеченным объединением, и §8.5 спеки требует исчерпывающих переключений. Отсутствующая ветка теперь ошибка компиляции, а не тихо не нарисованный узел.
+
+**`kind: 'placeholder'` рисуется ВИДИМО** — пунктирная рамка и подпись. Правило проекта требует, чтобы неподдерживаемое было видно; заглушка, нарисованная как обычный прямоугольник, нарушала бы его в самом наглядном месте.
+
+**`usedFamily` вместо `fontFamily`.** Диффить надо тем шрифтом, которым рисовал браузер, иначе расхождение будет ложным.
+
+**`lineHeight` и `align` читаются из `NodeText`**, а не из рана.
+
+**Компенсация обводки внутрь бокса.** SVG рисует обводку по центру пути, CSS — внутрь. Без сжатия прямоугольника на половину толщины каждый элемент с границей давал бы расхождение. Это одна из пяти известных находок, перечисленных в Task 14 — исправляется здесь, а не там.
+
+**Пунктир рисуется пунктиром.** `Stroke.style` теперь есть в контракте, и `stroke-dasharray` убирает расхождение, которое иначе пришлось бы прятать порогом.
 
 **Files:**
-- Create: `packages/reference-renderer/package.json`, `packages/reference-renderer/tsconfig.json`, `packages/reference-renderer/src/render.ts`, `packages/reference-renderer/src/html.ts`, `packages/reference-renderer/src/index.ts`
+- Create: `packages/reference-renderer/package.json`, `tsconfig.json`, `src/render.ts`, `src/html.ts`, `src/index.ts`
 - Test: `packages/reference-renderer/test/render.test.ts`
 
 - [ ] **Step 1: Создать `packages/reference-renderer/package.json`**
@@ -4163,14 +4177,11 @@ git commit -m "feat(serializer): обход DOM, сериализация экр
 
 - [ ] **Step 3: Подключить пакет к корню**
 
-Два изменения в корневом `package.json`. Первое — расширить typecheck до всех трёх пакетов, теперь они все существуют:
+В корневом `package.json` расширить typecheck до всех трёх пакетов и добавить пакет в `devDependencies` — второе обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит импорт:
 
 ```json
     "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
 ```
-
-Второе — добавить пакет в корневые `devDependencies`. Это обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит `@h2d/reference-renderer`:
-
 ```json
     "@h2d/reference-renderer": "workspace:*",
 ```
@@ -4183,127 +4194,174 @@ Expected: пакет слинкован, ошибок нет.
 ```ts
 // packages/reference-renderer/test/render.test.ts
 import { describe, expect, it } from 'vitest'
-import type { IrNode, Screen } from '@h2d/ir'
+import type { IrNode, NodeText, Screen } from '@h2d/ir'
 import { renderScreenToSvg } from '../src/render.js'
 
-const node = (overrides: Partial<IrNode>): IrNode => ({
-  id: 'n0',
-  sourceTag: 'div',
-  name: 'div',
+const frame = (o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({
+  kind: 'frame',
+  id: 'n0', sourceTag: 'div', name: 'div',
   rect: { x: 0, y: 0, w: 100, h: 50 },
-  paintOrder: 0,
-  layout: {
-    mode: 'none', gap: 0,
-    padding: { top: 0, right: 0, bottom: 0, left: 0 },
-    align: 'start', justify: 'start', wrap: false,
-  },
-  style: {
-    fills: [], stroke: null,
-    corner: { tl: 0, tr: 0, br: 0, bl: 0 },
-    shadows: [], opacity: 1, clip: false,
-  },
-  text: null,
-  image: null,
+  paintOrder: 0, isStackingContext: false, transform: null,
+  layout: { mode: 'none', gap: 0, padding: { top: 0, right: 0, bottom: 0, left: 0 },
+            align: 'start', justify: 'start', wrap: false },
+  selfLayout: { positioning: 'flow', align: null, grow: 0, shrink: 1 },
+  style: { fills: [], stroke: null, corner: { tl: 0, tr: 0, br: 0, bl: 0 },
+           shadows: [], opacity: 1, blend: 'normal', blur: null, clip: false },
   children: [],
-  ...overrides,
+  ...o,
+})
+
+const filled = (color: { r: number; g: number; b: number; a: number },
+                o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode =>
+  frame({ ...o, style: { ...frame().style, fills: [{ kind: 'solid', color }] } })
+
+const text = (o: Partial<NodeText> = {}): NodeText => ({
+  runs: [{
+    text: 'раз два', fontStack: ['Inter', 'sans-serif'], usedFamily: 'Inter',
+    fontWeight: 400, fontStyle: 'normal', fontSize: 16, letterSpacing: 0,
+    color: { r: 0, g: 0, b: 0, a: 1 }, decoration: 'none', shadows: [],
+  }],
+  lines: [{ x: 0, y: 0, w: 40, h: 20, text: 'раз два' }],
+  lineHeight: 20, align: 'left',
+  ...o,
 })
 
 const screen = (root: IrNode): Screen => ({
-  name: 'Test', width: 200, height: 100, dpr: 1, root, screenshotId: null,
+  id: 's0', name: 'Test', width: 200, height: 100, dpr: 1,
+  scroll: { x: 0, y: 0 }, root, screenshotId: null,
 })
 
-describe('renderScreenToSvg', () => {
+describe('renderScreenToSvg: геометрия и заливки', () => {
   it('задаёт размеры SVG по экрану', () => {
-    const svg = renderScreenToSvg(screen(node({})))
+    const svg = renderScreenToSvg(screen(frame()))
     expect(svg).toContain('width="200"')
     expect(svg).toContain('height="100"')
   })
 
-  it('рендерит сплошную заливку как rect с fill', () => {
-    const svg = renderScreenToSvg(screen(node({
-      style: {
-        ...node({}).style,
-        fills: [{ kind: 'solid', color: { r: 255, g: 0, b: 0, a: 1 } }],
-      },
-    })))
+  it('рендерит сплошную заливку', () => {
+    const svg = renderScreenToSvg(screen(filled({ r: 255, g: 0, b: 0, a: 1 })))
     expect(svg).toContain('fill="rgb(255,0,0)"')
     expect(svg).toContain('fill-opacity="1"')
   })
 
-  it('не рендерит rect у узла без заливки, обводки и теней', () => {
-    const svg = renderScreenToSvg(screen(node({})))
-    expect(svg).not.toContain('<rect')
+  it('не рендерит rect у пустого фрейма', () => {
+    expect(renderScreenToSvg(screen(frame()))).not.toContain('<rect')
   })
 
-  it('рендерит радиус углов, когда все углы равны', () => {
-    const svg = renderScreenToSvg(screen(node({
-      style: {
-        ...node({}).style,
-        corner: { tl: 8, tr: 8, br: 8, bl: 8 },
-        fills: [{ kind: 'solid', color: { r: 0, g: 0, b: 0, a: 1 } }],
-      },
-    })))
-    expect(svg).toContain('rx="8"')
+  it('рендерит равный радиус через rx', () => {
+    const node = filled({ r: 0, g: 0, b: 0, a: 1 })
+    node.style.corner = { tl: 8, tr: 8, br: 8, bl: 8 }
+    expect(renderScreenToSvg(screen(node))).toContain('rx="8"')
   })
 
   it('рендерит разные углы через path, а не rect', () => {
-    const svg = renderScreenToSvg(screen(node({
-      style: {
-        ...node({}).style,
-        corner: { tl: 8, tr: 0, br: 16, bl: 0 },
-        fills: [{ kind: 'solid', color: { r: 0, g: 0, b: 0, a: 1 } }],
-      },
-    })))
-    expect(svg).toContain('<path')
+    const node = filled({ r: 0, g: 0, b: 0, a: 1 })
+    node.style.corner = { tl: 8, tr: 0, br: 16, bl: 0 }
+    expect(renderScreenToSvg(screen(node))).toContain('<path')
   })
 
   it('упорядочивает узлы по paintOrder, а не по вложенности', () => {
-    const svg = renderScreenToSvg(screen(node({
-      id: 'root',
-      paintOrder: 0,
+    const root = filled({ r: 9, g: 9, b: 9, a: 1 }, {
+      id: 'root', paintOrder: 0,
       children: [
-        node({
-          id: 'late', paintOrder: 2,
-          style: { ...node({}).style, fills: [{ kind: 'solid', color: { r: 1, g: 1, b: 1, a: 1 } }] },
-        }),
-        node({
-          id: 'early', paintOrder: 1,
-          style: { ...node({}).style, fills: [{ kind: 'solid', color: { r: 2, g: 2, b: 2, a: 1 } }] },
-        }),
+        filled({ r: 1, g: 1, b: 1, a: 1 }, { id: 'late', paintOrder: 2 }),
+        filled({ r: 2, g: 2, b: 2, a: 1 }, { id: 'early', paintOrder: 1 }),
       ],
-    })))
+    })
+    const svg = renderScreenToSvg(screen(root))
     expect(svg.indexOf('rgb(2,2,2)')).toBeLessThan(svg.indexOf('rgb(1,1,1)'))
   })
+})
 
-  it('рендерит каждую строку текста своим элементом text', () => {
-    const svg = renderScreenToSvg(screen(node({
-      text: {
-        runs: [{
-          text: 'раз два', fontFamily: 'Inter', fontWeight: 400, fontStyle: 'normal',
-          fontSize: 16, lineHeight: 20, letterSpacing: 0,
-          color: { r: 0, g: 0, b: 0, a: 1 }, decoration: 'none', align: 'left',
-        }],
-        lines: [
-          { x: 0, y: 0, w: 40, h: 20, text: 'раз' },
-          { x: 0, y: 20, w: 40, h: 20, text: 'два' },
-        ],
-      },
-    })))
+describe('renderScreenToSvg: обводка', () => {
+  const stroked = (style: 'solid' | 'dashed' | 'dotted'): IrNode => {
+    const node = frame()
+    node.style.stroke = {
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      weight: { top: 4, right: 4, bottom: 4, left: 4 },
+      style, align: 'inside',
+    }
+    return node
+  }
+
+  it('сжимает прямоугольник на половину толщины: CSS рисует внутрь, SVG по центру', () => {
+    const svg = renderScreenToSvg(screen(stroked('solid')))
+    // Бокс 100×50 с обводкой 4 даёт путь 2,2 96×46.
+    expect(svg).toContain('x="2"')
+    expect(svg).toContain('y="2"')
+    expect(svg).toContain('width="96"')
+    expect(svg).toContain('height="46"')
+  })
+
+  it('рисует пунктир пунктиром, а не сплошной линией', () => {
+    expect(renderScreenToSvg(screen(stroked('dashed')))).toContain('stroke-dasharray')
+  })
+
+  it('точечный пунктир отличается от штрихового', () => {
+    const dashed = renderScreenToSvg(screen(stroked('dashed')))
+    const dotted = renderScreenToSvg(screen(stroked('dotted')))
+    expect(dashed).not.toBe(dotted)
+  })
+
+  it('сплошная обводка без dasharray', () => {
+    expect(renderScreenToSvg(screen(stroked('solid')))).not.toContain('stroke-dasharray')
+  })
+})
+
+describe('renderScreenToSvg: текст', () => {
+  const withText = (t: NodeText): IrNode => ({ ...frame(), kind: 'text', text: t })
+
+  it('рендерит каждую строку своим элементом text', () => {
+    const svg = renderScreenToSvg(screen(withText(text({
+      lines: [
+        { x: 0, y: 0, w: 40, h: 20, text: 'раз' },
+        { x: 0, y: 20, w: 40, h: 20, text: 'два' },
+      ],
+    }))))
     expect(svg.match(/<text/g)).toHaveLength(2)
   })
 
-  it('экранирует спецсимволы XML в тексте', () => {
-    const svg = renderScreenToSvg(screen(node({
-      text: {
-        runs: [{
-          text: 'a & b', fontFamily: 'Inter', fontWeight: 400, fontStyle: 'normal',
-          fontSize: 16, lineHeight: 20, letterSpacing: 0,
-          color: { r: 0, g: 0, b: 0, a: 1 }, decoration: 'none', align: 'left',
-        }],
-        lines: [{ x: 0, y: 0, w: 40, h: 20, text: '<a & b>' }],
-      },
-    })))
+  it('подставляет usedFamily, а не первое объявленное семейство', () => {
+    const svg = renderScreenToSvg(screen(withText(text({
+      runs: [{ ...text().runs[0], fontStack: ['Söhne', 'Arial'], usedFamily: 'Arial' }],
+    }))))
+    expect(svg).toContain('font-family="Arial"')
+    expect(svg).not.toContain('font-family="Söhne"')
+  })
+
+  it('берёт выравнивание из NodeText', () => {
+    const svg = renderScreenToSvg(screen(withText(text({ align: 'center' }))))
+    expect(svg).toContain('text-anchor="middle"')
+  })
+
+  it('экранирует спецсимволы XML', () => {
+    const svg = renderScreenToSvg(screen(withText(text({
+      lines: [{ x: 0, y: 0, w: 40, h: 20, text: '<a & b>' }],
+    }))))
     expect(svg).toContain('&lt;a &amp; b&gt;')
+  })
+})
+
+describe('renderScreenToSvg: заглушка видна', () => {
+  const placeholder = (): IrNode => ({
+    ...frame(),
+    kind: 'placeholder',
+    placeholder: { code: 'unsupported.canvas', label: 'canvas' },
+  })
+
+  it('рисует пунктирную рамку', () => {
+    const svg = renderScreenToSvg(screen(placeholder()))
+    expect(svg).toContain('stroke-dasharray')
+  })
+
+  it('пишет подпись, чтобы причина была видна', () => {
+    expect(renderScreenToSvg(screen(placeholder()))).toContain('canvas')
+  })
+
+  it('заглушка не невидима: у неё есть и рамка, и текст', () => {
+    const svg = renderScreenToSvg(screen(placeholder()))
+    expect(svg).toContain('<rect')
+    expect(svg).toContain('<text')
   })
 })
 ```
@@ -4316,7 +4374,9 @@ Expected: FAIL — `Failed to resolve import "../src/render.js"`.
 - [ ] **Step 6: Создать `packages/reference-renderer/src/render.ts`**
 
 ```ts
-import type { Corner, IrNode, Rect, Rgba8, Screen, Shadow } from '@h2d/ir'
+import type {
+  Corner, IrNode, Rect, Rgba8, Screen, Shadow, Stroke, TextRun,
+} from '@h2d/ir'
 
 const escapeXml = (value: string): string =>
   value
@@ -4327,14 +4387,12 @@ const escapeXml = (value: string): string =>
 
 const rgb = (color: Rgba8): string => `rgb(${color.r},${color.g},${color.b})`
 
-const uniformCorner = (corner: Corner): number | null => {
-  if (corner.tl === corner.tr && corner.tr === corner.br && corner.br === corner.bl) {
-    return corner.tl
-  }
-  return null
-}
+const uniformCorner = (corner: Corner): number | null =>
+  corner.tl === corner.tr && corner.tr === corner.br && corner.br === corner.bl
+    ? corner.tl
+    : null
 
-/** Прямоугольник с разными радиусами углов не выражается через <rect rx>,
+/** Прямоугольник с разными радиусами углов не выражается через `<rect rx>`,
  *  поэтому строится путь с четырьмя дугами. */
 const cornerPath = (rect: Rect, c: Corner): string => {
   const { x, y, w, h } = rect
@@ -4352,45 +4410,59 @@ const cornerPath = (rect: Rect, c: Corner): string => {
   ].filter((segment) => segment !== '').join(' ')
 }
 
+const maxWeight = (stroke: Stroke): number => Math.max(
+  stroke.weight.top, stroke.weight.right, stroke.weight.bottom, stroke.weight.left,
+)
+
+/** SVG рисует обводку ПО ЦЕНТРУ пути, CSS — ВНУТРЬ бокса, и контракт
+ *  фиксирует это как `align: 'inside'`. Без сжатия на половину толщины
+ *  каждый элемент с границей давал бы расхождение в pixel-diff. */
+const insetRect = (rect: Rect, stroke: Stroke | null): Rect => {
+  if (stroke === null) return rect
+  const half = maxWeight(stroke) / 2
+  return {
+    x: rect.x + half, y: rect.y + half,
+    w: Math.max(0, rect.w - half * 2), h: Math.max(0, rect.h - half * 2),
+  }
+}
+
+const dashArray = (stroke: Stroke): string => {
+  const w = maxWeight(stroke)
+  if (stroke.style === 'dashed') return ` stroke-dasharray="${w * 3} ${w * 2}"`
+  if (stroke.style === 'dotted') return ` stroke-dasharray="${w} ${w}"`
+  return ''
+}
+
 const shadowFilter = (id: string, shadows: Shadow[]): string => {
   const outer = shadows.filter((shadow) => shadow.kind === 'outer')
   if (outer.length === 0) return ''
-  const parts = outer
-    .map((shadow) => {
-      const deviation = shadow.blur / 2
-      return (
-        `<feDropShadow dx="${shadow.offsetX}" dy="${shadow.offsetY}" ` +
-        `stdDeviation="${deviation}" flood-color="${rgb(shadow.color)}" ` +
-        `flood-opacity="${shadow.color.a}"/>`
-      )
-    })
-    .join('')
-  return `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${parts}</filter>`
+  const parts = outer.map((shadow) =>
+    `<feDropShadow dx="${shadow.offsetX}" dy="${shadow.offsetY}" ` +
+    `stdDeviation="${shadow.blur / 2}" flood-color="${rgb(shadow.color)}" ` +
+    `flood-opacity="${shadow.color.a}"/>`,
+  ).join('')
+  return `<filter id="${id}" x="-75%" y="-75%" width="250%" height="250%">${parts}</filter>`
 }
 
 const renderBox = (node: IrNode, defs: string[]): string => {
-  const { style, rect } = node
+  const { style } = node
   const solid = style.fills.find((fill) => fill.kind === 'solid')
   const hasShadow = style.shadows.some((shadow) => shadow.kind === 'outer')
   if (solid === undefined && style.stroke === null && !hasShadow) return ''
 
+  const rect = insetRect(node.rect, style.stroke)
   const attrs: string[] = []
+
   if (solid !== undefined && solid.kind === 'solid') {
     attrs.push(`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`)
   } else {
     attrs.push('fill="none"')
   }
   if (style.stroke !== null) {
-    // Figma и SVG рисуют обводку по центру пути, CSS — внутрь бокса.
-    // Компенсируем половиной толщины, беря максимальную сторону.
-    const weight = Math.max(
-      style.stroke.weight.top, style.stroke.weight.right,
-      style.stroke.weight.bottom, style.stroke.weight.left,
-    )
     attrs.push(
       `stroke="${rgb(style.stroke.color)}"`,
       `stroke-opacity="${style.stroke.color.a}"`,
-      `stroke-width="${weight}"`,
+      `stroke-width="${maxWeight(style.stroke)}"`,
     )
   }
   if (style.opacity < 1) attrs.push(`opacity="${style.opacity}"`)
@@ -4400,46 +4472,87 @@ const renderBox = (node: IrNode, defs: string[]): string => {
     attrs.push(`filter="url(#${filterId})"`)
   }
 
+  const dash = style.stroke === null ? '' : dashArray(style.stroke)
   const uniform = uniformCorner(style.corner)
   if (uniform === null) {
-    return `<path d="${cornerPath(rect, style.corner)}" ${attrs.join(' ')}/>`
+    return `<path d="${cornerPath(rect, style.corner)}" ${attrs.join(' ')}${dash}/>`
   }
   const rx = uniform > 0 ? ` rx="${uniform}"` : ''
   return (
     `<rect x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}"` +
-    `${rx} ${attrs.join(' ')}/>`
+    `${rx} ${attrs.join(' ')}${dash}/>`
   )
 }
 
-/** Каждая строка рисуется отдельным <text> по снятому боксу.
- *  Базовая линия ставится через dominant-baseline по низу бокса минус
- *  дескендер, что для одного и того же движка растеризации даёт
- *  совпадение с HTML-рендером. */
-const renderText = (node: IrNode): string => {
-  if (node.text === null) return ''
-  const run = node.text.runs[0]
+/** Базовая линия ставится из бокса строки. Коэффициент 0.72 от кегля —
+ *  подобранная доля высоты до базовой линии для латиницы и кириллицы;
+ *  зафиксирован константой, чтобы расхождение было объяснимо, а не
+ *  подкручивалось в разных местах по-разному. */
+const BASELINE_RATIO = 0.72
+
+const renderTextLines = (node: IrNode & { kind: 'text' }): string => {
+  const run: TextRun | undefined = node.text.runs[0]
   if (run === undefined) return ''
   const anchor =
-    run.align === 'center' ? 'middle' : run.align === 'right' ? 'end' : 'start'
+    node.text.align === 'center' ? 'middle'
+    : node.text.align === 'right' ? 'end'
+    : 'start'
 
-  return node.text.lines
-    .map((line) => {
-      const x =
-        anchor === 'middle' ? line.x + line.w / 2
-        : anchor === 'end' ? line.x + line.w
-        : line.x
-      return (
-        `<text x="${x}" y="${line.y + line.h / 2}" ` +
-        `text-anchor="${anchor}" dominant-baseline="central" ` +
-        `font-family="${escapeXml(run.fontFamily)}" font-size="${run.fontSize}" ` +
-        `font-weight="${run.fontWeight}" font-style="${run.fontStyle}" ` +
-        `letter-spacing="${run.letterSpacing}" ` +
-        `fill="${rgb(run.color)}" fill-opacity="${run.color.a}" ` +
-        `text-rendering="geometricPrecision" ` +
-        `xml:space="preserve">${escapeXml(line.text)}</text>`
-      )
-    })
-    .join('')
+  return node.text.lines.map((line) => {
+    const x =
+      anchor === 'middle' ? line.x + line.w / 2
+      : anchor === 'end' ? line.x + line.w
+      : line.x
+    const baseline = line.y + (line.h + run.fontSize * BASELINE_RATIO) / 2
+    return (
+      `<text x="${x}" y="${baseline}" text-anchor="${anchor}" ` +
+      `dominant-baseline="alphabetic" ` +
+      `font-family="${escapeXml(run.usedFamily)}" font-size="${run.fontSize}" ` +
+      `font-weight="${run.fontWeight}" font-style="${run.fontStyle}" ` +
+      `letter-spacing="${run.letterSpacing}" ` +
+      `fill="${rgb(run.color)}" fill-opacity="${run.color.a}" ` +
+      `text-rendering="geometricPrecision" ` +
+      `xml:space="preserve">${escapeXml(line.text)}</text>`
+    )
+  }).join('')
+}
+
+/** Заглушка обязана быть ВИДНА: правило проекта запрещает, чтобы
+ *  неподдерживаемое содержимое приезжало неотличимо от пустого блока. */
+const renderPlaceholder = (node: IrNode & { kind: 'placeholder' }): string => {
+  const { x, y, w, h } = node.rect
+  return (
+    `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" ` +
+    `height="${Math.max(0, h - 2)}" fill="none" stroke="rgb(220,38,38)" ` +
+    `stroke-width="2" stroke-dasharray="6 4"/>` +
+    `<text x="${x + 6}" y="${y + 18}" font-family="monospace" font-size="12" ` +
+    `fill="rgb(220,38,38)" xml:space="preserve">` +
+    `${escapeXml(`⚠ ${node.placeholder.label}`)}</text>`
+  )
+}
+
+/** Исчерпывающий по `kind`: отсутствующая ветка — ошибка компиляции,
+ *  а не тихо не нарисованный узел. */
+const renderNode = (node: IrNode, defs: string[]): string => {
+  switch (node.kind) {
+    case 'frame':
+      return renderBox(node, defs)
+    case 'text':
+      return renderBox(node, defs) + renderTextLines(node)
+    case 'image':
+      // Ассеты в плане 1 не снимаются, поэтому рисуется только бокс.
+      // Ветка существует ради исчерпывающего переключения.
+      return renderBox(node, defs)
+    case 'vector':
+      return node.paths.map((path) =>
+        `<path d="${path.data}" ` +
+        `fill="${path.fill === null ? 'none' : rgb(path.fill)}" ` +
+        `${path.stroke === null ? '' : `stroke="${rgb(path.stroke.color)}" ` +
+          `stroke-width="${maxWeight(path.stroke)}"`}/>`,
+      ).join('')
+    case 'placeholder':
+      return renderPlaceholder(node)
+  }
 }
 
 const flatten = (node: IrNode, out: IrNode[]): void => {
@@ -4453,7 +4566,7 @@ export const renderScreenToSvg = (screen: Screen): string => {
   nodes.sort((a, b) => a.paintOrder - b.paintOrder)
 
   const defs: string[] = []
-  const body = nodes.map((node) => renderBox(node, defs) + renderText(node)).join('')
+  const body = nodes.map((node) => renderNode(node, defs)).join('')
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${screen.width}" ` +
@@ -4486,14 +4599,14 @@ export { wrapSvgInHtml } from './html.js'
 
 - [ ] **Step 9: Запустить тесты и проверить typecheck**
 
-Run: `pnpm vitest run packages/reference-renderer/test/render.test.ts && pnpm typecheck`
-Expected: PASS, 8 тестов, typecheck по трём пакетам без ошибок.
+Run: `pnpm vitest run packages/reference-renderer && pnpm typecheck`
+Expected: PASS, 17 тестов; typecheck по трём пакетам без ошибок.
 
 - [ ] **Step 10: Коммит**
 
 ```bash
 git add packages/reference-renderer package.json pnpm-lock.yaml
-git commit -m "feat(reference-renderer): рендер IR в SVG по порядку отрисовки"
+git commit -m "feat(reference-renderer): рендер IR в SVG с видимыми заглушками"
 ```
 
 ---
@@ -5144,13 +5257,13 @@ git commit -m "docs: README и запись в базу знаний по ито
 
 ## Ревизия контракта — дельты к задачам 3–14
 
-> **ВНИМАНИЕ исполнителю задачи 12.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
+> **Все тела задач синхронизированы с контрактом.** Блоки кода в телах этих задач написаны против ПЕРВОЙ редакции контракта и содержат устаревшие конструкции, которые не скомпилируются:
 >
 > - ~~Task 9~~ — **переписана, тело актуально.**
 > - ~~Task 10~~ — **переписана, тело актуально.**
-> - Task 12 читает `run.fontFamily` и строит узлы без `kind`. Рендерер обязан переключаться по `kind`, рисовать `placeholder` видимо и подставлять `usedFamily` в `font-family`.
+> - ~~Task 12~~ — **переписана, тело актуально.**
 >
-> Эти тела переписываются координатором перед запуском задачи, как это было сделано для Task 2 и Task 3. Если задача досталась тебе с непереписанным телом — **останови работу и сообщи**, не пытайся сам согласовать код с контрактом: расхождений больше, чем видно из одного файла.
+> Задачи 2, 3, 6, 9, 10 и 12 переписаны под текущий контракт. Если в каком-то теле всё же встретится конструкция, не сходящаяся с `@h2d/ir`, — **останови работу и сообщи**, не пытайся согласовать сам: расхождений может быть больше, чем видно из одного файла.
 
 
 Design-ревью контракта IR (после реализации первой редакции в `5e09c07`) вернуло **changes required**. Task 2 переписан полностью. Ниже — что именно меняется в остальных задачах. **Исполнитель каждой задачи обязан прочитать свою дельту вместе с телом задачи**: тела задач ниже написаны против первой редакции контракта и в перечисленных местах устарели.
@@ -5214,7 +5327,11 @@ Design-ревью контракта IR (после реализации пер�
 
 1. `switch` по `kind`, исчерпывающий.
 2. `kind: 'placeholder'` рисуется **видимо**: пунктирная рамка и подпись из `placeholder.label`. Правило проекта требует, чтобы неподдерживаемое было видно.
-3. Продолжать плющить и сортировать по `paintOrder` — но **дополнительно обнаруживать переплетение** и печатать предупреждение: если `paintOrder` узла попадает внутрь диапазона `[min, max]` чужого поддерева, значит дерево Figma этот порядок выразить не сможет. Рендерер такой случай переживает, а плагин нет, и без этой проверки гейт остаётся зелёным при заведомо невыразимом макете.
+3. Продолжать плющить и сортировать по `paintOrder`. Обнаруживать переплетение рендереру **не нужно** — и это решение стоит объяснить, потому что ревью предлагало иначе.
+
+   Ревью предлагало вынести детектор в `@h2d/ir`, поскольку он нужен и рендереру, и плагину. Но если продюсер **записывает** переплетение диагностикой в бандл, вычислять его заново не нужно никому: плагин читает отчёт. Поэтому `findInterleaved` живёт в сериализаторе, где дерево проб уже под рукой, а Task 11 обязан породить `paintOrderInterleaved`. Так убирается дубликат, которого предложение ревью потребовало бы.
+
+   Рендерер переплетение переживает — он плющит и сортирует. Не переживает плагин, и именно поэтому знание нужно в бандле, а не в рендерере.
 4. Текст рендерится из `lines`, как раньше, но `usedFamily` подставляется в `font-family` — иначе диффится не тот шрифт, которым рисовал браузер.
 
 ### Task 13 — фикстуры
