@@ -3872,7 +3872,7 @@ import { readProbe, type LayoutProbe } from './probe.js'
 import {
   establishesStackingContext, findInterleaved, resolvePaintOrder,
 } from './stacking.js'
-import { readText } from './text.js'
+import { hasFontFallback, parseFontStack, readText } from './text.js'
 
 export type IdAllocator = () => string
 
@@ -4171,6 +4171,21 @@ const buildNode = (
   } else {
     const text = readText(el, cs, ctx.scrollX, ctx.scrollY)
     if (text.kind === 'text') {
+      /** Фактический шрифт отличается от объявленного — главный убийца
+       *  точности. Уровень error намеренно: `lines` содержат метрики
+       *  фактического шрифта, и если в Figma объявленный шрифт установлен,
+       *  плагин применит к нему чужие метрики и получит вылезающий текст,
+       *  считая при этом, что шрифт найден. */
+      if (hasFontFallback(cs)) {
+        const stack = parseFontStack(cs.fontFamily)
+        ctx.sink.report(
+          'error', DIAGNOSTIC_CODES.fontFallback,
+          `Объявлен "${stack[0] ?? '?'}", браузер рисовал ` +
+          `"${text.text.runs[0]?.usedFamily ?? '?'}". Метрики строк — от ` +
+          `фактического шрифта.`,
+          id, false,
+        )
+      }
       node = { ...base, kind: 'text', text: text.text }
     } else {
       if (text.kind === 'lost') {
@@ -5064,6 +5079,319 @@ git commit -m "feat(reference-renderer): рендер IR в SVG с видимы�
 </body></html>
 ```
 
+- [ ] **Step 4b: Создать семь фикстур, проверяющих диагностики и новые поля**
+
+Эти фикстуры существуют не для красоты картинки, а чтобы правило «молчаливый fallback — это баг» перестало быть словами. Без них диагностики отложенных фич не покрыты ничем.
+
+`fixtures/transformed/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>transformed</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font-family:Arial,sans-serif;padding:40px}
+  .row{display:flex;gap:40px}
+  .b{width:120px;height:60px;background:#3b82f6}
+  .rot{transform:rotate(15deg)}
+  .scl{transform:scale(1.5)}
+  .tr{transform:translate(20px,10px)}
+</style></head>
+<body><div class="row">
+  <div class="b rot"></div><div class="b scl"></div><div class="b tr"></div>
+</div></body></html>
+```
+
+`fixtures/gradient/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>gradient</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#fff}
+  .hero{height:160px;background:linear-gradient(135deg,#6366f1,#ec4899)}
+  .radial{height:120px;background:radial-gradient(circle,#22c55e,#0f766e)}
+</style></head>
+<body><div class="hero"></div><div class="radial"></div></body></html>
+```
+
+`fixtures/inline-text/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>inline-text</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#fff;font-family:Arial,sans-serif;padding:24px;font-size:16px}
+  p{width:320px;line-height:24px;margin-bottom:12px}
+</style></head>
+<body>
+  <p id="mixed">Hello <b>world</b> and <span style="color:red">red</span></p>
+  <p id="plain">Просто абзац без вложенных элементов</p>
+</body></html>
+```
+
+`fixtures/absolute-in-flex/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>absolute-in-flex</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  .card{position:relative;display:flex;gap:12px;padding:16px;background:#f1f5f9}
+  .cell{width:100px;height:60px;background:#0ea5e9}
+  .badge{position:absolute;top:4px;right:4px;width:40px;height:20px;background:#ef4444}
+  .grower{flex-grow:2;height:60px;background:#14b8a6}
+</style></head>
+<body><div class="card">
+  <div class="cell"></div><div class="grower"></div><div class="badge"></div>
+</div></body></html>
+```
+
+`fixtures/missing-font/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>missing-font</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#fff;padding:24px}
+  /* Первое семейство заведомо отсутствует: браузер нарисует Arial,
+     и боксы строк будут содержать метрики Arial, а не выдуманного шрифта. */
+  .missing{font-family:"Заведомо Отсутствующий Шрифт XYZ",Arial,sans-serif;
+    font-size:18px;line-height:26px}
+  .present{font-family:Arial,sans-serif;font-size:18px;line-height:26px}
+</style></head>
+<body>
+  <p class="missing">Текст семейством, которого нет в системе</p>
+  <p class="present">Текст существующим семейством</p>
+</body></html>
+```
+
+`fixtures/dashed-border/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>dashed-border</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px;display:flex;gap:16px}
+  .b{width:120px;height:80px;background:#fff}
+  .dashed{border:2px dashed #111}
+  .dotted{border:3px dotted #111}
+  /* double в Figma невыразим вовсе — обязан свестись к solid и диагностике */
+  .double{border:6px double #111}
+</style></head>
+<body>
+  <div class="b dashed"></div><div class="b dotted"></div><div class="b double"></div>
+</body></html>
+```
+
+`fixtures/text-transform/index.html`:
+```html
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>text-transform</title>
+<style>
+  *{margin:0;padding:0}
+  body{background:#fff;font-family:Arial,sans-serif;padding:24px;font-size:18px}
+  p{line-height:26px;margin-bottom:8px}
+  .up{text-transform:uppercase}
+  .cap{text-transform:capitalize}
+  .low{text-transform:lowercase}
+</style></head>
+<body>
+  <p class="up">строчный исходник станет прописным</p>
+  <p class="cap">каждое слово с большой буквы</p>
+  <p class="low">ПРОПИСНОЙ ИСХОДНИК СТАНЕТ СТРОЧНЫМ</p>
+</body></html>
+```
+
+- [ ] **Step 4c: Написать проверку диагностик и новых полей**
+
+Создать `tests/e2e/diagnostics.spec.ts`. Формулировка **положительная**: для каждой фикстуры перечислены коды, которые **обязаны** присутствовать. Отсутствие ожидаемого — провал. Это и есть машинная проверка правила проекта.
+
+```ts
+import { expect, test } from '@playwright/test'
+import { captureScreen, fixtureUrl } from './helpers/capture.js'
+
+/** Коды, обязанные появиться на каждой фикстуре. Список положительный
+ *  намеренно: «нет лишних диагностик» — слабое утверждение, а «есть
+ *  ожидаемая» — сильное, и именно оно ловит молчаливую потерю. */
+const EXPECTED: Record<string, readonly string[]> = {
+  transformed: ['deferred.transform'],
+  gradient: ['deferred.gradient'],
+  'missing-font': ['fidelity.font-fallback'],
+  'dashed-border': ['fidelity.stroke-style-flattened'],
+}
+
+for (const [fixture, codes] of Object.entries(EXPECTED)) {
+  test(`диагностики: ${fixture}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto(fixtureUrl(fixture))
+    const { report } = await captureScreen(page, 's0', 'Desktop')
+    const present = new Set(report.map((item) => item.code))
+    for (const code of codes) {
+      expect(
+        present.has(code),
+        `фикстура ${fixture} обязана породить "${code}", а в отчёте: ` +
+        `${[...present].join(', ') || '(пусто)'}`,
+      ).toBe(true)
+    }
+  })
+}
+
+test('transformed: диагностика уровня error на каждом трансформированном узле', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('transformed'))
+  const { report } = await captureScreen(page, 's0', 'Desktop')
+  const transforms = report.filter((item) => item.code === 'deferred.transform')
+  expect(transforms.length).toBe(3)
+  for (const item of transforms) {
+    expect(item.level).toBe('error')
+    expect(item.nodeId).not.toBeNull()
+  }
+})
+
+test('gradient: блок с градиентом НЕ приезжает молча прозрачным', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('gradient'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+  // Заливки у него действительно нет — градиенты в этом плане не
+  // переносятся. Но это обязано быть СКАЗАНО, а не умолчано.
+  const hero = screen.root.children[0]
+  expect(hero?.style.fills).toEqual([])
+  const explained = report.some(
+    (item) => item.code === 'deferred.gradient' && item.nodeId === hero?.id,
+  )
+  expect(explained, 'градиент без диагностики — молчаливая потеря').toBe(true)
+})
+
+test('inline-text: конкатенация ранов равна конкатенации строк', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('inline-text'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const collect = (node: typeof screen.root, out: typeof screen.root[]): void => {
+    out.push(node)
+    for (const child of node.children) collect(child, out)
+  }
+  const all: typeof screen.root[] = []
+  collect(screen.root, all)
+
+  const norm = (v: string): string => v.replace(/\s+/g, ' ').trim()
+  let checked = 0
+  for (const node of all) {
+    if (node.kind !== 'text') continue
+    checked += 1
+    const fromRuns = norm(node.text.runs.map((r) => r.text).join(''))
+    const fromLines = norm(node.text.lines.map((l) => l.text).join(''))
+    expect(fromRuns, `узел ${node.id} (${node.sourceTag})`).toBe(fromLines)
+  }
+  expect(checked, 'текстовых узлов не найдено — фикстура не сработала')
+    .toBeGreaterThan(1)
+})
+
+test('inline-text: "world" не дублируется между абзацем и вложенным b', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('inline-text'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const texts: string[] = []
+  const walk = (node: typeof screen.root): void => {
+    if (node.kind === 'text') texts.push(node.text.runs.map((r) => r.text).join(''))
+    for (const child of node.children) walk(child)
+  }
+  walk(screen.root)
+
+  const occurrences = texts.filter((t) => t.includes('world')).length
+  // Ровно один узел несёт "world" — сам <b>. Абзац несёт только
+  // собственный текст, без подграфа. Два вхождения означали бы, что
+  // плагин Figma нарисует слово дважды с наложением.
+  expect(occurrences, `"world" встретился в ${occurrences} узлах: ${texts.join(' | ')}`)
+    .toBe(1)
+})
+
+test('absolute-in-flex: участие в раскладке родителя различается по детям', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('absolute-in-flex'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const card = screen.root.children[0]
+  expect(card?.layout.mode).toBe('row')
+  const kids = card?.children ?? []
+  expect(kids).toHaveLength(3)
+
+  const positioning = kids.map((k) => k.selfLayout.positioning)
+  expect(positioning).toContain('absolute')
+  expect(positioning.filter((p) => p === 'flow')).toHaveLength(2)
+
+  const grower = kids.find((k) => k.selfLayout.grow === 2)
+  expect(grower, 'flex-grow: 2 должен доехать в selfLayout').toBeDefined()
+})
+
+test('missing-font: usedFamily — фактический шрифт, а не объявленный', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('missing-font'))
+  const { screen, fonts } = await captureScreen(page, 's0', 'Desktop')
+
+  const paragraphs = screen.root.children.filter((n) => n.kind === 'text')
+  expect(paragraphs).toHaveLength(2)
+
+  const first = paragraphs[0]
+  if (first === undefined || first.kind !== 'text') throw new Error('нет абзаца')
+  const run = first.text.runs[0]
+  expect(run?.fontStack[0]).toBe('Заведомо Отсутствующий Шрифт XYZ')
+  expect(run?.usedFamily).not.toBe('Заведомо Отсутствующий Шрифт XYZ')
+  expect(run?.usedFamily).toBe('Arial')
+
+  // collectFonts обязан отдать фактический шрифт: по нему плагин будет
+  // предзагружать, и объявленный там бесполезен.
+  expect(fonts.map((f) => f.family)).toContain('Arial')
+  expect(fonts.map((f) => f.family)).not.toContain('Заведомо Отсутствующий Шрифт XYZ')
+})
+
+test('dashed-border: стиль обводки доезжает, невыразимый сводится к solid', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('dashed-border'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const styles = screen.root.children.map((n) => n.style.stroke?.style)
+  expect(styles).toEqual(['dashed', 'dotted', 'solid'])
+  for (const child of screen.root.children) {
+    expect(child.style.stroke?.align).toBe('inside')
+  }
+})
+
+test('text-transform: преобразование применено к самой строке', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('text-transform'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const paragraphs = screen.root.children.filter((n) => n.kind === 'text')
+  expect(paragraphs).toHaveLength(3)
+
+  const textOf = (index: number): string => {
+    const node = paragraphs[index]
+    if (node === undefined || node.kind !== 'text') throw new Error('нет абзаца')
+    return node.text.runs.map((r) => r.text).join('')
+  }
+
+  // Эту потерю pixel-diff увидеть не может: рендерер сравнивал бы одну и
+  // ту же непреобразованную строку с обеих сторон и остался бы зелёным.
+  expect(textOf(0)).toBe('СТРОЧНЫЙ ИСХОДНИК СТАНЕТ ПРОПИСНЫМ')
+  expect(textOf(1)).toBe('Каждое Слово С Большой Буквы')
+  expect(textOf(2)).toBe('прописной исходник станет строчным')
+
+  // И строки тоже: инвариант контракта сверяет их конкатенации.
+  const first = paragraphs[0]
+  if (first === undefined || first.kind !== 'text') throw new Error('нет абзаца')
+  expect(first.text.lines.map((l) => l.text).join('')).toContain('ПРОПИСНЫМ')
+})
+```
+
 - [ ] **Step 5: Создать `playwright.config.ts`**
 
 `deviceScaleFactor: 1` обязателен: при 2 скриншоты браузера и SVG разойдутся по субпиксельному сглаживанию и диффы станут бессмысленными.
@@ -5155,7 +5483,11 @@ import { dirname, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 
-const FIXTURES = ['boxes', 'stacking', 'flex', 'text'] as const
+const FIXTURES = [
+  'boxes', 'stacking', 'flex', 'text',
+  'transformed', 'gradient', 'inline-text', 'absolute-in-flex',
+  'missing-font', 'dashed-border', 'text-transform',
+] as const
 
 const snapshotPath = (fixture: string, width: number): string =>
   resolve(repoRoot, 'fixtures', fixture, 'ir', `${width}.json`)

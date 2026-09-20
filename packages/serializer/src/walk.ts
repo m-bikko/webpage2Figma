@@ -17,7 +17,7 @@ import { readProbe, type LayoutProbe } from './probe.js'
 import {
   establishesStackingContext, findInterleaved, resolvePaintOrder,
 } from './stacking.js'
-import { readText } from './text.js'
+import { hasFontFallback, parseFontStack, readText } from './text.js'
 
 export type IdAllocator = () => string
 
@@ -328,6 +328,21 @@ const buildNode = (
   } else {
     const text = readText(el, cs, ctx.scrollX, ctx.scrollY)
     if (text.kind === 'text') {
+      /** Фактический шрифт отличается от объявленного — главный убийца
+       *  точности. Уровень error намеренно: `lines` содержат метрики
+       *  фактического шрифта, и если в Figma объявленный шрифт установлен,
+       *  плагин применит к нему чужие метрики и получит вылезающий текст,
+       *  считая при этом, что шрифт найден. */
+      if (hasFontFallback(cs)) {
+        const stack = parseFontStack(cs.fontFamily)
+        ctx.sink.report(
+          'error', DIAGNOSTIC_CODES.fontFallback,
+          `Объявлен "${stack[0] ?? '?'}", браузер рисовал ` +
+          `"${text.text.runs[0]?.usedFamily ?? '?'}". Метрики строк — от ` +
+          `фактического шрифта.`,
+          id, false,
+        )
+      }
       node = { ...base, kind: 'text', text: text.text }
     } else {
       if (text.kind === 'lost') {
