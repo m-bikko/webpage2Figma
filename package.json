@@ -2,14 +2,17 @@
   "name": "html2design",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
-    "build:serializer": "pnpm --filter @h2d/serializer build"
+    "build:serializer": "pnpm --filter @h2d/serializer build",
+    "capture": "node scripts/capture.mjs"
   },
   "devDependencies": {
     "@h2d/ir": "workspace:*",
