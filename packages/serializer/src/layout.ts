@@ -1,7 +1,12 @@
 import type { LayoutAlign, LayoutJustify, LayoutMode, NodeLayout } from '@h2d/ir'
 import { parsePx } from './css/length.js'
 
-const gapValue = (value: string): number => (value === 'normal' ? 0 : parsePx(value))
+/** `column-gap: normal` для flex и grid означает ноль, и `parsePx` уже
+ *  возвращает ноль на любом неразбираемом значении — это его
+ *  задокументированный и протестированный контракт. Отдельная ветка на
+ *  'normal' была бы мёртвым кодом: её удаление не смогло бы сломать ни
+ *  один тест, то есть проверить её существование нечем. */
+const gapValue = (value: string): number => parsePx(value)
 
 const ALIGN_MAP: Record<string, LayoutAlign> = {
   'flex-start': 'start',
