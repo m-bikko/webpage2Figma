@@ -196,6 +196,27 @@ const gradientDef = (id: string, gradient: Gradient, rect: Rect): string => {
   )
 }
 
+/** Одна фигура: прямоугольник, если все углы равны, иначе путь с дугами.
+ *  Вынесено отдельно потому, что узел может дать ДВЕ фигуры — цвет и
+ *  градиент поверх него — и обе обязаны иметь одинаковую геометрию. */
+const shapeFor = (
+  node: IrNode,
+  rect: Rect,
+  corner: Corner,
+  attrs: string[],
+  dash: string,
+): string => {
+  const uniform = uniformCorner(corner)
+  if (uniform === null) {
+    return `<path d="${cornerPath(rect, corner)}" ${attrs.join(' ')}${dash}/>`
+  }
+  const rx = uniform > 0 ? ` rx="${uniform}"` : ''
+  return (
+    `<rect x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}"` +
+    `${rx} ${attrs.join(' ')}${dash}/>`
+  )
+}
+
 const renderBox = (node: IrNode, defs: string[]): string => {
   const { style } = node
   const solid = style.fills.find((fill) => fill.kind === 'solid')
@@ -216,11 +237,21 @@ const renderBox = (node: IrNode, defs: string[]): string => {
   const rect = insetRect(node.rect, ringed ? null : style.stroke)
   const attrs: string[] = []
 
+  /** Когда есть и цвет, и градиент, рисуются ОБА — стопкой, как красит
+   *  браузер: `background-image` ложится поверх `background-color`.
+   *
+   *  Раньше цвет отбрасывался, и это было измерено как расхождение 30%
+   *  (36409 из 120000 пикселей) на полупрозрачном градиенте поверх цвета:
+   *  браузер смешивает, рендерер рисовал только градиент. Ни одна фикстура
+   *  этот случай не видела, то есть у гейта было слепое пятно. */
+  const underlay = gradientFill !== undefined && solid !== undefined
+      && solid.kind === 'solid'
+    ? shapeFor(node, rect, style.corner,
+        [`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`],
+        '')
+    : ''
+
   if (gradientFill !== undefined && gradientFill.kind === 'gradient') {
-    /** Градиент поверх цвета: если есть оба, рисуется он. Сплошной цвет под
-     *  ним виден только через прозрачные участки градиента, а такой случай
-     *  этот план не воспроизводит — и это осознанно, потому что проверить
-     *  его нечем без фикстуры с полупрозрачным градиентом. */
     const gradientId = `grad-${node.id}`
     defs.push(gradientDef(gradientId, gradientFill.gradient, rect))
     attrs.push(`fill="url(#${gradientId})"`)
@@ -245,15 +276,7 @@ const renderBox = (node: IrNode, defs: string[]): string => {
 
   const ring = ringed && style.stroke !== null ? borderRing(node, style.stroke) : ''
   const dash = style.stroke === null || ringed ? '' : dashArray(style.stroke)
-  const uniform = uniformCorner(style.corner)
-  if (uniform === null) {
-    return `<path d="${cornerPath(rect, style.corner)}" ${attrs.join(' ')}${dash}/>${ring}`
-  }
-  const rx = uniform > 0 ? ` rx="${uniform}"` : ''
-  return (
-    `<rect x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}"` +
-    `${rx} ${attrs.join(' ')}${dash}/>${ring}`
-  )
+  return underlay + shapeFor(node, rect, style.corner, attrs, dash) + ring
 }
 
 /** Базовая линия ставится из бокса строки: `y + (h + fontSize * R) / 2`.

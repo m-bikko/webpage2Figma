@@ -12,8 +12,15 @@
   .corner{height:100px;background:linear-gradient(to top right,#0ea5e9,#312e81)}
   .stops{height:80px;
     background:linear-gradient(to right,#ef4444 0%,#fbbf24 30%,#22c55e 100%)}
+  /* Цвет И полупрозрачный градиент на одном узле. Раздельные свойства, а не
+     сокращение background: оно сбрасывает цвет. Браузер смешивает слои;
+     рендерер, отбрасывавший цвет, давал здесь 30% расхождения, и ни одна
+     фикстура этого не видела. */
+  .layered{height:100px;background-color:#1d4ed8;
+    background-image:linear-gradient(to right,rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.85) 100%)}
 </style></head>
 <body>
   <div class="hero"></div><div class="vertical"></div>
-  <div class="horizontal"></div><div class="corner"></div><div class="stops"></div>
+  <div class="horizontal"></div><div class="corner"></div><div class="stops"></div><div class="layered"></div>
 </body></html>
