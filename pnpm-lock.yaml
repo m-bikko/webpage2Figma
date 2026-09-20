@@ -11,6 +11,9 @@ importers:
       '@h2d/ir':
         specifier: workspace:*
         version: link:packages/ir
+      '@h2d/reference-renderer':
+        specifier: workspace:*
+        version: link:packages/reference-renderer
       '@playwright/test':
         specifier: ^1.48.0
         version: 1.63.0
@@ -44,6 +47,12 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  packages/reference-renderer:
+    dependencies:
+      '@h2d/ir':
+        specifier: workspace:*
+        version: link:../ir
 
   packages/serializer:
     dependencies:

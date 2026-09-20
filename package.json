@@ -4,7 +4,7 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "typecheck": "tsc -b packages/ir packages/serializer",
+    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@h2d/ir": "workspace:*",
+    "@h2d/reference-renderer": "workspace:*",
     "@playwright/test": "^1.48.0",
     "@types/node": "^22.7.0",
     "@types/pixelmatch": "^5.2.6",
