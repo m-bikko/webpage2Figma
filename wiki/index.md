@@ -3,7 +3,7 @@ title: Индекс базы знаний
 type: concept
 tags: [index]
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 sources: []
 ---
 
@@ -25,6 +25,7 @@ sources: []
 
 - [[ir-bundle]] — формат обмена между extension и плагином Figma
 - [[component-detection]] — слои B и C, как рождаются компоненты Figma
+- [[fixture-suite]] — 11 фикстур и 55 снапшотов IR в настоящем Chrome
 
 ## Sources
 
@@ -33,3 +34,4 @@ sources: []
 ## Analyses
 
 - [[why-not-rest-api]] — почему Figma REST API не годится и система обязана быть плагином
+- [[font-availability-detection]] — почему `document.fonts.check` не отвечает на свой же вопрос
