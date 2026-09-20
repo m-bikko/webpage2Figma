@@ -17,7 +17,7 @@
         "x": 0,
         "y": 0,
         "w": 1920,
-        "h": 280
+        "h": 500
       },
       "paintOrder": 0,
       "isStackingContext": false,
@@ -100,7 +100,42 @@
             "shrink": 1
           },
           "style": {
-            "fills": [],
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "linear",
+                  "from": {
+                    "x": 0.229167,
+                    "y": -2.75
+                  },
+                  "to": {
+                    "x": 0.770833,
+                    "y": 3.75
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 99,
+                        "g": 102,
+                        "b": 241,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 236,
+                        "g": 72,
+                        "b": 153,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
             "stroke": null,
             "corner": {
               "tl": 0,
@@ -125,7 +160,7 @@
             "x": 0,
             "y": 160,
             "w": 1920,
-            "h": 120
+            "h": 80
           },
           "paintOrder": 2,
           "isStackingContext": false,
@@ -150,7 +185,306 @@
             "shrink": 1
           },
           "style": {
-            "fills": [],
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "linear",
+                  "from": {
+                    "x": 0.5,
+                    "y": 0
+                  },
+                  "to": {
+                    "x": 0.5,
+                    "y": 1
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 34,
+                        "g": 197,
+                        "b": 94,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 15,
+                        "g": 118,
+                        "b": 110,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n3",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 240,
+            "w": 1920,
+            "h": 80
+          },
+          "paintOrder": 3,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "linear",
+                  "from": {
+                    "x": 0,
+                    "y": 0.5
+                  },
+                  "to": {
+                    "x": 1,
+                    "y": 0.5
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 245,
+                        "g": 158,
+                        "b": 11,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 180,
+                        "g": 83,
+                        "b": 9,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n4",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 320,
+            "w": 1920,
+            "h": 100
+          },
+          "paintOrder": 4,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "linear",
+                  "from": {
+                    "x": 0.497295,
+                    "y": 1.497295
+                  },
+                  "to": {
+                    "x": 0.502705,
+                    "y": -0.497295
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 14,
+                        "g": 165,
+                        "b": 233,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 49,
+                        "g": 46,
+                        "b": 129,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n5",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 420,
+            "w": 1920,
+            "h": 80
+          },
+          "paintOrder": 5,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "linear",
+                  "from": {
+                    "x": 0,
+                    "y": 0.5
+                  },
+                  "to": {
+                    "x": 1,
+                    "y": 0.5
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 239,
+                        "g": 68,
+                        "b": 68,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 0.3,
+                      "color": {
+                        "r": 251,
+                        "g": 191,
+                        "b": 36,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 34,
+                        "g": 197,
+                        "b": 94,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
             "stroke": null,
             "corner": {
               "tl": 0,
@@ -172,22 +506,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "info",
-      "code": "deferred.gradient",
-      "message": "background-image \"linear-gradient(135deg, rgb(99, 102, 241), rgb(236, 72, 153)\" не переносится в этом плане.",
-      "nodeId": "n1",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "info",
-      "code": "deferred.gradient",
-      "message": "background-image \"radial-gradient(circle, rgb(34, 197, 94), rgb(15, 118, 110))\" не переносится в этом плане.",
-      "nodeId": "n2",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

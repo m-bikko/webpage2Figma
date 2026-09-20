@@ -9,6 +9,7 @@ import type {
 } from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
+import { parseLinearGradient } from './css/gradient.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
 import type { DiagnosticSink } from './diagnostics.js'
@@ -85,20 +86,37 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
 }
 
 const readFills = (
+  el: Element,
   cs: CSSStyleDeclaration,
   sink: DiagnosticSink,
   id: string,
 ): Fill[] => {
+  const fills: Fill[] = []
+
   const background = parseColor(cs.backgroundColor)
   if (background === null) {
     sink.report(
       'warning', DIAGNOSTIC_CODES.colorUnparsed,
       `Не удалось разобрать background-color: "${cs.backgroundColor}"`, id, false,
     )
-    return []
+  } else if (!isInvisible(background)) {
+    fills.push({ kind: 'solid', color: background })
   }
-  if (isInvisible(background)) return []
-  return [{ kind: 'solid', color: background }]
+
+  /** Градиент кладётся ПОВЕРХ цвета фона — так же, как красит браузер:
+   *  `background-image` рисуется над `background-color`. Порядок в массиве
+   *  `fills` и есть порядок отрисовки. */
+  if (cs.backgroundImage !== 'none') {
+    const rect = el.getBoundingClientRect()
+    const gradient = parseLinearGradient(cs.backgroundImage, {
+      w: rect.width, h: rect.height,
+    })
+    if (gradient !== null) {
+      fills.push({ kind: 'gradient', gradient })
+    }
+  }
+
+  return fills
 }
 
 const BLEND_MODES = new Set([
@@ -108,6 +126,7 @@ const BLEND_MODES = new Set([
 ])
 
 const readStyle = (
+  el: Element,
   cs: CSSStyleDeclaration,
   sink: DiagnosticSink,
   id: string,
@@ -140,7 +159,7 @@ const readStyle = (
     : 'normal'
 
   return {
-    fills: readFills(cs, sink, id),
+    fills: readFills(el, cs, sink, id),
     stroke: readStroke(cs),
     corner: readCorner(cs),
     shadows: parseBoxShadow(cs.boxShadow),
@@ -174,14 +193,25 @@ const reportGaps = (
   id: string,
 ): void => {
   if (cs.backgroundImage !== 'none') {
-    const repeating = cs.backgroundImage.includes('repeating-')
-    sink.report(
-      repeating ? 'warning' : 'info',
-      repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
-                : DIAGNOSTIC_CODES.deferredGradient,
-      `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится в этом плане.`,
-      id, false,
-    )
+    const rect = el.getBoundingClientRect()
+    const linear = parseLinearGradient(cs.backgroundImage, {
+      w: rect.width, h: rect.height,
+    })
+    /** Диагностика только на то, что НЕ разобрали. Линейные градиенты
+     *  теперь переносятся, и сообщать о них было бы шумом, а шум учит
+     *  игнорировать отчёт целиком. Радиальные, конические и repeating
+     *  по-прежнему не переносятся и обязаны быть названы. */
+    if (linear === null) {
+      const repeating = cs.backgroundImage.includes('repeating-')
+      sink.report(
+        repeating ? 'warning' : 'info',
+        repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
+                  : DIAGNOSTIC_CODES.deferredGradient,
+        `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится: ` +
+        `в этом плане поддержан только linear-gradient.`,
+        id, false,
+      )
+    }
   }
   if (cs.transform !== 'none') {
     sink.report(
@@ -318,7 +348,7 @@ const buildNode = (
     transform: null,
     layout: readLayout(cs),
     selfLayout: readSelfLayout(cs),
-    style: readStyle(cs, ctx.sink, id),
+    style: readStyle(el, cs, ctx.sink, id),
     children,
   }
 

@@ -5,6 +5,15 @@
   *{margin:0;padding:0}
   body{background:#fff}
   .hero{height:160px;background:linear-gradient(135deg,#6366f1,#ec4899)}
-  .radial{height:120px;background:radial-gradient(circle,#22c55e,#0f766e)}
+  .vertical{height:80px;background:linear-gradient(#22c55e,#0f766e)}
+  .horizontal{height:80px;background:linear-gradient(to right,#f59e0b,#b45309)}
+  /* Неквадратный бокс с угловым ключевым словом — здесь ловится
+     перепутанный atan2, невидимый на квадрате. */
+  .corner{height:100px;background:linear-gradient(to top right,#0ea5e9,#312e81)}
+  .stops{height:80px;
+    background:linear-gradient(to right,#ef4444 0%,#fbbf24 30%,#22c55e 100%)}
 </style></head>
-<body><div class="hero"></div><div class="radial"></div></body></html>
+<body>
+  <div class="hero"></div><div class="vertical"></div>
+  <div class="horizontal"></div><div class="corner"></div><div class="stops"></div>
+</body></html>

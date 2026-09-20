@@ -11,7 +11,6 @@ import { captureScreen, fixtureUrl } from './helpers/capture.js'
  *  падает не по той причине, по которой обещает. */
 const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
   transformed: ['deferred.transform'],
-  gradient: ['deferred.gradient'],
   'missing-font': ['fidelity.font-fallback'],
   'dashed-border': ['fidelity.stroke-style-flattened'],
   /** Признанное упрощение резолвера: позиционированный узел с
@@ -87,18 +86,30 @@ test('transformed: диагностика уровня error на каждом �
   }
 })
 
-test('gradient: блок с градиентом НЕ приезжает молча прозрачным', async ({ page }) => {
+test('gradient: линейный градиент переносится и НЕ диагностируется', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('gradient'))
   const { screen, report } = await captureScreen(page, 's0', 'Desktop')
-  // Заливки у него действительно нет — градиенты в этом плане не
-  // переносятся. Но это обязано быть СКАЗАНО, а не умолчано.
+
   const hero = screen.root.children[0]
-  expect(hero?.style.fills).toEqual([])
-  const explained = report.some(
-    (item) => item.code === 'deferred.gradient' && item.nodeId === hero?.id,
-  )
-  expect(explained, 'градиент без диагностики — молчаливая потеря').toBe(true)
+  const fill = hero?.style.fills.find((f) => f.kind === 'gradient')
+  expect(fill, 'линейный градиент обязан доехать заливкой').toBeDefined()
+  if (fill?.kind !== 'gradient') throw new Error('не градиент')
+  expect(fill.gradient.stops.length).toBeGreaterThanOrEqual(2)
+
+  // Разобранный градиент диагностировать не нужно: это был бы шум.
+  expect(report.some((i) => i.nodeId === hero?.id && i.code === 'deferred.gradient'))
+    .toBe(false)
+})
+
+test('radial-gradient: радиальный диагностируется, а не теряется молча', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('radial-gradient'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+  const node = screen.root.children[0]
+  expect(node?.style.fills.some((f) => f.kind === 'gradient')).toBe(false)
+  expect(report.some((i) => i.nodeId === node?.id && i.code === 'deferred.gradient'))
+    .toBe(true)
 })
 
 test('inline-text: конкатенация ранов равна конкатенации строк', async ({ page }) => {

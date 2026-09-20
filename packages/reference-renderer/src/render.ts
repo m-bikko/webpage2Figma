@@ -1,5 +1,5 @@
 import type {
-  Corner, IrNode, Rect, Rgba8, Screen, Shadow, Sides, Stroke, TextRun,
+  Corner, Gradient, IrNode, Rect, Rgba8, Screen, Shadow, Sides, Stroke, TextRun,
 } from '@h2d/ir'
 
 const escapeXml = (value: string): string =>
@@ -173,11 +173,38 @@ const borderRing = (node: IrNode, stroke: Stroke): string => {
   )
 }
 
+/** Градиент в АБСОЛЮТНЫХ координатах, а не в `objectBoundingBox`.
+ *
+ *  `objectBoundingBox` масштабирует систему координат неравномерно и
+ *  искажает угол на неквадратном боксе: градиент под 45° на широком блоке
+ *  наклонился бы не так, как в браузере. `userSpaceOnUse` от этого свободен,
+ *  поэтому нормализованные ручки контракта переводятся здесь в пиксели. */
+const gradientDef = (id: string, gradient: Gradient, rect: Rect): string => {
+  const x1 = rect.x + gradient.from.x * rect.w
+  const y1 = rect.y + gradient.from.y * rect.h
+  const x2 = rect.x + gradient.to.x * rect.w
+  const y2 = rect.y + gradient.to.y * rect.h
+  const stops = gradient.stops
+    .map((stop) =>
+      `<stop offset="${stop.offset}" stop-color="${rgb(stop.color)}" ` +
+      `stop-opacity="${stop.color.a}"/>`,
+    )
+    .join('')
+  return (
+    `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" ` +
+    `x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient>`
+  )
+}
+
 const renderBox = (node: IrNode, defs: string[]): string => {
   const { style } = node
   const solid = style.fills.find((fill) => fill.kind === 'solid')
+  const gradientFill = style.fills.find((fill) => fill.kind === 'gradient')
   const hasShadow = style.shadows.length > 0
-  if (solid === undefined && style.stroke === null && !hasShadow) return ''
+  if (
+    solid === undefined && gradientFill === undefined
+    && style.stroke === null && !hasShadow
+  ) return ''
 
   /** Неравные стороны рисуются кольцом, а не обводкой; тогда заливка
    *  занимает ВЕСЬ border box, как в CSS с `background-clip: border-box`,
@@ -189,7 +216,15 @@ const renderBox = (node: IrNode, defs: string[]): string => {
   const rect = insetRect(node.rect, ringed ? null : style.stroke)
   const attrs: string[] = []
 
-  if (solid !== undefined && solid.kind === 'solid') {
+  if (gradientFill !== undefined && gradientFill.kind === 'gradient') {
+    /** Градиент поверх цвета: если есть оба, рисуется он. Сплошной цвет под
+     *  ним виден только через прозрачные участки градиента, а такой случай
+     *  этот план не воспроизводит — и это осознанно, потому что проверить
+     *  его нечем без фикстуры с полупрозрачным градиентом. */
+    const gradientId = `grad-${node.id}`
+    defs.push(gradientDef(gradientId, gradientFill.gradient, rect))
+    attrs.push(`fill="url(#${gradientId})"`)
+  } else if (solid !== undefined && solid.kind === 'solid') {
     attrs.push(`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`)
   } else {
     attrs.push('fill="none"')
