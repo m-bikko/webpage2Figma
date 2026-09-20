@@ -210,43 +210,58 @@ export const findInterleaved = (
 ): string[] => {
   const interleaved: string[] = []
 
-  /** Диапазон порядка отрисовки поддерева плюс количество узлов в нём. */
-  const measure = (p: LayoutProbe): { min: number; max: number; count: number } => {
-    const own = order.get(p.id)
-    let min = own ?? Number.POSITIVE_INFINITY
-    let max = own ?? Number.NEGATIVE_INFINITY
-    let count = own === undefined ? 0 : 1
-    for (const child of p.children) {
-      const m = measure(child)
-      min = Math.min(min, m.min)
-      max = Math.max(max, m.max)
-      count += m.count
-    }
-    return { min, max, count }
+  const subtreeIds = (p: LayoutProbe, out: Set<string>): Set<string> => {
+    out.add(p.id)
+    for (const child of p.children) subtreeIds(child, out)
+    return out
   }
 
-  /** Проверка НЕПРЕРЫВНОСТИ, а не пересечения диапазонов.
+  const all: LayoutProbe[] = []
+  const flatten = (p: LayoutProbe): void => {
+    all.push(p)
+    for (const child of p.children) flatten(child)
+  }
+  flatten(root)
+
+  /** Помечается только вклинивание узла, который МОЖЕТ перекрывать —
+   *  участника стекинга или создателя контекста.
    *
-   *  Смысл прямой: если поддерево занимает диапазон шириной `max - min + 1`,
-   *  а узлов в нём меньше, значит внутрь его диапазона вклинился чужой
-   *  узел. Именно это дерево Figma выразить не может: там z-порядок задаётся
-   *  порядком среди сиблингов, то есть поддерево обязано красится подряд.
-   *
-   *  Попарное сравнение сиблингов на пересечение диапазонов тут не годится:
-   *  случай подъёма даёт ВЛОЖЕННОСТЬ, а не пересечение. Для
-   *  `root > [wrapper > [P z=5], B z=3]` порядок верный `root wrapper B P`,
-   *  и диапазон B это [2,2] ВНУТРИ [1,3] у wrapper — условие на пересечение
-   *  такое не видит. Проверка непрерывности видит: у wrapper ширина 3,
-   *  а узлов 2. Бонусом она линейна и ловит не только соседей. */
-  const visit = (p: LayoutProbe): void => {
-    const m = measure(p)
-    if (m.count > 0 && m.max - m.min + 1 !== m.count) {
-      interleaved.push(p.id)
+   *  Ограничение обязательное, иначе диагностика превращается в шум.
+   *  По CSS 2.1 Appendix E фоны блоков красятся на шаге 3, а инлайновое
+   *  содержимое на шаге 5, поэтому `<b>` внутри первого абзаца красится
+   *  ПОСЛЕ второго абзаца, и диапазон первого оказывается разорван.
+   *  Порядок при этом верный, а для Figma безразличен: инлайновый текст
+   *  не перекрывает соседний блок, и вложенность даёт тот же результат.
+   *  Без этого ограничения диагностика срабатывала бы на каждом абзаце со
+   *  ссылкой или выделением, за которым идёт другой абзац — то есть почти
+   *  на каждой странице. Диагностика, срабатывающая всегда, учит
+   *  игнорировать отчёт целиком. */
+  const canOverlap = (p: LayoutProbe): boolean =>
+    establishesStackingContext(p) || isStackingParticipantExported(p)
+
+  for (const node of all) {
+    const own = order.get(node.id)
+    if (own === undefined) continue
+
+    const ids = subtreeIds(node, new Set<string>())
+    let min = own
+    let max = own
+    for (const id of ids) {
+      const value = order.get(id)
+      if (value === undefined) continue
+      min = Math.min(min, value)
+      max = Math.max(max, value)
     }
-    for (const child of p.children) visit(child)
+    if (max - min + 1 === ids.size) continue
+
+    const intruder = all.find((other) => {
+      if (ids.has(other.id)) return false
+      const value = order.get(other.id)
+      if (value === undefined) return false
+      return value > min && value < max && canOverlap(other)
+    })
+    if (intruder !== undefined) interleaved.push(node.id)
   }
 
-  // Корень не проверяется: его диапазон по определению покрывает всё.
-  for (const child of root.children) visit(child)
   return [...new Set(interleaved)]
 }

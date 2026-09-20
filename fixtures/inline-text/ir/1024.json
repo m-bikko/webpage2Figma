@@ -420,14 +420,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "warning",
-      "code": "fidelity.paint-order-interleaved",
-      "message": "Поддерево красится с разрывом: дерево Figma такой порядок выразить не может, потому что там z-порядок задаётся порядком среди сиблингов.",
-      "nodeId": "n1",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }
