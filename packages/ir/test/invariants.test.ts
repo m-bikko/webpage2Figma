@@ -276,7 +276,10 @@ describe('checkInvariants: отложенные фичи обязаны диаг
   it('ловит transform без diagnostic', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,
-      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+      transform: {
+        angle: 0.26, scaleX: 1, scaleY: 1,
+        translateX: 0, translateY: 0, originX: 50, originY: 25,
+      },
     })
     expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
       .toContain('deferred.undiagnosed')
@@ -285,7 +288,10 @@ describe('checkInvariants: отложенные фичи обязаны диаг
   it('принимает transform с парной диагностикой deferred.transform', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,
-      transform: { angle: 0.26, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 },
+      transform: {
+        angle: 0.26, scaleX: 1, scaleY: 1,
+        translateX: 0, translateY: 0, originX: 50, originY: 25,
+      },
     })
     const b = bundle({
       screens: [screen({ root })],

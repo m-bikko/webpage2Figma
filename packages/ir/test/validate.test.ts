@@ -75,6 +75,56 @@ describe('parseBundle: схема', () => {
     })
     expect(parseBundle(b).ok).toBe(false)
   })
+
+  it('принимает градиентную заливку', () => {
+    const b = bundle({
+      screens: [screen({
+        root: frameNode({
+          style: {
+            ...frameNode().style,
+            fills: [{
+              kind: 'gradient',
+              gradient: {
+                kind: 'linear',
+                from: { x: 0, y: 0 },
+                to: { x: 1, y: 1 },
+                stops: [
+                  { offset: 0, color: { r: 99, g: 102, b: 241, a: 1 } },
+                  { offset: 1, color: { r: 236, g: 72, b: 153, a: 1 } },
+                ],
+              },
+            }],
+          },
+        }),
+      })],
+    })
+    expect(parseBundle(b).ok).toBe(true)
+  })
+
+  it('отклоняет градиент из одной остановки — это сплошная заливка', () => {
+    const b = bundle({
+      screens: [screen({
+        root: frameNode({
+          style: {
+            ...frameNode().style,
+            fills: [{
+              kind: 'gradient',
+              gradient: {
+                kind: 'linear',
+                from: { x: 0, y: 0 },
+                to: { x: 1, y: 1 },
+                stops: [{ offset: 0, color: { r: 0, g: 0, b: 0, a: 1 } }],
+              },
+            }],
+          },
+        }),
+      })],
+    })
+    // Градиент из одной остановки — сплошной цвет. Разрешить его значило бы
+    // допустить два представления одного и того же, а потребители выбрали
+    // бы разные.
+    expect(parseBundle(b).ok).toBe(false)
+  })
 })
 
 describe('parseBundle: инварианты', () => {

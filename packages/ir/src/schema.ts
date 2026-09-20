@@ -33,6 +33,23 @@ const transform = z.object({
   scaleY: z.number(),
   translateX: z.number(),
   translateY: z.number(),
+  originX: z.number(),
+  originY: z.number(),
+})
+
+const gradientStop = z.object({
+  offset: z.number().min(0).max(1),
+  color: rgba8,
+})
+
+const gradient = z.object({
+  kind: z.literal('linear'),
+  from: z.object({ x: z.number(), y: z.number() }),
+  to: z.object({ x: z.number(), y: z.number() }),
+  /** Минимум две остановки: градиент из одной — это сплошная заливка,
+   *  и такой Fill обязан быть solid, иначе потребители разойдутся в том,
+   *  что рисовать. */
+  stops: z.array(gradientStop).min(2),
 })
 
 const blendMode = z.enum([
@@ -54,6 +71,7 @@ const imageRef = z.object({ assetId: z.string().min(1), placement: imagePlacemen
 const fill = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('solid'), color: rgba8 }),
   z.object({ kind: z.literal('image'), ref: imageRef }),
+  z.object({ kind: z.literal('gradient'), gradient }),
 ])
 
 const stroke = z.object({
