@@ -32,6 +32,12 @@ export const DIAGNOSTIC_CODES = {
   strokeStyleFlattened: 'fidelity.stroke-style-flattened',
   stickyFlattened: 'fidelity.sticky-flattened',
   paintOrderInterleaved: 'fidelity.paint-order-interleaved',
+  /** Порядок отрисовки приближён: позиционированный узел с
+   *  `z-index: auto` контекста не создаёт, и его z-индексированные
+   *  потомки должны подниматься к предку-контексту, а резолвер
+   *  считает такой узел атомарным. Сознательное упрощение, но
+   *  молчать о нём нельзя: порядок может отличаться от браузерного. */
+  paintOrderApproximated: 'fidelity.paint-order-approximated',
 } as const
 
 export type DiagnosticCode = (typeof DIAGNOSTIC_CODES)[keyof typeof DIAGNOSTIC_CODES]

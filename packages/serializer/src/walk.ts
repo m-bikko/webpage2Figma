@@ -15,7 +15,8 @@ import type { DiagnosticSink } from './diagnostics.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
 import {
-  establishesStackingContext, findInterleaved, resolvePaintOrder,
+  establishesStackingContext, findApproximatedOrder, findInterleaved,
+  resolvePaintOrder,
 } from './stacking.js'
 import { hasFontFallback, parseFontStack, readText } from './text.js'
 
@@ -443,6 +444,17 @@ export const walkDocument = (
   const contexts = new Set<string>()
   collectStackingContexts(built.probe, contexts)
   applyPaintOrder(built.node, order, contexts)
+
+  for (const id of findApproximatedOrder(built.probe)) {
+    sink.report(
+      'warning', DIAGNOSTIC_CODES.paintOrderApproximated,
+      'Порядок отрисовки приближён: у этого узла position задан, а ' +
+      'z-index равен auto, поэтому по CSS его позиционированные потомки ' +
+      'должны участвовать в стекинге предка, а не его собственном. ' +
+      'Резолвер считает узел атомарным — порядок может отличаться.',
+      id, false,
+    )
+  }
 
   for (const id of findInterleaved(built.probe, order)) {
     sink.report(

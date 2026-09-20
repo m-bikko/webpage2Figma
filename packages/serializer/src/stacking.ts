@@ -29,6 +29,10 @@ export const establishesStackingContext = (p: LayoutProbe): boolean => {
 const isStackingParticipant = (p: LayoutProbe): boolean =>
   isPositioned(p) || (p.parentIsFlexOrGrid && p.zIndex !== 'auto')
 
+/** Тот же предикат под экспортируемым именем: нужен детектору
+ *  приближения, а дублировать логику нельзя. */
+export const isStackingParticipantExported = isStackingParticipant
+
 type Bucket = 'negative' | 'flow' | 'float' | 'inline' | 'auto' | 'positive'
 
 type Groups = Record<Bucket, LayoutProbe[]>
@@ -146,6 +150,51 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
 
   paintUnit(root)
   return order
+}
+
+/** Находит узлы, для которых порядок отрисовки ПРИБЛИЖЁН.
+ *
+ *  `isStackingParticipant` считает атомарным любой позиционированный узел,
+ *  включая `z-index: auto`. По CSS 2.1 Appendix E шаг 8 такой узел
+ *  красится как если бы создавал контекст, **но его позиционированные
+ *  потомки и потомки, создающие контекст, принадлежат РОДИТЕЛЬСКОМУ
+ *  контексту**, то есть должны подниматься сквозь него. Резолвер этого не
+ *  делает — сознательное упрощение, подтверждённое в настоящем Chrome.
+ *
+ *  Упрощение допустимо, молчание о нём — нет. Функция находит ровно те
+ *  случаи, где оно могло сказаться: позиционированный узел с
+ *  `z-index: auto`, в поддереве которого есть участник стекинга.
+ *  Там, где таких потомков нет, приближение ни на что не влияет и
+ *  диагностика была бы шумом.
+ *
+ *  Замену упрощения настоящим подъёмом ведёт план 2: у этого алгоритма
+ *  уже три раунда исправлений, каждый вносил новый дефект, и четвёртый
+ *  без падающего pixel-diff в качестве ориентира делать не стоит. */
+export const findApproximatedOrder = (root: LayoutProbe): string[] => {
+  const approximated: string[] = []
+
+  const hasParticipantInside = (p: LayoutProbe): boolean =>
+    p.children.some(
+      (child) =>
+        establishesStackingContext(child) ||
+        isStackingParticipantExported(child) ||
+        hasParticipantInside(child),
+    )
+
+  const visit = (p: LayoutProbe): void => {
+    if (
+      p.position !== 'static' &&
+      p.zIndex === 'auto' &&
+      !establishesStackingContext(p) &&
+      hasParticipantInside(p)
+    ) {
+      approximated.push(p.id)
+    }
+    for (const child of p.children) visit(child)
+  }
+
+  visit(root)
+  return approximated
 }
 
 /** Позиционированные потомки узла, который сам не создаёт контекст,

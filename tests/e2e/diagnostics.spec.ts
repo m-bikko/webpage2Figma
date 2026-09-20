@@ -14,6 +14,13 @@ const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
   gradient: ['deferred.gradient'],
   'missing-font': ['fidelity.font-fallback'],
   'dashed-border': ['fidelity.stroke-style-flattened'],
+  /** Признанное упрощение резолвера: позиционированный узел с
+   *  `z-index: auto` считается атомарным, хотя по CSS его
+   *  z-индексированные потомки должны подниматься к предку. Молчать
+   *  о нём нельзя, поэтому диагностика обязана присутствовать —
+   *  и эта проверка не даст ей потеряться при будущих правках. */
+  stacking: ['fidelity.paint-order-approximated'],
+  'absolute-in-flex': ['fidelity.paint-order-approximated'],
 }
 
 for (const [fixture, codes] of Object.entries(EXPECTED)) {
