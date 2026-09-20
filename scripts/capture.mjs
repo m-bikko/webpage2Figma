@@ -24,15 +24,38 @@ import { pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
+
 // Берутся собранные dist, а не исходники: обычный node не разрешает .ts
 // через поле exports, а собрать их всё равно нужно — это делает tsc -b
 // в составе pnpm typecheck.
-const { parseBundle, IR_VERSION } = await import(
-  pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../packages/ir/dist/index.js')).href
+//
+// ЛОВУШКА, найденная на живом прогоне: `tsc -b` инкрементален и доверяет
+// .tsconfig.tsbuildinfo, а не факту наличия dist/. Если dist/ удалили
+// (`rm -rf packages/*/dist`), но забыли удалить .tsbuildinfo рядом — а
+// именно так делает рекомендованный "чистый" прогон, — tsc решит, что
+// собирать нечего, и выйдет молча с кодом 0, оставив dist/ пустым. Тогда
+// упавший здесь `import` раньше давал голый ERR_MODULE_NOT_FOUND без
+// подсказки. Явная проверка ниже превращает это в понятное сообщение.
+const irDist = resolve(dirname(fileURLToPath(import.meta.url)), '../packages/ir/dist/index.js')
+const rendererDist = resolve(
+  dirname(fileURLToPath(import.meta.url)), '../packages/reference-renderer/dist/index.js',
 )
-const { renderScreenToSvg, wrapSvgInHtml } = await import(
-  pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), '../packages/reference-renderer/dist/index.js')).href
-)
+
+let parseBundle, IR_VERSION, renderScreenToSvg, wrapSvgInHtml
+try {
+  ;({ parseBundle, IR_VERSION } = await import(pathToFileURL(irDist).href))
+  ;({ renderScreenToSvg, wrapSvgInHtml } = await import(pathToFileURL(rendererDist).href))
+} catch (error) {
+  console.error('Не удалось загрузить собранные @h2d/ir или @h2d/reference-renderer.')
+  console.error(`Ожидались: ${irDist}\n           ${rendererDist}`)
+  console.error('Собери их: pnpm typecheck')
+  console.error(
+    'Если dist/ удаляли руками без удаления *.tsbuildinfo — tsc -b мог решить, ' +
+    'что пересобирать нечего. Удали packages/*/tsconfig.tsbuildinfo и повтори pnpm typecheck.',
+  )
+  console.error(`\n${error.message}`)
+  process.exit(1)
+}
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const bundlePath = resolve(root, 'packages/serializer/dist/serializer.global.js')
