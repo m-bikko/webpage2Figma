@@ -165,6 +165,44 @@ describe('checkInvariants: ссылочная целостность', () => {
 })
 
 describe('checkInvariants: связность текста', () => {
+  it('допускает пробел, съеденный переносом строки', () => {
+    // Найдено на настоящем захвате: браузер не включает пробел в бокс
+    // строки, на которой произошёл перенос. Раны его несут, строки нет.
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [{
+        ...frameNode({ id: 't', paintOrder: 1 }),
+        kind: 'text',
+        text: nodeText({
+          runs: [textRun({ text: 'который обязан перенестись' })],
+          lines: [
+            { x: 0, y: 0, w: 50, h: 20, text: 'который обязан' },
+            { x: 0, y: 20, w: 50, h: 20, text: 'перенестись' },
+          ],
+        }),
+      }],
+    })
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
+  })
+
+  it('всё ещё ловит ЛИШНИЙ текст — то, ради чего инвариант написан', () => {
+    // Ран несёт текст всего подграфа, строки только собственный: ровно тот
+    // дефект, из-за которого плагин рисовал вложенный <b> дважды.
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      children: [{
+        ...frameNode({ id: 't', paintOrder: 1 }),
+        kind: 'text',
+        text: nodeText({
+          runs: [textRun({ text: 'Hello world' })],
+          lines: [{ x: 0, y: 0, w: 50, h: 20, text: 'Hello' }],
+        }),
+      }],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('text.concat-mismatch')
+  })
+
   it('ловит расхождение конкатенации ранов и строк', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,

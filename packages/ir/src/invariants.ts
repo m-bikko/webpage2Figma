@@ -282,7 +282,18 @@ const checkTokenReferences = (bundle: Bundle): InvariantError[] => {
  *  плагин рисовал вложенный `<b>` дважды с наложением. */
 const checkTextCoherence = (bundle: Bundle): InvariantError[] => {
   const errors: InvariantError[] = []
-  const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim()
+  /** Пробелы удаляются ПОЛНОСТЬЮ, а не сжимаются.
+   *
+   *  Причина найдена на настоящем захвате: браузер съедает пробел на месте
+   *  переноса строки, поэтому в боксах строк его нет, а в ране есть.
+   *  «который обязан перенестись» против «который обязанперенестись» —
+   *  расхождение законное, и сжатие пробелов его не скрывает.
+   *
+   *  Проверяемое при этом не теряется: дефект, ради которого инвариант
+   *  написан, — это ЛИШНИЙ текст, когда ран нёс содержимое всего подграфа,
+   *  а строки только собственного. «Helloworld» против «Hello» отличаются
+   *  и без пробелов. */
+  const normalize = (value: string): string => value.replace(/\s+/g, '')
 
   for (const [index, screen] of bundle.screens.entries()) {
     for (const node of allNodes(screen)) {

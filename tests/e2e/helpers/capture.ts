@@ -56,15 +56,35 @@ export const fixtureUrl = (name: string): string =>
  *  `beginCapture` вызывается здесь на каждый снимок, потому что каждый
  *  тест снимает один экран; серию из пяти экранов с общей нумерацией
  *  собирает extension в плане 2. */
+export type CaptureOptions = {
+  /** Сбрасывать нумерацию узлов. По умолчанию да: каждый тест снимает один
+   *  экран. Для серии из нескольких экранов с общей нумерацией — которую
+   *  требует инвариант уникальности идентификаторов в пределах бандла —
+   *  вызывающий передаёт `true` только на первом снимке. */
+  beginCapture?: boolean
+}
+
 export const captureScreen = async (
   page: Page,
   screenId: string,
   screenName: string,
+  options: CaptureOptions = {},
 ): Promise<CaptureResult> => {
-  const source = readFileSync(bundlePath, 'utf8')
-  await page.addScriptTag({ content: source })
+  /** Повторный впрыск заново исполняет IIFE и СБРАСЫВАЕТ аллокатор
+   *  идентификаторов, из-за чего они сталкиваются между экранами одного
+   *  бандла. Расширение впрыскивает скрипт один раз на вкладку и
+   *  переживает ресайзы, поэтому хелпер обязан вести себя так же. */
+  const alreadyInjected = await page.evaluate(
+    () => typeof window.__h2d !== 'undefined',
+  )
+  if (!alreadyInjected) {
+    const source = readFileSync(bundlePath, 'utf8')
+    await page.addScriptTag({ content: source })
+  }
   await page.evaluate(() => document.fonts.ready)
-  await page.evaluate(() => { window.__h2d.beginCapture() })
+  if (options.beginCapture ?? true) {
+    await page.evaluate(() => { window.__h2d.beginCapture() })
+  }
   return page.evaluate(
     ([id, name]) => window.__h2d.captureScreen(id ?? '', name ?? ''),
     [screenId, screenName],
