@@ -4339,11 +4339,41 @@ export { walkDocument, createIdAllocator as createIds } from './walk.js'
 - [ ] **Step 4: Создать `packages/serializer/src/global.ts`**
 
 ```ts
-import { createIdAllocator, emptyBundle, serializeScreen } from './serialize.js'
+import {
+  createIdAllocator, emptyBundle, serializeScreen, type SerializeResult,
+} from './serialize.js'
+import type { IdAllocator } from './walk.js'
+
+/** Аллокатор идентификаторов живёт ВНУТРИ страницы и переживает несколько
+ *  вызовов. Это не деталь реализации, а требование двух сторон сразу.
+ *
+ *  Контракт требует, чтобы идентификаторы узлов были уникальны в пределах
+ *  бандла, а не экрана: на них ссылается отчёт. Пять экранов снимаются
+ *  пятью вызовами по одной и той же вкладке, поэтому счётчик обязан
+ *  сохраняться между ними.
+ *
+ *  Передать аллокатор снаружи нельзя: функции не пересекают границу
+ *  `page.evaluate` и `chrome.scripting.executeScript`. Поэтому внешний API
+ *  принимает только строки, а состояние держит здесь. */
+let allocator: IdAllocator | null = null
+
+/** Начинает новый захват: сбрасывает нумерацию узлов.
+ *  Вызывается один раз перед серией экранов, а не перед каждым. */
+const beginCapture = (): void => {
+  allocator = createIdAllocator()
+}
+
+/** Снимает один экран. Принимает только строки — см. комментарий выше.
+ *  Если захват не был начат явно, аллокатор создаётся лениво: так
+ *  одиночный снимок в тесте не требует лишнего вызова. */
+const captureScreen = (id: string, name: string): SerializeResult => {
+  if (allocator === null) allocator = createIdAllocator()
+  return serializeScreen({ id, name, allocId: allocator })
+}
 
 /** Точка входа IIFE-бандла: то, что Playwright и extension вызывают
- *  внутри страницы через `page.evaluate` / `executeScript`. */
-const api = { serializeScreen, emptyBundle, createIdAllocator }
+ *  внутри страницы. */
+const api = { beginCapture, captureScreen, emptyBundle }
 
 declare global {
   interface Window {
@@ -4376,7 +4406,11 @@ export default defineConfig({
 Run: `pnpm build:serializer`
 Expected: создан `packages/serializer/dist/serializer.global.js`.
 
-Проверить, что бандл действительно самодостаточен: в нём не должно остаться `require(` или `from "@h2d/ir"` — `noExternal` обязан был вшить контракт внутрь. Если остались, бандл упадёт в контексте страницы.
+Проверить, что бандл действительно самодостаточен: в нём не должно остаться `require(` или `from "@h2d/ir"`. Если остались, бандл упадёт в контексте страницы.
+
+**Но знай, что именно доказывает эта проверка, а что нет.** Проверено экспериментом: `noExternal` под tsup для воркспейс-зависимости — no-op, бандл выходит **байт в байт тем же** и без него, и даже с `external`. Греп-шаблон при этом верный: прямой запуск esbuild с `--external:@h2d/ir` даёт `__require("@h2d/ir")`, который шаблон ловит. То есть шаблон сработает на настоящей утечке, но зелёный греп не подтверждает, что `noExternal` что-то сделал.
+
+Положительное свидетельство самодостаточности — **наличие вшитого содержимого**: `grep -c "unsupported.canvas"` должен вернуть не ноль. И отдельно проверь размер: он обязан быть около 38 КБ. Если внезапно 170 КБ — значит значения импортируются из барреля `@h2d/ir`, а он тянет `schema.ts` вместе с zod, и вся эта масса впрыскивается в каждую захватываемую страницу. Значения берутся из подпутей `@h2d/ir/codes` и `@h2d/ir/version` именно поэтому.
 
 - [ ] **Step 7: Проверить typecheck и все тесты**
 
@@ -5056,7 +5090,15 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import type { Page } from '@playwright/test'
-import type { Screen, Diagnostic } from '@h2d/ir'
+import type { Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+
+/** То же, что отдаёт сериализатор. Объявлено здесь, потому что тесты
+ *  не импортируют сам сериализатор: он читается с диска как текст. */
+export type CaptureResult = {
+  screen: Screen
+  report: Diagnostic[]
+  fonts: FontRequirement[]
+}
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const repoRoot = resolve(here, '../../..')
@@ -5078,16 +5120,29 @@ export const fixtureUrl = (name: string): string =>
   pathToFileURL(resolve(repoRoot, 'fixtures', name, 'index.html')).href
 
 /** Инжектит собранный сериализатор и вызывает его внутри страницы.
- *  Бандл читается с диска каждый раз, чтобы тест всегда проверял
- *  свежую сборку, а не закешированную. */
+ *
+ *  Бандл читается с диска каждый раз, чтобы тест всегда проверял свежую
+ *  сборку, а не закешированную.
+ *
+ *  Аллокатор идентификаторов живёт внутри страницы и передаётся через
+ *  `beginCapture`, а не аргументом: функции не пересекают границу
+ *  `page.evaluate`, поэтому внешний API принимает только строки.
+ *  `beginCapture` вызывается здесь на каждый снимок, потому что каждый
+ *  тест снимает один экран; серию из пяти экранов с общей нумерацией
+ *  собирает extension в плане 2. */
 export const captureScreen = async (
   page: Page,
+  screenId: string,
   screenName: string,
-): Promise<{ screen: Screen; report: Diagnostic[] }> => {
+): Promise<CaptureResult> => {
   const source = readFileSync(bundlePath, 'utf8')
   await page.addScriptTag({ content: source })
   await page.evaluate(() => document.fonts.ready)
-  return page.evaluate((name) => window.__h2d.serializeScreen(name), screenName)
+  await page.evaluate(() => { window.__h2d.beginCapture() })
+  return page.evaluate(
+    ([id, name]) => window.__h2d.captureScreen(id ?? '', name ?? ''),
+    [screenId, screenName],
+  )
 }
 ```
 
@@ -5130,7 +5185,7 @@ for (const fixture of FIXTURES) {
     test(`IR-снапшот: ${fixture} @ ${size.width}`, async ({ page }) => {
       await page.setViewportSize({ width: size.width, height: size.height })
       await page.goto(fixtureUrl(fixture))
-      const { screen, report } = await captureScreen(page, size.name)
+      const { screen, report } = await captureScreen(page, `s-${size.width}`, size.name)
 
       expect(screen.width).toBe(size.width)
       expect(screen.root.sourceTag).toBe('body')
@@ -5142,7 +5197,7 @@ for (const fixture of FIXTURES) {
 test('стекинг: порядок отрисовки не совпадает с порядком DOM', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('stacking'))
-  const { screen } = await captureScreen(page, 'Desktop')
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
 
   const flat: { tag: string; order: number; w: number; h: number }[] = []
   const visit = (node: typeof screen.root): void => {
@@ -5162,7 +5217,7 @@ test('стекинг: порядок отрисовки не совпадает 
 test('boxes: цвет в синтаксисе oklch() разобран, а не отброшен', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('boxes'))
-  const { screen, report } = await captureScreen(page, 'Desktop')
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
 
   const wrap = screen.root.children[0]
   expect(wrap).toBeDefined()
@@ -5180,12 +5235,12 @@ test('flex: на 390px первый ряд превращается в коло�
   await page.goto(fixtureUrl('flex'))
 
   await page.setViewportSize({ width: 1440, height: 900 })
-  const wide = await captureScreen(page, 'Desktop')
+  const wide = await captureScreen(page, 's0', 'Desktop')
   const wideRow = wide.screen.root.children[0]
   expect(wideRow?.layout.mode).toBe('row')
 
   await page.setViewportSize({ width: 390, height: 844 })
-  const narrow = await captureScreen(page, 'Mobile')
+  const narrow = await captureScreen(page, 's1', 'Mobile')
   const narrowRow = narrow.screen.root.children[0]
   expect(narrowRow?.layout.mode).toBe('column')
 })
@@ -5193,7 +5248,7 @@ test('flex: на 390px первый ряд превращается в коло�
 test('text: узкий абзац переносится на несколько строк с разными боксами', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('text'))
-  const { screen } = await captureScreen(page, 'Desktop')
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
 
   const paragraphs = screen.root.children.filter((node) => node.text !== null)
   expect(paragraphs.length).toBeGreaterThanOrEqual(6)
@@ -5337,7 +5392,7 @@ for (const fixture of FIXTURES) {
     test(`pixel-diff: ${fixture} @ ${size.width}`, async ({ page }) => {
       await page.setViewportSize({ width: size.width, height: size.height })
       await page.goto(fixtureUrl(fixture))
-      const { screen } = await captureScreen(page, size.name)
+      const { screen } = await captureScreen(page, `s-${size.width}`, size.name)
 
       const browserShot = await page.screenshot({ fullPage: true })
 
