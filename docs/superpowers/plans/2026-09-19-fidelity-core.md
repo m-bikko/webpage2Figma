@@ -3429,6 +3429,19 @@ describe('DiagnosticSink', () => {
     expect(sink.drain()).toHaveLength(2)
   })
 
+  it('различает nodeId: null и узел с id "null" — за это и нужен сентинел', () => {
+    // Без сентинела `${code}|${nodeId}` даёт одинаковый ключ для null и
+    // для строки "null": интерполяция превращает null в "null". Сегодня
+    // идентификаторы генерируются как n0, n1, и коллизия недостижима — но
+    // сток общего назначения обязан различать «узла нет» от любой строки,
+    // а защита без теста есть украшение. Этот тест делает сентинел
+    // проверяемым: убери его из ключа, и тест упадёт.
+    const sink = new DiagnosticSink('s0')
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'без узла', null, false)
+    sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'узел с таким id', 'null', false)
+    expect(sink.drain()).toHaveLength(2)
+  })
+
   it('drain не разрушает накопленное — отчёт можно прочитать дважды', () => {
     const sink = new DiagnosticSink('s0')
     sink.report('info', DIAGNOSTIC_CODES.gridFlattened, 'grid', 'n1', false)
@@ -3504,7 +3517,7 @@ export class DiagnosticSink {
 - [ ] **Step 4: Запустить тесты и убедиться, что они проходят**
 
 Run: `pnpm vitest run packages/serializer/test/diagnostics.test.ts`
-Expected: PASS, 9 тестов.
+Expected: PASS, 10 тестов.
 
 - [ ] **Step 5: Коммит**
 
