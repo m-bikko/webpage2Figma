@@ -165,7 +165,7 @@ const textFor = (node: Extract<IrNode, { kind: 'text' }>): SceneText => {
       style: figmaFontStyle(run.fontWeight, run.fontStyle),
       fontSize: run.fontSize,
       letterSpacing: run.letterSpacing,
-      color: figmaRgba(run.color),
+      fills: [solidPaint(run.color)],
       decoration: run.decoration,
     }
   })
@@ -319,7 +319,11 @@ export const buildNode = (node: IrNode, ctx: BuildCtx): SceneNode => {
       base: {
         ...base, id: `${node.id}-text`,
         x: 0, y: 0, rotation: 0, opacity: 1, blendMode: 'NORMAL',
-        fills: [], stroke: null,
+        /** Заливка узла — цвет ПЕРВОГО прогона. У текста в Figma нет
+         *  отдельного свойства цвета, и пустой список делал весь
+         *  текст невидимым: узлы на месте, размеры верные, читать
+         *  нечего. Именно так «терялся» текст на живой странице. */
+        fills: [solidPaint(node.text.runs[0].color)], stroke: null,
         corner: { tl: 0, tr: 0, br: 0, bl: 0 },
         effects: [], children: [],
       },
@@ -330,7 +334,11 @@ export const buildNode = (node: IrNode, ctx: BuildCtx): SceneNode => {
      *  обёртка — лишний слой в панели, и на странице с тысячами узлов
      *  это заметно. */
     if (base.children.length === 0) {
-      return { kind: 'text', base, text: textFor(node) }
+      return {
+        kind: 'text',
+        base: { ...base, fills: [solidPaint(node.text.runs[0].color)] },
+        text: textFor(node),
+      }
     }
 
     /** С детьми — обёртка обязательна. В Figma `appendChild` есть

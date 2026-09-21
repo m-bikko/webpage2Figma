@@ -59,7 +59,8 @@ const textNode: SceneNode = {
     characters: 'раз', lineHeight: 20, align: 'left',
     runs: [{ start: 0, end: 3, family: 'Inter', style: 'Bold',
              fontSize: 16, letterSpacing: 0,
-             color: { r: 0, g: 0, b: 0, a: 1 }, decoration: 'none' }],
+             fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 1 }],
+             decoration: 'none' }],
   },
 }
 

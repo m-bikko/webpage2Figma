@@ -87,7 +87,11 @@ export type SceneText = {
     start: number; end: number
     family: string; style: string
     fontSize: number; letterSpacing: number
-    color: FigmaRgba
+    /** Цвет прогона В ВИДЕ ЗАЛИВОК. У текста в Figma нет отдельного
+     *  свойства цвета: он задаётся заливкой, и для части строки — через
+     *  диапазон символов. Один цвет на весь узел потерял бы выделенные
+     *  слова. */
+    fills: ScenePaint[]
     decoration: 'none' | 'underline' | 'strikethrough'
   }[]
   lineHeight: number

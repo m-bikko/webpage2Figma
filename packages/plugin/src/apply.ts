@@ -46,6 +46,17 @@ export type FigmaLikeNode = {
 export type FigmaLikeText = FigmaLikeNode & {
   characters: string
   fontName: { family: string; style: string }
+  /** Диапазонные операции. Необязательные, потому что двойник в тесте
+   *  их не реализует: он проверяет ПОРЯДОК действий, а не поведение
+   *  Figma, и заставлять его изображать разметку текста значило бы
+   *  усложнять имитацию ради ничего. */
+  setRangeFontName?: (start: number, end: number,
+                      font: { family: string; style: string }) => void
+  setRangeFontSize?: (start: number, end: number, size: number) => void
+  setRangeLetterSpacing?: (start: number, end: number,
+                           spacing: { unit: 'PIXELS'; value: number }) => void
+  setRangeFills?: (start: number, end: number, fills: unknown[]) => void
+  setRangeTextDecoration?: (start: number, end: number, decoration: string) => void
 }
 
 export type ApplyResult = {
@@ -206,6 +217,30 @@ export const applyNode = (
      *  гарантируется. Размер задаётся жёстко, чтобы она хотя бы
      *  переносила в тех же границах. */
     text['textAutoResize'] = 'NONE'
+
+    /** Прогоны применяются ДИАПАЗОНАМИ. Без этого весь текст получал
+     *  начертание, кегль и цвет ПЕРВОГО прогона, и выделенные слова
+     *  теряли и цвет, и жирность.
+     *
+     *  Каждый диапазон требует своего загруженного шрифта — иначе
+     *  Figma откажет; подстановки уже посчитаны выше. */
+    for (const run of node.text.runs) {
+      if (run.end <= run.start) continue
+      const key = `${run.family}|${run.style}`
+      const font = substitutions.get(key) ?? { family: 'Inter', style: 'Regular' }
+      text.setRangeFontName?.(run.start, run.end, font)
+      text.setRangeFontSize?.(run.start, run.end, run.fontSize)
+      text.setRangeLetterSpacing?.(run.start, run.end, {
+        unit: 'PIXELS', value: run.letterSpacing,
+      })
+      text.setRangeFills?.(run.start, run.end, run.fills)
+      if (run.decoration !== 'none') {
+        text.setRangeTextDecoration?.(
+          run.start, run.end,
+          run.decoration === 'underline' ? 'UNDERLINE' : 'STRIKETHROUGH',
+        )
+      }
+    }
     target = text
   } else if (node.kind === 'rect') {
     target = figma.createRectangle()

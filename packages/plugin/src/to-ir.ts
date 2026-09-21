@@ -277,11 +277,18 @@ const nodeFrom = (
           fontWeight: 400, fontStyle: 'normal',
           fontSize: node.text.runs[0]?.fontSize ?? 16,
           letterSpacing: node.text.runs[0]?.letterSpacing ?? 0,
+          /** Цвет восстанавливается из ЗАЛИВКИ прогона: у текста в
+           *  Figma нет отдельного свойства цвета. */
           color: (() => {
-            const c = node.text.runs[0]?.color
-            return c === undefined ? { r: 0, g: 0, b: 0, a: 1 } : {
-              r: Math.round(c.r * 255), g: Math.round(c.g * 255),
-              b: Math.round(c.b * 255), a: c.a,
+            const paint = node.text.runs[0]?.fills[0]
+            if (paint === undefined || paint.type !== 'SOLID') {
+              return { r: 0, g: 0, b: 0, a: 1 }
+            }
+            return {
+              r: Math.round(paint.color.r * 255),
+              g: Math.round(paint.color.g * 255),
+              b: Math.round(paint.color.b * 255),
+              a: paint.opacity,
             }
           })(),
           decoration: node.text.runs[0]?.decoration ?? 'none',
