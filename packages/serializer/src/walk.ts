@@ -24,6 +24,7 @@ import {
   parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
+import { computeCounters, type CounterMap } from './counters.js'
 import { hoistEscaped } from './hoist.js'
 import {
   readPseudo, type PseudoKind, type PseudoRead, type PseudoRefusal,
@@ -72,6 +73,11 @@ type WalkContext = {
   scrollX: number
   scrollY: number
   allocId: IdAllocator
+  /** Значения CSS-счётчиков, посчитанные ОДНИМ проходом до обхода.
+   *  Считать их по ходу нельзя: счётчик зависит от всего, что идёт
+   *  перед элементом в порядке документа, а обход может не совпадать
+   *  с ним — например, на `flex-direction: row-reverse`. */
+  counters: CounterMap
   /** Есть ли среди предков узел с НЕпереносимой трансформой — скосом или
    *  трёхмерной матрицей. Такая трансформа не попадает в накопленную
    *  матрицу, поэтому положение всех потомков наследует ошибку.
@@ -623,7 +629,11 @@ const buildPseudo = (
   ctx: WalkContext,
   hostId: string,
 ): Built | null => {
-  const read: PseudoRead = readPseudo(el, hostCs, which)
+  const values = ctx.counters.get(el)
+  const read: PseudoRead = readPseudo(
+    el, hostCs, which,
+    which === '::before' ? values?.before ?? null : values?.after ?? null,
+  )
   if (read.kind === 'absent' || read.kind === 'empty') return null
 
   if (read.kind === 'refused') {
@@ -1087,6 +1097,10 @@ export const walkDocument = (
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,
+    /** Считается от `<html>`, а не от `<body>`: `counter-reset` на
+     *  корневом элементе — обычное дело, и начав с тела, мы потеряли
+     *  бы созданный там счётчик. */
+    counters: computeCounters(document.documentElement),
     insideBrokenTransform: false,
     ancestorMatrix: IDENTITY_MATRIX,
     ancestorInverse: IDENTITY_MATRIX,

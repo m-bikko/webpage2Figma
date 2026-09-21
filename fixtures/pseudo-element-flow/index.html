@@ -27,6 +27,30 @@
      макете неверный номер. */
   .numbered{counter-reset:n;margin-top:12px}
   .numbered li::before{counter-increment:n;content:counter(n) ") ";color:#0f766e}
+
+  /* АБСОЛЮТНЫЙ псевдоэлемент со счётчиком. Геометрия у него есть —
+     содержащий блок найден, бокс известен, — и не хватает ровно
+     одного: ЗНАЧЕНИЯ счётчика. Вычисленный стиль отдаёт `content`
+     как записано, без подстановки, а поставить вместо номера догадку
+     значило бы написать в макете неверное число.
+
+     Стоит отдельно от потокового случая нарочно: причины разные, и
+     отчёт обязан их различать. Для потокового знание значения не
+     помогло бы вовсе — там нет бокса. */
+  .counted{counter-reset:c;position:relative;width:240px;height:40px;
+    background:#e2e8f0;margin-top:12px}
+  .counted::after{counter-increment:c;content:"шаг " counter(c);
+    position:absolute;right:8px;top:8px;color:#0f172a}
+
+  /* `open-quote` — содержимое, которое остаётся недоступным и после
+     вычисления счётчиков: кавычка зависит от свойства `quotes` и от
+     глубины вложенности цитат, и вычисленный стиль её не раскрывает.
+     Случай редкий, но именно он теперь и проверяет, что отказ по
+     неразрешимому содержимому не пропал вместе со счётчиками. */
+  .quoted{position:relative;width:240px;height:40px;background:#f1f5f9;
+    margin-top:12px}
+  .quoted::before{content:open-quote;position:absolute;left:8px;top:8px;
+    font-size:20px;color:#334155}
 </style></head>
 <body>
   <!-- ЗАВЕДОМО НЕПЕРЕНОСИМОЕ, и потому фикстура живёт в проверке
@@ -38,4 +62,6 @@
   <p class="invisible">невидимое содержимое</p>
   <div class="long"></div>
   <ul class="numbered" style="list-style:none"><li>раз</li><li>два</li></ul>
+  <div class="counted"></div>
+  <div class="quoted"></div>
 </body></html>

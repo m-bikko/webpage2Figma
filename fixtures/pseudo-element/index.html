@@ -28,10 +28,102 @@
   .ring::after{content:"";position:absolute;left:12px;top:12px;
     width:64px;height:64px;border:3px solid #7c3aed;border-radius:50%}
 
+
+  /* ХОЗЯИН НЕ ПОЗИЦИОНИРОВАН. Содержащий блок абсолютного
+     псевдоэлемента — ближайший позиционированный ПРЕДОК, а не
+     хозяин, и координаты отсчитаны от него. Требовать
+     позиционированного хозяина значило бы отказаться от самого
+     частого случая: на живой странице так отсеклись все 88
+     псевдоэлементов до единого. */
+  .outer{position:relative;width:320px;height:90px;background:#f1f5f9;
+    margin-bottom:16px;padding:12px;border:4px solid #94a3b8}
+  .plain{background:#cbd5e1;height:30px}
+  .plain::after{content:"";position:absolute;left:24px;top:18px;
+    width:140px;height:8px;background:#0f766e}
+
+  /* Тот же случай, но отсчёт от ПРАВОГО края: ловит перепутанные оси
+     и потерю толщины рамки предка. */
+  .plain2{background:#cbd5e1;height:30px;margin-top:8px}
+  .plain2::after{content:"";position:absolute;right:16px;bottom:14px;
+    width:60px;height:8px;background:#b45309}
+
+  /* СЧЁТЧИКИ. Их значения не отдаёт ни один браузерный API:
+     вычисленный стиль возвращает `content` строкой `counter(n)`.
+     Здесь они считаются заново, и пиксели проверяют, что номера
+     совпали — ошибка в области видимости дала бы неверное число,
+     которое выглядит совершенно правдоподобно. */
+  .list{counter-reset:n;margin-bottom:16px}
+  .item{position:relative;height:28px;background:#e2e8f0;margin-bottom:4px}
+  .item::after{counter-increment:n;content:"строка " counter(n);
+    position:absolute;left:8px;top:4px;color:#0f172a;font-size:14px}
+
+  /* ВЛОЖЕННАЯ НУМЕРАЦИЯ классической формы: список в списке, где
+     каждый уровень заводит свой экземпляр счётчика, а `counters()`
+     печатает всю цепочку — «1», «1.1», «1.2», «2». Форма выбрана
+     намеренно общеизвестной: на ней семантика областей видимости не
+     допускает двух толкований, и расхождение означало бы ошибку у
+     нас, а не спорное чтение спецификации. */
+  .nested,.sublist{counter-reset:item}
+  .nested{margin-bottom:8px}
+  .row{counter-increment:item;position:relative;height:26px;
+    background:#f1f5f9;margin-bottom:3px}
+  .row::after{content:counters(item, ".");position:absolute;
+    left:8px;top:2px;font-size:14px;color:#1e293b}
+  .sublist{margin-left:24px}
+  .sublist .row{background:#cbd5e1}
+
+  /* ПОСЛЕ вложенного блока счётчик `sub` выходит из области видимости,
+     и браузер печатает ноль. Именно это и ловит несмятую область:
+     если экземпляры, созданные внутри разделов, оставить на стеке,
+     здесь напечатается их значение вместо нуля. */
+  .tail{position:relative;height:40px;background:#dcfce7;margin-bottom:8px}
+  .tail::after{content:"после списка " counter(sub) counter(sub) counter(sub);
+    position:absolute;left:8px;top:2px;font-size:30px;font-weight:700;
+    color:#14532d}
+
+  .bare{margin-bottom:16px}
+  .bi{counter-increment:b;position:relative;height:38px;background:#fef3c7;
+    margin-bottom:4px}
+  /* Крупно намеренно: разница между «№1 №2 №3» и «№0 №0 №0» — это
+     одна цифра, и мелким кеглем она тонет в кромках глифов. Гейт
+     обязан ловить ошибку с запасом, а не на грани. */
+  .bi::after{content:"№" counter(b);position:absolute;left:8px;top:2px;
+    font-size:28px;font-weight:700;color:#78350f}
+
+  /* Оформление номера: римские и буквенные виды. */
+  .roman{counter-reset:r;margin-bottom:16px}
+  .ri{counter-increment:r;position:relative;height:24px;background:#ede9fe;
+    margin-bottom:4px}
+  .ri::after{content:counter(r, upper-roman) ") "counter(r, lower-alpha);
+    position:absolute;left:8px;top:2px;font-size:13px;color:#4c1d95}
 </style></head>
 <body>
   <div class="card underline"></div>
   <div class="card overlay"></div>
   <div class="card badge"></div>
   <div class="card ring"></div>
+  <div class="list">
+    <div class="item"></div><div class="item"></div><div class="item"></div>
+  </div>
+  <div class="nested">
+    <div class="row"></div>
+    <div class="row">
+      <div class="sublist">
+        <div class="row"></div><div class="row"></div>
+      </div>
+    </div>
+    <div class="row"></div>
+  </div>
+  <div class="tail"></div><div class="tail"></div>
+  <div class="bare">
+    <div class="bi"></div><div class="bi"></div><div class="bi"></div>
+  </div>
+  <div class="roman">
+    <div class="ri"></div><div class="ri"></div><div class="ri"></div>
+    <div class="ri"></div>
+  </div>
+  <div class="outer">
+    <div class="plain"></div>
+    <div class="plain2"></div>
+  </div>
 </body></html>

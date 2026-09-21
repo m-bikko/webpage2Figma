@@ -1,5 +1,6 @@
 import type { Rgba8, TextAlign, TextDecoration, TextRun } from '@w2f/ir'
 import { parseColor } from './css/color.js'
+import { formatCounter, type CounterValues } from './counters.js'
 
 /** ПСЕВДОЭЛЕМЕНТЫ `::before` и `::after`.
  *
@@ -85,6 +86,102 @@ const px = (value: string): number | null => {
  *  нумерованного списка приходит строкой `counter(n) ". "`. Подставить
  *  вместо счётчика догадку — значит написать в макете неверный номер,
  *  и заметить это будет некому. */
+/** Разворачивает `content` в строку, подставляя значения счётчиков.
+ *
+ *  `content` — это СПИСОК частей: литералы в кавычках вперемешку с
+ *  функциями. `content: "шаг " counter(c)` — две части, и печатается
+ *  их склейка. Разбирать только первую значило бы терять половину
+ *  надписи.
+ *
+ *  `null` означает, что встретилась часть, чьё значение взять
+ *  неоткуда: `attr()` на чужом атрибуте, `url()`, `open-quote`.
+ *  Частичная подстановка запрещена — обрывок надписи выглядит как
+ *  целая и потому хуже честного отказа. */
+const expandContent = (
+  content: string,
+  counters: CounterValues,
+  host: Element,
+): string | null => {
+  const parts = splitContentParts(content)
+  if (parts.length === 0) return null
+
+  let out = ''
+  for (const part of parts) {
+    const literal = quotedLiteral(part)
+    if (literal !== null) { out += literal; continue }
+
+    const single = /^counter\(\s*([\w-]+)\s*(?:,\s*([\w-]+)\s*)?\)$/.exec(part)
+    if (single?.[1] !== undefined) {
+      /** Счётчика с таким именем нет — печатается НОЛЬ, а не отказ.
+       *  Так требует спецификация: использование несуществующего
+       *  счётчика неявно создаёт его со значением ноль. Отказ здесь
+       *  был бы не осторожностью, а расхождением с браузером, причём
+       *  ровно в том месте, где область видимости кончилась. */
+      const value = counters.top.get(single[1]) ?? 0
+      out += formatCounter(value, single[2] ?? 'decimal')
+      continue
+    }
+
+    const nested =
+      /^counters\(\s*([\w-]+)\s*,\s*("[^"]*")\s*(?:,\s*([\w-]+)\s*)?\)$/
+        .exec(part)
+    if (nested?.[1] !== undefined && nested[2] !== undefined) {
+      const chain = counters.chain.get(nested[1]) ?? [0]
+      const separator = quotedLiteral(nested[2]) ?? ''
+      out += chain
+        .map((value) => formatCounter(value, nested[3] ?? 'decimal'))
+        .join(separator)
+      continue
+    }
+
+    const attribute = /^attr\(\s*([\w-]+)\s*\)$/.exec(part)
+    if (attribute?.[1] !== undefined) {
+      /** `attr()` читает атрибут ХОЗЯИНА, и он у нас под рукой.
+       *  Отсутствующий атрибут даёт пустую строку — так определено в
+       *  спецификации, и отказ здесь был бы расхождением с браузером,
+       *  а не осторожностью. */
+      out += host.getAttribute(attribute[1]) ?? ''
+      continue
+    }
+
+    return null
+  }
+  return out
+}
+
+/** Делит `content` на части верхнего уровня: кавычки и функции.
+ *  Наивное деление по пробелам сломалось бы и на пробеле внутри
+ *  строки, и на пробеле внутри `counters(c, ". ")`. */
+const splitContentParts = (content: string): string[] => {
+  const parts: string[] = []
+  let current = ''
+  let inQuotes = false
+  let depth = 0
+  for (const ch of content.trim()) {
+    if (ch === '"') { inQuotes = !inQuotes; current += ch; continue }
+    if (!inQuotes && ch === '(') depth += 1
+    if (!inQuotes && ch === ')') depth -= 1
+    if (!inQuotes && depth === 0 && /\s/.test(ch)) {
+      if (current !== '') { parts.push(current); current = '' }
+      continue
+    }
+    current += ch
+  }
+  if (current !== '') parts.push(current)
+  return parts
+}
+
+/** Содержимое строки в кавычках с раскрытыми экранированиями. */
+const quotedLiteral = (part: string): string | null => {
+  const text = part.trim()
+  if (!text.startsWith('"') || !text.endsWith('"') || text.length < 2) return null
+  return text
+    .slice(1, -1)
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/\\(.)/g, '$1')
+}
+
 const literalOf = (content: string): string | null => {
   const trimmed = content.trim()
   if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return null
@@ -120,6 +217,55 @@ const decorationOf = (cs: CSSStyleDeclaration): TextDecoration => {
   return 'none'
 }
 
+
+/** Прямоугольник, от которого отсчитывается абсолютный псевдоэлемент,
+ *  и бокс хозяина — в одних и тех же экранных координатах.
+ *
+ *  `null` означает, что перевод небезопасен: на пути есть трансформа.
+ *  `getBoundingClientRect` возвращает габарит уже трансформированного
+ *  элемента, и разность таких габаритов не является смещением в осях
+ *  родителя — узел уехал бы тем сильнее, чем больше поворот. Отказ
+ *  здесь честнее подстановки правдоподобного числа. */
+const containingBlockOf = (
+  host: Element,
+  cs: CSSStyleDeclaration,
+  hostCs: CSSStyleDeclaration,
+): { x: number; y: number; hostX: number; hostY: number } | null => {
+  const hostRect = host.getBoundingClientRect()
+  if (hostCs.transform !== 'none') return null
+
+  /** `fixed` отсчитывается от вьюпорта — начала экранных координат,
+   *  в которых и живёт `getBoundingClientRect`. */
+  if (cs.position === 'fixed') {
+    return { x: 0, y: 0, hostX: hostRect.left, hostY: hostRect.top }
+  }
+
+  /** Хозяин позиционирован — он и есть содержащий блок. Отсчёт идёт
+   *  от его PADDING box, то есть от границы внутрь на толщину рамки. */
+  if (hostCs.position !== 'static') {
+    return {
+      x: hostRect.left + (Number.parseFloat(hostCs.borderLeftWidth) || 0),
+      y: hostRect.top + (Number.parseFloat(hostCs.borderTopWidth) || 0),
+      hostX: hostRect.left, hostY: hostRect.top,
+    }
+  }
+
+  /** Иначе — ближайший позиционированный предок. `offsetParent` даёт
+   *  ровно его, но не годится при `position: fixed` у предка и внутри
+   *  `display: none`; в обоих случаях он возвращает `null`, и отказ
+   *  честнее догадки. */
+  const parent = (host as HTMLElement).offsetParent
+  if (parent === null) return null
+  const parentCs = window.getComputedStyle(parent)
+  if (parentCs.transform !== 'none') return null
+  const parentRect = parent.getBoundingClientRect()
+  return {
+    x: parentRect.left + (Number.parseFloat(parentCs.borderLeftWidth) || 0),
+    y: parentRect.top + (Number.parseFloat(parentCs.borderTopWidth) || 0),
+    hostX: hostRect.left, hostY: hostRect.top,
+  }
+}
+
 /** Читает псевдоэлемент хозяина.
  *
  *  `hostCs` нужен не для стиля, а для ответа на один вопрос: является
@@ -132,6 +278,10 @@ export const readPseudo = (
   host: Element,
   hostCs: CSSStyleDeclaration,
   which: PseudoKind,
+  /** Значения счётчиков, посчитанные заранее одним проходом по
+   *  документу. `null` означает, что счётчики не считались, и тогда
+   *  сгенерированное содержимое остаётся неразрешимым. */
+  counters: CounterValues | null,
 ): PseudoRead => {
   const cs = window.getComputedStyle(host, which)
   const content = cs.content
@@ -153,7 +303,12 @@ export const readPseudo = (
     cs.backgroundImage !== 'none' ||
     cs.boxShadow !== 'none'
 
-  const literal = literalOf(content)
+  /** Сначала — полное разворачивание со счётчиками; чистый литерал
+   *  разбирается той же функцией и потому отдельной ветки не
+   *  требует. */
+  const literal = counters === null
+    ? literalOf(content)
+    : expandContent(content, counters, host)
   const visibleText = literal !== null && hasVisibleText(literal)
 
   /** Содержимое ЕСТЬ, но его значение неизвестно: `counter(n)`,
@@ -172,25 +327,36 @@ export const readPseudo = (
    *  действительно нечего, и запись была бы шумом. */
   if (!hasPaint && !visibleText && !generated) return { kind: 'empty' }
 
-  /** Значение неизвестно и краски нет: переносить нечего, но потеря
-   *  РЕАЛЬНА, и о ней надо сказать. */
-  if (generated && !hasPaint) {
-    return {
-      kind: 'refused',
-      refusal: { reason: 'generated', content: content.trim() },
-      hasPaint,
-    }
-  }
 
+  /** ПОРЯДОК ПРОВЕРОК ЗДЕСЬ — ЧАСТЬ СМЫСЛА.
+   *
+   *  Сначала геометрия, потом содержимое. Причина в том, что
+   *  пользователю сообщается не «чего не хватило нам», а «что с этим
+   *  можно сделать»: для потокового узла бокса нет в принципе, и
+   *  знание значения счётчика ничего бы не изменило. Назвать такой
+   *  случай «сгенерированным содержимым» значило бы указать на
+   *  поправимое там, где препятствие непреодолимо.
+   *
+   *  Первая редакция проверяла содержимое раньше, и на живой
+   *  странице все 87 записей оказались названы «сгенерированным
+   *  содержимым», хотя среди них были и потоковые. */
   const positioned = cs.position === 'absolute' || cs.position === 'fixed'
   if (!positioned) {
     return { kind: 'refused', refusal: { reason: 'flow' }, hasPaint }
   }
-  /** `fixed` отсчитывается от вьюпорта, а не от хозяина; `absolute` —
-   *  от ближайшего позиционированного предка. Складывать с боксом
-   *  хозяина можно только во втором случае и только когда предок —
-   *  он сам. */
-  if (cs.position === 'fixed' || hostCs.position === 'static') {
+  /** СОДЕРЖАЩИЙ БЛОК находится, а не требуется от хозяина.
+   *
+   *  Первая редакция отказывалась, когда хозяин не позиционирован, —
+   *  и на живой странице так отсеклись ВСЕ 88 псевдоэлементов до
+   *  единого. Отказ был лишним: содержащий блок абсолютного потомка —
+   *  ближайший позиционированный предок, и его можно найти. Для
+   *  `fixed` это вьюпорт, тоже вполне определённый прямоугольник.
+   *
+   *  Координаты потом переводятся в систему ХОЗЯИНА, потому что
+   *  псевдоузел едет его ребёнком, а `rect` в контракте локален
+   *  относительно родителя. */
+  const container = containingBlockOf(host, cs, hostCs)
+  if (container === null) {
     return { kind: 'refused', refusal: { reason: 'containing-block' }, hasPaint }
   }
 
@@ -202,6 +368,17 @@ export const readPseudo = (
     return { kind: 'refused', refusal: { reason: 'flow' }, hasPaint }
   }
 
+  /** Геометрия есть, а значения содержимого нет. Теперь причина
+   *  названа точно: не хватает именно значения, и бокс тут ни при
+   *  чём. Краска, если она есть, всё равно переносится — ветка ниже. */
+  if (generated && !hasPaint) {
+    return {
+      kind: 'refused',
+      refusal: { reason: 'generated', content: content.trim() },
+      hasPaint,
+    }
+  }
+
   /** `width`/`height` вычисленного стиля — это CONTENT box. Узел в
    *  контракте несёт border box, поэтому паддинги и рамки
    *  прибавляются. Без этого бейдж с `padding: 2px 6px` приехал бы
@@ -210,8 +387,16 @@ export const readPseudo = (
   const padY = (px(cs.paddingTop) ?? 0) + (px(cs.paddingBottom) ?? 0)
   const borderX = (px(cs.borderLeftWidth) ?? 0) + (px(cs.borderRightWidth) ?? 0)
   const borderY = (px(cs.borderTopWidth) ?? 0) + (px(cs.borderBottomWidth) ?? 0)
+  /** Из системы содержащего блока — в систему хозяина.
+   *
+   *  `left`/`top` отсчитаны от padding box содержащего блока; бокс
+   *  хозяина known в экранных координатах. Разность и даёт локальную
+   *  координату. Когда содержащий блок и есть хозяин, слагаемые
+   *  сокращаются до прежней формулы — но теперь это следствие, а не
+   *  отдельный случай. */
   const box: PseudoBox = {
-    x: left, y: top,
+    x: container.x + left - container.hostX,
+    y: container.y + top - container.hostY,
     w: width + padX + borderX,
     h: height + padY + borderY,
   }

@@ -1079,6 +1079,140 @@ var H2DSerializer = (() => {
     };
   };
 
+  // src/counters.ts
+  var parsePairs = (value, fallback) => {
+    if (value === "none" || value === "" || value === "normal") return [];
+    const parts = value.trim().split(/\s+/);
+    const out = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      const name = parts[i];
+      if (name === void 0) continue;
+      const next = parts[i + 1];
+      const parsed = next === void 0 ? Number.NaN : Number.parseInt(next, 10);
+      if (Number.isFinite(parsed)) {
+        out.push([name, parsed]);
+        i += 1;
+      } else {
+        out.push([name, fallback]);
+      }
+    }
+    return out;
+  };
+  var applyReset = (state, value) => {
+    for (const [name, start] of parsePairs(value, 0)) {
+      const stack = state.get(name) ?? [];
+      stack.push(start);
+      state.set(name, stack);
+    }
+  };
+  var applyIncrement = (state, value) => {
+    for (const [name, delta] of parsePairs(value, 1)) {
+      const stack = state.get(name);
+      if (stack === void 0 || stack.length === 0) {
+        state.set(name, [delta]);
+        continue;
+      }
+      stack[stack.length - 1] = (stack[stack.length - 1] ?? 0) + delta;
+    }
+  };
+  var snapshot = (state) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const [name, stack] of state) {
+      const top = stack[stack.length - 1];
+      if (top !== void 0) out.set(name, top);
+    }
+    return out;
+  };
+  var allOf = (state) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const [name, stack] of state) out.set(name, [...stack]);
+    return out;
+  };
+  var computeCounters = (root) => {
+    const map = /* @__PURE__ */ new WeakMap();
+    const state = /* @__PURE__ */ new Map();
+    const visit = (el) => {
+      const cs = window.getComputedStyle(el);
+      applyReset(state, cs.counterReset);
+      applyIncrement(state, cs.counterIncrement);
+      const beforeCs = window.getComputedStyle(el, "::before");
+      applyReset(state, beforeCs.counterReset);
+      applyIncrement(state, beforeCs.counterIncrement);
+      const before = { top: snapshot(state), chain: allOf(state) };
+      const depths = /* @__PURE__ */ new Map();
+      for (const [name, stack] of state) depths.set(name, stack.length);
+      for (const child of el.children) visit(child);
+      for (const [name, stack] of state) {
+        const depth = depths.get(name) ?? 0;
+        if (stack.length > depth) stack.length = depth;
+        if (stack.length === 0) state.delete(name);
+      }
+      const afterCs = window.getComputedStyle(el, "::after");
+      applyReset(state, afterCs.counterReset);
+      applyIncrement(state, afterCs.counterIncrement);
+      const after = { top: snapshot(state), chain: allOf(state) };
+      map.set(el, { before, after });
+    };
+    visit(root);
+    return map;
+  };
+  var ROMAN = [
+    [1e3, "m"],
+    [900, "cm"],
+    [500, "d"],
+    [400, "cd"],
+    [100, "c"],
+    [90, "xc"],
+    [50, "l"],
+    [40, "xl"],
+    [10, "x"],
+    [9, "ix"],
+    [5, "v"],
+    [4, "iv"],
+    [1, "i"]
+  ];
+  var roman = (value) => {
+    if (value <= 0 || value > 3999) return String(value);
+    let left = value;
+    let out = "";
+    for (const [amount, letters] of ROMAN) {
+      while (left >= amount) {
+        out += letters;
+        left -= amount;
+      }
+    }
+    return out;
+  };
+  var alpha = (value) => {
+    if (value <= 0) return String(value);
+    let left = value;
+    let out = "";
+    while (left > 0) {
+      const rest = (left - 1) % 26;
+      out = String.fromCharCode(97 + rest) + out;
+      left = Math.floor((left - 1) / 26);
+    }
+    return out;
+  };
+  var formatCounter = (value, style) => {
+    switch (style.trim()) {
+      case "decimal-leading-zero":
+        return value < 10 && value >= 0 ? `0${value}` : String(value);
+      case "lower-alpha":
+      case "lower-latin":
+        return alpha(value);
+      case "upper-alpha":
+      case "upper-latin":
+        return alpha(value).toUpperCase();
+      case "lower-roman":
+        return roman(value);
+      case "upper-roman":
+        return roman(value).toUpperCase();
+      default:
+        return String(value);
+    }
+  };
+
   // src/hoist.ts
   var overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   var index = (root) => {
@@ -1202,6 +1336,68 @@ var H2DSerializer = (() => {
     const parsed = Number.parseFloat(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
+  var expandContent = (content, counters, host) => {
+    const parts = splitContentParts(content);
+    if (parts.length === 0) return null;
+    let out = "";
+    for (const part of parts) {
+      const literal = quotedLiteral(part);
+      if (literal !== null) {
+        out += literal;
+        continue;
+      }
+      const single = /^counter\(\s*([\w-]+)\s*(?:,\s*([\w-]+)\s*)?\)$/.exec(part);
+      if (single?.[1] !== void 0) {
+        const value = counters.top.get(single[1]) ?? 0;
+        out += formatCounter(value, single[2] ?? "decimal");
+        continue;
+      }
+      const nested = /^counters\(\s*([\w-]+)\s*,\s*("[^"]*")\s*(?:,\s*([\w-]+)\s*)?\)$/.exec(part);
+      if (nested?.[1] !== void 0 && nested[2] !== void 0) {
+        const chain = counters.chain.get(nested[1]) ?? [0];
+        const separator = quotedLiteral(nested[2]) ?? "";
+        out += chain.map((value) => formatCounter(value, nested[3] ?? "decimal")).join(separator);
+        continue;
+      }
+      const attribute = /^attr\(\s*([\w-]+)\s*\)$/.exec(part);
+      if (attribute?.[1] !== void 0) {
+        out += host.getAttribute(attribute[1]) ?? "";
+        continue;
+      }
+      return null;
+    }
+    return out;
+  };
+  var splitContentParts = (content) => {
+    const parts = [];
+    let current = "";
+    let inQuotes = false;
+    let depth = 0;
+    for (const ch of content.trim()) {
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+        current += ch;
+        continue;
+      }
+      if (!inQuotes && ch === "(") depth += 1;
+      if (!inQuotes && ch === ")") depth -= 1;
+      if (!inQuotes && depth === 0 && /\s/.test(ch)) {
+        if (current !== "") {
+          parts.push(current);
+          current = "";
+        }
+        continue;
+      }
+      current += ch;
+    }
+    if (current !== "") parts.push(current);
+    return parts;
+  };
+  var quotedLiteral = (part) => {
+    const text = part.trim();
+    if (!text.startsWith('"') || !text.endsWith('"') || text.length < 2) return null;
+    return text.slice(1, -1).replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16))).replace(/\\(.)/g, "$1");
+  };
   var literalOf = (content) => {
     const trimmed = content.trim();
     if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return null;
@@ -1224,7 +1420,33 @@ var H2DSerializer = (() => {
     }
     return "none";
   };
-  var readPseudo = (host, hostCs, which) => {
+  var containingBlockOf = (host, cs, hostCs) => {
+    const hostRect = host.getBoundingClientRect();
+    if (hostCs.transform !== "none") return null;
+    if (cs.position === "fixed") {
+      return { x: 0, y: 0, hostX: hostRect.left, hostY: hostRect.top };
+    }
+    if (hostCs.position !== "static") {
+      return {
+        x: hostRect.left + (Number.parseFloat(hostCs.borderLeftWidth) || 0),
+        y: hostRect.top + (Number.parseFloat(hostCs.borderTopWidth) || 0),
+        hostX: hostRect.left,
+        hostY: hostRect.top
+      };
+    }
+    const parent = host.offsetParent;
+    if (parent === null) return null;
+    const parentCs = window.getComputedStyle(parent);
+    if (parentCs.transform !== "none") return null;
+    const parentRect = parent.getBoundingClientRect();
+    return {
+      x: parentRect.left + (Number.parseFloat(parentCs.borderLeftWidth) || 0),
+      y: parentRect.top + (Number.parseFloat(parentCs.borderTopWidth) || 0),
+      hostX: hostRect.left,
+      hostY: hostRect.top
+    };
+  };
+  var readPseudo = (host, hostCs, which, counters) => {
     const cs = window.getComputedStyle(host, which);
     const content = cs.content;
     if (content === "none" || content === "normal" || content === "") {
@@ -1241,22 +1463,16 @@ var H2DSerializer = (() => {
       px(cs.borderLeftWidth) ?? 0
     );
     const hasPaint = isPaintedColor(background) || borderWidth > 0 && isPaintedColor(parseColor(cs.borderTopColor)) || cs.backgroundImage !== "none" || cs.boxShadow !== "none";
-    const literal = literalOf(content);
+    const literal = counters === null ? literalOf(content) : expandContent(content, counters, host);
     const visibleText = literal !== null && hasVisibleText(literal);
     const generated = literal === null && content.trim() !== '""';
     if (!hasPaint && !visibleText && !generated) return { kind: "empty" };
-    if (generated && !hasPaint) {
-      return {
-        kind: "refused",
-        refusal: { reason: "generated", content: content.trim() },
-        hasPaint
-      };
-    }
     const positioned = cs.position === "absolute" || cs.position === "fixed";
     if (!positioned) {
       return { kind: "refused", refusal: { reason: "flow" }, hasPaint };
     }
-    if (cs.position === "fixed" || hostCs.position === "static") {
+    const container = containingBlockOf(host, cs, hostCs);
+    if (container === null) {
       return { kind: "refused", refusal: { reason: "containing-block" }, hasPaint };
     }
     const left = px(cs.left);
@@ -1266,13 +1482,20 @@ var H2DSerializer = (() => {
     if (left === null || top === null || width === null || height === null) {
       return { kind: "refused", refusal: { reason: "flow" }, hasPaint };
     }
+    if (generated && !hasPaint) {
+      return {
+        kind: "refused",
+        refusal: { reason: "generated", content: content.trim() },
+        hasPaint
+      };
+    }
     const padX = (px(cs.paddingLeft) ?? 0) + (px(cs.paddingRight) ?? 0);
     const padY = (px(cs.paddingTop) ?? 0) + (px(cs.paddingBottom) ?? 0);
     const borderX = (px(cs.borderLeftWidth) ?? 0) + (px(cs.borderRightWidth) ?? 0);
     const borderY = (px(cs.borderTopWidth) ?? 0) + (px(cs.borderBottomWidth) ?? 0);
     const box = {
-      x: left,
-      y: top,
+      x: container.x + left - container.hostX,
+      y: container.y + top - container.hostY,
       w: width + padX + borderX,
       h: height + padY + borderY
     };
@@ -2236,7 +2459,13 @@ var H2DSerializer = (() => {
   };
   var SVG_NS2 = "http://www.w3.org/2000/svg";
   var buildPseudo = (el, hostCs, which, hostBox, ctx, hostId) => {
-    const read = readPseudo(el, hostCs, which);
+    const values = ctx.counters.get(el);
+    const read = readPseudo(
+      el,
+      hostCs,
+      which,
+      which === "::before" ? values?.before ?? null : values?.after ?? null
+    );
     if (read.kind === "absent" || read.kind === "empty") return null;
     if (read.kind === "refused") {
       reportPseudoRefusal(read, which, ctx.sink, hostId);
@@ -2555,6 +2784,10 @@ var H2DSerializer = (() => {
       scrollX: window.scrollX,
       scrollY: window.scrollY,
       allocId,
+      /** Считается от `<html>`, а не от `<body>`: `counter-reset` на
+       *  корневом элементе — обычное дело, и начав с тела, мы потеряли
+       *  бы созданный там счётчик. */
+      counters: computeCounters(document.documentElement),
       insideBrokenTransform: false,
       ancestorMatrix: IDENTITY_MATRIX,
       ancestorInverse: IDENTITY_MATRIX,
