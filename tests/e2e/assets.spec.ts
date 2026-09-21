@@ -123,3 +123,54 @@ test('кросс-доменная картинка: узел есть, байт�
   expect(resolved.report[0]?.needsPlaceholder).toBe(true)
   expect(resolved.report[0]?.nodeId).toBe(assetRequests[0]?.nodeId)
 })
+
+/** ПОЧЕМУ разбор заголовка `data:`-URL вообще нужен.
+ *
+ *  Синхронный обход узнаёт натуральный размер фоновой картинки приёмом
+ *  `new Image(); img.src = url; img.complete`. Для УЖЕ отрисованного
+ *  `data:`-фона он работает: браузер кеширует по строке URL, и
+ *  `complete` истинно сразу. Для НЕЗНАКОМОГО — нет.
+ *
+ *  Проверка стоит здесь, а не в фикстуре, и это осознанно. Фикстура
+ *  условие не воспроизводит: её фон отрисован, значит закеширован, и
+ *  ветка разбора в ней не выполняется — слом «убрать разбор» не ронял
+ *  её. Претендовать, что фикстура покрывает этот случай, было бы
+ *  неправдой, поэтому условие проверяется там, где оно воспроизводимо.
+ *
+ *  Найдено на захвате настоящей страницы: 20 фоновых картинок из 28
+ *  недоступных оказались `data:image/png`. */
+test('незнакомый data:-URL не даёт размера через кеш, но даёт через заголовок',
+  async ({ page }) => {
+    await page.goto(fixtureUrl('image-data'))
+    /** Захват нужен только ради впрыска сериализатора: его поверхность
+     *  и есть предмет проверки. */
+    await captureScreen(page, 's', 'Probe')
+
+    /** PNG 33×17, которого на странице заведомо нет. */
+    const unseen = await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 33
+      canvas.height = 17
+      const context = canvas.getContext('2d')
+      if (context === null) return null
+      context.fillStyle = '#123456'
+      context.fillRect(0, 0, 33, 17)
+      return canvas.toDataURL('image/png')
+    })
+    expect(unseen).not.toBeNull()
+
+    const viaCache = await page.evaluate((url) => {
+      const probe = new Image()
+      probe.src = url
+      return { complete: probe.complete, width: probe.naturalWidth }
+    }, unseen ?? '')
+    expect(viaCache).toEqual({ complete: false, width: 0 })
+
+    const viaHeader = await page.evaluate((url) => {
+      const api = (globalThis as unknown as {
+        __h2d: { sizeFromDataUrl?: (u: string) => { w: number; h: number } | null }
+      }).__h2d
+      return api.sizeFromDataUrl?.(url) ?? null
+    }, unseen ?? '')
+    expect(viaHeader).toEqual({ w: 33, h: 17 })
+  })

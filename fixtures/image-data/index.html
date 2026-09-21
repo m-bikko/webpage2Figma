@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>image-data</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  /* Фон задан data:-URL. Такого не было ни в одной фикстуре — все
+     ссылались на файлы, — и на захвате настоящей страницы это дало
+     20 недоступных картинок из 28. Приём с кешем браузера здесь не
+     работает: декодирование data: асинхронно, хотя байты в строке. */
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .cell{width:120px;height:90px;background-color:#d4d4d8;
+    background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAYCAYAAAC8/X7cAAAAcklEQVR4AdXBwQ2AAAgAsZpwH6Z2c52D9uH9QgghhBBCCCGEEEIIIYQQQgghhBBCCCGEEEIIIYQw1mljnTbWaWOdNtZpY5021mljnTbWaWOdNtZpY5021mljnTbWaWOdNtZpY5021mljnTbWaWOdNtZpP9YPA67RKuHTAAAAAElFTkSuQmCC);
+    background-repeat:no-repeat}
+  .contain{background-size:contain}
+  .cover{background-size:cover}
+  .auto{background-size:auto;background-position:100% 100%}
+</style></head>
+<body>
+  <div class="row">
+    <div class="cell contain"></div>
+    <div class="cell cover"></div>
+    <div class="cell auto"></div>
+  </div>
+</body></html>

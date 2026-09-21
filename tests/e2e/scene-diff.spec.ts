@@ -24,7 +24,7 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
 
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'gradient', 'transformed', 'blend', 'blur',
-  'group-effects', 'transform-nested', 'blend-isolated', 'image-fit', 'image-bg',
+  'group-effects', 'transform-nested', 'blend-isolated', 'image-fit', 'image-bg', 'image-data',
 ] as const
 
 type Threshold = { maxDiffPixels: number; maxDiffRatio: number }

@@ -302,7 +302,17 @@ export const downloadCapture = async (
     binary += String.fromCharCode(...zip.slice(i, i + CHUNK))
   }
   await chrome.downloads.download({
-    url: `data:application/zip;base64,${btoa(binary)}`,
+    /** `application/octet-stream`, а НЕ `application/zip`.
+     *
+     *  Chrome сверяет тип с расширением и переименовывает файл, если
+     *  считает, что знает лучше: с `application/zip` он молча
+     *  превращал `page.h2d` в `page.zip`. Проверено на настоящем
+     *  захвате — файл приехал с расширением `.zip`.
+     *
+     *  Нейтральный тип заставляет его уважать имя. Содержимое от
+     *  этого не меняется: `.h2d` и есть ZIP, просто с нашим
+     *  расширением, и плагин ждёт именно его. */
+    url: `data:application/octet-stream;base64,${btoa(binary)}`,
     filename: name,
     saveAs: false,
   })

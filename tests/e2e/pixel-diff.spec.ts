@@ -31,7 +31,7 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
  *  а не в гейте точности. */
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed', 'blend', 'blur', 'group-effects', 'transform-nested', 'blend-isolated',
-  'image-fit', 'image-bg',
+  'image-fit', 'image-bg', 'image-data',
   /** `image-cors` и `image-broken` здесь НЕ значатся намеренно. Её узлы — заглушки, а
    *  заглушка нарочно громкая: красная пунктирная рамка с подписью,
    *  которую браузер не рисует никогда. Расхождение измерено — 21155

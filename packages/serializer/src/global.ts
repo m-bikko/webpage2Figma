@@ -4,6 +4,7 @@ import {
 import type { IdAllocator } from './walk.js'
 import { AssetRequests } from './assets.js'
 import { resolveAssets, type ResolvedAssets } from './resolve-assets.js'
+import { sizeFromDataUrl } from './css/data-url.js'
 
 /** Аллокатор идентификаторов живёт ВНУТРИ страницы и переживает несколько
  *  вызовов. Это не деталь реализации, а требование двух сторон сразу.
@@ -54,7 +55,13 @@ const resolvePendingAssets = async (): Promise<ResolvedAssets> => {
   return resolveAssets(requests.drain())
 }
 
-const api = { beginCapture, captureScreen, emptyBundle, resolvePendingAssets }
+/** `sizeFromDataUrl` торчит наружу ради ОДНОЙ проверки: что
+ *  незнакомый `data:`-URL не даёт размера через кеш браузера, но даёт
+ *  через заголовок. Условие воспроизводимо только в живой странице, а
+ *  фикстурой — нет: её фон отрисован, значит закеширован. */
+const api = {
+  beginCapture, captureScreen, emptyBundle, resolvePendingAssets, sizeFromDataUrl,
+}
 
 declare global {
   interface Window {

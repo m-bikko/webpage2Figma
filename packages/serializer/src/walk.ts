@@ -9,6 +9,7 @@ import type {
 } from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
+import { sizeFromDataUrl } from './css/data-url.js'
 import { parseLinearGradient } from './css/gradient.js'
 import {
   backgroundPlacementFor, classifyBackgroundImage, placementFor, repeatVerdict,
@@ -141,6 +142,13 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
  *  него размер бокса нельзя: это выдало бы догадку за факт и молча
  *  исказило бы масштаб. */
 const naturalSizeOf = (url: string): { w: number; h: number } | null => {
+  /** `data:`-URL разбирается из заголовка: для него приём с кешем не
+   *  работает, потому что декодирование асинхронно даже когда байты
+   *  прямо в строке. Найдено на захвате настоящей страницы — 20
+   *  фоновых картинок из 28 недоступных оказались `data:image/png`. */
+  const fromData = sizeFromDataUrl(url)
+  if (fromData !== null) return fromData
+
   const probe = new Image()
   probe.src = url
   if (!probe.complete || probe.naturalWidth === 0) return null

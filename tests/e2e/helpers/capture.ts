@@ -45,6 +45,7 @@ declare global {
       beginCapture: () => void
       captureScreen: (id: string, name: string) => CaptureResult
       resolvePendingAssets: () => Promise<ResolvedAssets>
+      sizeFromDataUrl: (url: string) => { w: number; h: number } | null
     }
   }
 }
