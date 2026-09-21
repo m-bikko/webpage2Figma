@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { decomposeMatrix, hasSkew, parseMatrix } from '../src/css/transform.js'
+import {
+  decomposeMatrix, hasSkew, parseMatrix, type Matrix,
+} from '../src/css/transform.js'
 
 const round = (value: number): number => Math.round(value * 10000) / 10000
 
@@ -77,25 +79,41 @@ describe('hasSkew', () => {
     expect(hasSkew({ a: 1, b: 0, c: 0.364, d: 1, e: 0, f: 0 })).toBe(true)
   })
 
-  it('false для поворота с НЕРАВНОМЕРНЫМ масштабом', () => {
-    // Измерено при исполнении: с абсолютным допуском 1e-6 этот случай
-    // объявлялся сдвинутым, то есть корректная трансформа отвергалась.
-    // rotate(37deg) scale(5,4).
-    const rad = (37 * Math.PI) / 180
+  /** Компоненты округляются до шести знаков, потому что именно так их
+   *  сериализует Chrome в `getComputedStyle().transform`. Без округления
+   *  тест бесполезен: при полной точности `c = −b` и `d = a` дают побитово
+   *  точное сокращение, скалярное произведение равно ровно нулю, и
+   *  проблема не воспроизводится. Первая редакция этих тестов брала
+   *  `Math.cos`/`Math.sin` напрямую и проходила при заведомо неверном
+   *  абсолютном допуске. */
+  const chromeMatrix = (deg: number, sx: number, sy: number): Matrix => {
+    const rad = (deg * Math.PI) / 180
     const cos = Math.cos(rad)
     const sin = Math.sin(rad)
-    expect(hasSkew({
-      a: 5 * cos, b: 5 * sin, c: -4 * sin, d: 4 * cos, e: 0, f: 0,
-    })).toBe(false)
+    const round = (value: number): number => Math.round(value * 1e6) / 1e6
+    return {
+      a: round(sx * cos), b: round(sx * sin),
+      c: round(-sy * sin), d: round(sy * cos),
+      e: 0, f: 0,
+    }
+  }
+
+  it('false для поворота с НЕРАВНОМЕРНЫМ масштабом', () => {
+    // Измерено: с абсолютным допуском скалярное произведение здесь равно
+    // 1.20e-6 и элемент объявлялся сдвинутым, то есть корректная
+    // трансформа отвергалась. После нормировки — 6.02e-8.
+    expect(hasSkew(chromeMatrix(37, 5, 4))).toBe(false)
   })
 
   it('false при большом неравномерном масштабе', () => {
-    const rad = (37 * Math.PI) / 180
-    const cos = Math.cos(rad)
-    const sin = Math.sin(rad)
-    expect(hasSkew({
-      a: 120 * cos, b: 120 * sin, c: -80 * sin, d: 80 * cos, e: 0, f: 0,
-    })).toBe(false)
+    // Абсолютное произведение 2.41e-5 — в двадцать четыре раза выше
+    // допуска. Нормированное 2.51e-9.
+    expect(hasSkew(chromeMatrix(37, 120, 80))).toBe(false)
+  })
+
+  it('false при повороте с масштабом на другом угле', () => {
+    // 23° scale(50,20): абсолютное 3.15e-5, нормированное 3.15e-8.
+    expect(hasSkew(chromeMatrix(23, 50, 20))).toBe(false)
   })
 
   it('true для сдвига даже при большом масштабе — нормировка не глушит сигнал', () => {
