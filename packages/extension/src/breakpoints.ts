@@ -98,3 +98,43 @@ export const captureFullPage = async (
   }
   return data
 }
+
+/** Ждёт, пока картинки страницы догрузятся.
+ *
+ *  Зачем. На живых страницах картинки грузятся лениво, и снимок сразу
+ *  после смены размера застаёт их незагруженными: `naturalWidth`
+ *  нулевой, узел становится заглушкой. Найдено на захвате настоящей
+ *  страницы — так потерялись восемь картинок из двадцати восьми
+ *  недоступных.
+ *
+ *  Смена размера вьюпорта сама по себе вызывает загрузку новых
+ *  картинок: медиазапросы, `srcset`, ленивые изображения, попавшие в
+ *  видимую область. Поэтому ждать надо ПОСЛЕ эмуляции, а не до.
+ *
+ *  Ожидание ОГРАНИЧЕНО по времени и не молчит. Картинка может не
+ *  загрузиться никогда — битая ссылка, мёртвый домен, — и ждать её
+ *  вечно значит не отдать пользователю ничего. По истечении срока
+ *  съёмка идёт дальше, а незагруженное честно станет заглушкой с
+ *  диагностикой: это уже умеет сериализатор. */
+export const waitForImages = async (
+  tabId: number,
+  timeoutMs = 3000,
+): Promise<{ waited: number; pending: number }> => {
+  const started = Date.now()
+  for (;;) {
+    const probe = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      /** `Array.from`, а не распыление: `HTMLCollection` итерируема в
+       *  рантайме, но её тип в конфигурации проекта — нет. */
+      func: () => Array.from(document.images)
+        .filter((img) => !img.complete).length,
+    })
+    const pending = probe[0]?.result ?? 0
+    if (pending === 0) return { waited: Date.now() - started, pending: 0 }
+    if (Date.now() - started >= timeoutMs) {
+      return { waited: Date.now() - started, pending }
+    }
+    await new Promise((done) => { setTimeout(done, 50) })
+  }
+}

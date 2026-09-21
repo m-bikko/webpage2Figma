@@ -2,7 +2,7 @@ import { IR_VERSION } from '@h2d/ir/version'
 import { reconcileAssets } from '@h2d/ir'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
 import {
-  BREAKPOINTS, captureFullPage, withViewport, type Breakpoint,
+  BREAKPOINTS, captureFullPage, waitForImages, withViewport, type Breakpoint,
 } from './breakpoints.js'
 import { packBundle } from '@h2d/bundle'
 import { resolveAssets, type AssetRequest } from './assets.js'
@@ -69,6 +69,10 @@ const captureInPage = async (
   tabId: number,
   size: Breakpoint,
 ): Promise<CaptureResult> => {
+  /** ПОСЛЕ эмуляции, а не до: смена размера сама вызывает загрузку
+   *  новых картинок — медиазапросы, `srcset`, ленивые изображения,
+   *  попавшие в видимую область. */
+  await waitForImages(tabId)
   const captured = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',

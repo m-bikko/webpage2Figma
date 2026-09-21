@@ -261,3 +261,34 @@ test('дерево расширения совпадает с деревом п�
     await context.close()
   }
 })
+
+/** Картинка, не успевшая загрузиться, — обычное дело на живых
+ *  страницах, и на захвате настоящей их так потерялось восемь.
+ *  Расширение обязано дождаться, а не снять дыру. */
+test('расширение дожидается незагруженных картинок', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    /** `domcontentloaded`, а НЕ `load`: по умолчанию Playwright ждёт
+     *  события `load`, а оно ждёт картинки — и условие исчезает.
+     *  Первая редакция теста проходила без всякой реализации именно
+     *  поэтому. */
+    await page.goto(fixtureUrl('image-slow'), { waitUntil: 'domcontentloaded' })
+    const tabId = await tabIdOf(worker, '4317')
+
+    const captured = await worker.evaluate(
+      (tabId) => globalThis.h2d.captureAt(tabId, { name: 'D', width: 800, height: 400 }),
+      tabId,
+    )
+
+    const kinds: string[] = []
+    const visit = (node: IrNode): void => {
+      if (node.sourceTag === 'img') kinds.push(node.kind)
+      node.children.forEach(visit)
+    }
+    visit(captured.screen.root)
+    expect(kinds).toEqual(['image'])
+  } finally {
+    await context.close()
+  }
+})

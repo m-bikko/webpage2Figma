@@ -46,7 +46,19 @@ const TYPES = {
 }
 
 export const createFixtureServer = () => createServer(async (req, res) => {
-  const requested = decodeURIComponent((req.url ?? '/').split('?')[0])
+  const [path, query] = (req.url ?? '/').split('?')
+  const requested = decodeURIComponent(path)
+
+  /** `?delay=300` задерживает ответ. Нужен, чтобы воспроизводить
+   *  картинку, которая ещё не загрузилась в момент съёмки: на живых
+   *  страницах это обычное дело — ленивая загрузка, — и на захвате
+   *  настоящей страницы такими оказались восемь картинок из
+   *  двадцати восьми недоступных. Мгновенный локальный сервер этого
+   *  условия не создаёт вовсе. */
+  const delay = Number.parseInt(
+    new URLSearchParams(query ?? '').get('delay') ?? '0', 10,
+  )
+  if (delay > 0) await new Promise((done) => setTimeout(done, delay))
   /** Защита от выхода за корень. Сервер локальный и живёт секунды, но
    *  путь приходит из строки, а «локальный и ненадолго» — не свойство
    *  кода, а обстоятельство, которое может перестать быть верным. */
