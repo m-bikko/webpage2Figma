@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>blend-isolated</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  .backdrop{height:40px;background:#ef4444}
+  /* Изоляция ограничивает подложку своей группой: в браузере зелёный
+     остаётся зелёным, а плоский рендерер смешивает его с красным выше и
+     чернит. Фикстура в pixel-diff НЕ входит — рендер заведомо разойдётся.
+     Её задача доказать, что расхождение объяснено, а не молчит. */
+  .isolated{isolation:isolate;height:80px}
+  .faded{opacity:0.99;height:80px}
+  .blended{height:60px;background:#22c55e;mix-blend-mode:multiply}
+</style></head>
+<body>
+  <div class="backdrop"></div>
+  <div class="isolated"><div class="blended"></div></div>
+  <div class="faded"><div class="blended"></div></div>
+</body></html>

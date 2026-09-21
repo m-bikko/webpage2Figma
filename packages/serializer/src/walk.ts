@@ -48,6 +48,11 @@ type WalkContext = {
    *  потому что снизу это не восстановить: `getBoundingClientRect()` уже
    *  включает трансформы предков и не говорит, откуда они взялись. */
   insideTransform: boolean
+  /** Есть ли среди предков ИЗОЛИРУЮЩАЯ группа. Изолируют не все
+   *  stacking context: `position: relative; z-index: 1` не изолирует, а
+   *  `isolation: isolate`, `opacity < 1`, фильтр, маска и собственный
+   *  режим наложения — изолируют. */
+  insideIsolation: boolean
 }
 
 /** Элементы, которые не рисуются и не должны попадать в макет. */
@@ -358,10 +363,24 @@ const buildNode = (
   const children: IrNode[] = []
   const childProbes: LayoutProbe[] = []
 
+  /** Изолирующие триггеры по спецификации компоновки. Обычный stacking
+   *  context не изолирует — только группа с собственным эффектом. */
+  const isolates =
+    cs.isolation === 'isolate' ||
+    Number.parseFloat(cs.opacity) < 1 ||
+    cs.filter !== 'none' ||
+    cs.clipPath !== 'none' ||
+    cs.mixBlendMode !== 'normal'
+
   const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
-  const childCtx: WalkContext = transform === null
-    ? ctx
-    : { ...ctx, insideTransform: true }
+  const needsChildCtx = transform !== null || isolates
+  const childCtx: WalkContext = needsChildCtx
+    ? {
+        ...ctx,
+        insideTransform: ctx.insideTransform || transform !== null,
+        insideIsolation: ctx.insideIsolation || isolates,
+      }
+    : ctx
   for (const child of ordered) {
     const built = buildNode(child, cs, childCtx)
     if (built === null) continue
@@ -401,6 +420,21 @@ const buildNode = (
    *  осталась: улучшение корректности породило молчаливую потерю.
    *  Исправление геометрии — отдельная работа, требующая хранить `rect`
    *  в локальных координатах родителя и композировать трансформы вниз. */
+  /** Наложение внутри изолирующей группы воспроизводится НЕВЕРНО:
+   *  рендерер плющит дерево и смешивает со всем, что нарисовано раньше,
+   *  тогда как CSS ограничивает подложку изолирующей группой. Молчать
+   *  нельзя — это та же потеря честности, что была с потомками
+   *  трансформированных узлов. */
+  if (ctx.insideIsolation && cs.mixBlendMode !== 'normal') {
+    ctx.sink.report(
+      'warning', DIAGNOSTIC_CODES.blendIsolation,
+      `Режим наложения "${cs.mixBlendMode}" применён внутри изолирующей ` +
+      `группы: подложка ограничена этой группой, а рендерер смешивает со ` +
+      `всем, что нарисовано раньше.`,
+      id, false,
+    )
+  }
+
   if (ctx.insideTransform) {
     ctx.sink.report(
       'warning', DIAGNOSTIC_CODES.transformDescendant,
@@ -525,6 +559,7 @@ export const walkDocument = (
     scrollY: window.scrollY,
     allocId,
     insideTransform: false,
+    insideIsolation: false,
   }
 
   const built = buildNode(document.body, null, ctx)

@@ -9,7 +9,7 @@ type TextNode = Extract<IrNode, { kind: 'text' }>
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text',
   'transformed', 'transform-nested', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
-  'missing-font', 'dashed-border', 'text-transform', 'blend',
+  'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated',
 ] as const
 
 const snapshotPath = (fixture: string, width: number): string =>

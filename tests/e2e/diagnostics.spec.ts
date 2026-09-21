@@ -197,6 +197,41 @@ test('radial-gradient: радиальный диагностируется, а �
     .toBe(true)
 })
 
+test('blend-isolated: наложение в изолирующей группе ОБЪЯСНЕНО, а не молчит', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('blend-isolated'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const explained = (id: string | undefined): boolean =>
+    report.some((i) => i.nodeId === id && i.code === 'fidelity.blend-isolation')
+
+  // Измерено на зонде: в браузере элемент внутри isolation: isolate
+  // остаётся своим цветом, а плоский рендерер смешивает его со всем, что
+  // нарисовано раньше, и чернит. Геометрия тут ни при чём — ошибается
+  // модель композиции, и молчать о ней нельзя.
+  const isolated = screen.root.children[1]?.children[0]
+  expect(isolated?.style.blend).toBe('multiply')
+  expect(explained(isolated?.id), 'наложение под isolation обязано быть объяснено')
+    .toBe(true)
+
+  // opacity < 1 изолирует не хуже явного isolation — это часто
+  // неожиданно, поэтому проверяется отдельно.
+  const faded = screen.root.children[2]?.children[0]
+  expect(explained(faded?.id), 'opacity < 1 тоже создаёт изолирующую группу')
+    .toBe(true)
+})
+
+test('blend: наложение БЕЗ изолирующего предка не диагностируется', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('blend'))
+  const { report } = await captureScreen(page, 's0', 'Desktop')
+
+  // Иначе диагностика была бы шумом на каждом наложении, а шум учит
+  // игнорировать отчёт. Здесь рендерер воспроизводит наложение верно —
+  // это подтверждено нулевым расхождением в pixel-diff.
+  expect(report.some((i) => i.code === 'fidelity.blend-isolation')).toBe(false)
+})
+
 test('blend: режим наложения доезжает и не диагностируется', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('blend'))

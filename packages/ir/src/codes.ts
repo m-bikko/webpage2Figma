@@ -56,6 +56,19 @@ export const DIAGNOSTIC_CODES = {
    *  исчезло, а неверность потомков осталась — то есть улучшение
    *  корректности породило молчаливую потерю. */
   transformDescendant: 'fidelity.transform-descendant',
+  /** Узел с режимом наложения лежит внутри ИЗОЛИРУЮЩЕЙ группы.
+   *
+   *  В CSS наложение композитит с подложкой в пределах ближайшей
+   *  изолирующей группы, а референс-рендерер плющит дерево в плоский
+   *  список и границ изоляции не имеет вовсе — он смешивает со всем,
+   *  что нарисовано раньше. Измерено на зонде: элемент с
+   *  `mix-blend-mode: multiply` внутри `isolation: isolate` в браузере
+   *  остаётся своим цветом, а у нас чернеет.
+   *
+   *  Как и `transformDescendant`, код появился из-за того, что
+   *  реализация фичи сняла общую диагностику `deferred.blend`,
+   *  прикрывавшую заодно и этот случай. */
+  blendIsolation: 'fidelity.blend-isolation',
 } as const
 
 export type DiagnosticCode = (typeof DIAGNOSTIC_CODES)[keyof typeof DIAGNOSTIC_CODES]
