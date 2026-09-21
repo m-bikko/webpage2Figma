@@ -359,6 +359,15 @@ const DECORATION_ATTR: Record<TextRun['decoration'], string> = {
   strikethrough: ' text-decoration="line-through"',
 }
 
+/** Боксы строк заданы ОТНОСИТЕЛЬНО `rect` своего узла — в той же системе,
+ *  в которой дети выражены относительно родителя. Поэтому к ним
+ *  складывается абсолютное положение узла, которое к моменту вызова уже
+ *  лежит в `node.rect`: `renderSubtree` передаёт сюда узел со сдвинутым
+ *  прямоугольником.
+ *
+ *  Без сложения текст остался бы там, куда его клал прежний абсолютный
+ *  контракт, а внутри трансформированной группы преобразовался бы ДВАЖДЫ:
+ *  один раз группой, второй раз собственными координатами. */
 const renderTextLines = (node: IrNode & { kind: 'text' }): string => {
   const run: TextRun | undefined = node.text.runs[0]
   if (run === undefined) return ''
@@ -368,11 +377,13 @@ const renderTextLines = (node: IrNode & { kind: 'text' }): string => {
     : 'start'
 
   return node.text.lines.map((line) => {
+    const lineX = node.rect.x + line.x
+    const lineY = node.rect.y + line.y
     const x =
-      anchor === 'middle' ? line.x + line.w / 2
-      : anchor === 'end' ? line.x + line.w
-      : line.x
-    const baseline = line.y + (line.h + run.fontSize * BASELINE_RATIO) / 2
+      anchor === 'middle' ? lineX + line.w / 2
+      : anchor === 'end' ? lineX + line.w
+      : lineX
+    const baseline = lineY + (line.h + run.fontSize * BASELINE_RATIO) / 2
     return (
       `<text x="${x}" y="${baseline}" text-anchor="${anchor}" ` +
       `dominant-baseline="alphabetic" ` +
@@ -424,83 +435,145 @@ const renderNodeBody = (node: IrNode, defs: string[]): string => {
   }
 }
 
-/** Трансформа применяется ВОКРУГ точки отсчёта, а не вокруг начала
- *  координат: CSS вращает вокруг `transform-origin`, по умолчанию центра.
- *  Отсюда классическая тройка — перенос в точку отсчёта, преобразование,
- *  перенос назад. Угол в градусах, потому что SVG принимает градусы.
- *
- *  Порядок множителей повторяет разложение из сериализатора:
- *  `p' = origin + (tx,ty) + R·S·(p − origin)`. Перестановка `rotate` и
- *  `scale` при НЕравномерном масштабе даёт другую матрицу, поэтому
- *  порядок здесь не косметика. */
-const transformAttr = (node: IrNode): string => {
-  if (node.transform === null) return ''
-  const t = node.transform
-  const ox = node.rect.x + t.originX
-  const oy = node.rect.y + t.originY
-  const deg = (t.angle * 180) / Math.PI
-  return (
-    ` transform="translate(${ox} ${oy}) translate(${t.translateX} ${t.translateY})` +
-    ` rotate(${deg}) scale(${t.scaleX} ${t.scaleY}) translate(${-ox} ${-oy})"`
-  )
-}
-
-const renderNode = (node: IrNode, defs: string[]): string => {
-  const body = renderNodeBody(node, defs)
-  if (body === '') return ''
-  const transform = transformAttr(node)
-  return transform === '' ? body : `<g${transform}>${body}</g>`
-}
-
-/** Узел вместе с предками, которые его ОБРЕЗАЮТ.
- *
- *  Список нужен именно потому, что рисование плоское: узлы
- *  упорядочиваются по `paintOrder` и теряют вложенность, а вместе с ней
- *  и естественную область обрезки родителя. Без этого `overflow: hidden`
- *  не воспроизводился вовсе — вылезающий потомок рисовался целиком, и
- *  pixel-diff показывал его как расхождение. */
-type Placed = { node: IrNode; clippedBy: IrNode[] }
-
-const flatten = (node: IrNode, clippedBy: IrNode[], out: Placed[]): void => {
-  out.push({ node, clippedBy })
-  /** Себя узел не обрезает: `overflow` режет СОДЕРЖИМОЕ, а собственные
-   *  фон, рамка и тень выходят за padding box совершенно законно. */
-  const inner = node.style.clip ? [...clippedBy, node] : clippedBy
-  for (const child of node.children) flatten(child, inner, out)
-}
-
 /** Область обрезки — padding box, то есть border box минус толщины
  *  границ: CSS режет переполнение по внутреннему краю рамки, а не по
- *  внешнему габариту. */
-const clipPathDef = (node: IrNode): string => {
+ *  внешнему габариту. Прямоугольник передаётся уже АБСОЛЮТНЫМ: координаты
+ *  контракта локальны, а `clipPath` без `clipPathUnits` живёт в системе
+ *  пользователя, то есть в координатах холста. */
+const clipPathDef = (node: IrNode, rect: Rect): string => {
   const sides = node.style.stroke?.weight
     ?? { top: 0, right: 0, bottom: 0, left: 0 }
-  const rect = insetBySides(node.rect, sides)
+  const inner = insetBySides(rect, sides)
   const corner = insetCorner(node.style.corner, sides)
   return (
     `<clipPath id="clip-${node.id}">` +
-    `<path d="${cornerPath(rect, corner)}"/></clipPath>`
+    `<path d="${cornerPath(inner, corner)}"/></clipPath>`
   )
 }
 
+/** Абсолютное положение узла в системе экрана.
+ *  Координаты локальные, поэтому смещения складываются по пути от корня. */
+type Offset = { x: number; y: number }
+
+const shift = (rect: Rect, by: Offset): Rect => ({
+  ...rect, x: rect.x + by.x, y: rect.y + by.y,
+})
+
+/** Групповые эффекты узла, вынесенные на обёртку `<g>`.
+ *
+ *  Возвращает пустую строку, если оборачивать нечего. Лишняя группа не
+ *  ломает картинку, но засоряет вывод и мешает читать его глазами —
+ *  а рендерер служит ещё и инструментом отладки. Поэтому `position:
+ *  relative; z-index: 1`, создающий контекст без единого эффекта, группы
+ *  не получает. */
+const groupAttrs = (node: IrNode, defs: string[], at: Offset): string => {
+  const parts: string[] = []
+  const style: string[] = []
+
+  /** Трансформа применяется ВОКРУГ точки отсчёта, а не вокруг начала
+   *  координат: CSS вращает вокруг `transform-origin`, по умолчанию центра.
+   *  Отсюда классическая тройка — перенос в точку отсчёта, преобразование,
+   *  перенос назад. Угол в градусах, потому что SVG принимает градусы.
+   *
+   *  Порядок множителей повторяет разложение из сериализатора:
+   *  `p' = origin + (tx,ty) + R·S·(p − origin)`. Перестановка `rotate` и
+   *  `scale` при НЕравномерном масштабе даёт другую матрицу, поэтому
+   *  порядок здесь не косметика.
+   *
+   *  Раньше трансформа висела на одиночном узле и потомков не задевала:
+   *  блок 60×30 внутри `rotate(20deg)` приезжал как 66.64 × 48.71. Теперь
+   *  она на группе и потому применяется к поддереву — а дети, выраженные в
+   *  системе этого узла, НЕ получают её повторно. */
+  if (node.transform !== null) {
+    const t = node.transform
+    const ox = node.rect.x + at.x + t.originX
+    const oy = node.rect.y + at.y + t.originY
+    const deg = (t.angle * 180) / Math.PI
+    parts.push(
+      `transform="translate(${ox} ${oy}) translate(${t.translateX} ${t.translateY})` +
+      ` rotate(${deg}) scale(${t.scaleX} ${t.scaleY}) translate(${-ox} ${-oy})"`,
+    )
+  }
+  if (node.style.opacity < 1) parts.push(`opacity="${node.style.opacity}"`)
+  if (node.style.blur !== null && node.style.blur.layer > 0) {
+    const id = `blur-${node.id}`
+    defs.push(
+      `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>` +
+      `<feGaussianBlur stdDeviation="${node.style.blur.layer}"/></filter>`,
+    )
+    parts.push(`filter="url(#${id})"`)
+  }
+  if (node.style.blend !== 'normal') style.push(`mix-blend-mode:${node.style.blend}`)
+
+  /** Изоляция обязательна на любой группе с собственным эффектом: иначе
+   *  наложение внутри неё композитит со всем холстом, как это делал
+   *  плоский рендерер, и защита теряется. */
+  if (parts.length > 0 || style.length > 0) style.push('isolation:isolate')
+  if (style.length > 0) parts.push(`style="${style.join(';')}"`)
+
+  return parts.length > 0 ? ` ${parts.join(' ')}` : ''
+}
+
+/** Рисует узел и его поддерево.
+ *
+ *  Узел, создающий stacking context, становится группой: его эффекты
+ *  висят на `<g>` и потому действуют на всё поддерево, как в CSS.
+ *  Остальные узлы рисуются плоско, без обёртки, и их дети продолжают
+ *  общий порядок отрисовки — иначе группа вокруг каждого узла разрушила
+ *  бы возможность перекрывать соседа.
+ *
+ *  Обёртка ставится по `isStackingContext`, а не по «есть эффект»:
+ *  поддерево контекста занимает НЕПРЕРЫВНЫЙ диапазон `paintOrder`
+ *  (измерено на всех фикстурах), и только такой диапазон можно обернуть,
+ *  не разрушив порядок. Разорванный диапазон возникает у узлов БЕЗ
+ *  контекста и отлавливается диагностикой `fidelity.paint-order-interleaved`.
+ *
+ *  Своя трансформа у узла без контекста невозможна: в CSS `transform`
+ *  контекст создаёт всегда. Поэтому условие на группу заодно покрывает
+ *  и её. */
+const renderSubtree = (node: IrNode, at: Offset, defs: string[]): string => {
+  const absolute = shift(node.rect, at)
+  const inner: Offset = { x: absolute.x, y: absolute.y }
+  const placed: IrNode = { ...node, rect: absolute }
+
+  const descendants = [...node.children]
+    .sort((a, b) => a.paintOrder - b.paintOrder)
+    .map((child) => renderSubtree(child, inner, defs))
+    .join('')
+
+  /** Себя узел не обрезает: `overflow` режет СОДЕРЖИМОЕ, а собственные
+   *  фон, рамка и тень выходят за padding box совершенно законно. Поэтому
+   *  обёртка обнимает только потомков — и не создаётся, когда их нет:
+   *  ссылка на `clipPath` без содержимого лишь засоряла бы `<defs>`. */
+  const content = node.style.clip && descendants !== ''
+    ? (defs.push(clipPathDef(node, absolute)),
+       `<g clip-path="url(#clip-${node.id})">${descendants}</g>`)
+    : descendants
+
+  const attrs = node.isStackingContext ? groupAttrs(node, defs, at) : ''
+
+  if (attrs === '') return renderNodeBody(placed, defs) + content
+
+  /** Эффекты сняты с самой фигуры, потому что они уже висят на группе.
+   *  Оставить их на обоих — значит применить дважды: полупрозрачная
+   *  группа с полупрозрачной фигурой внутри даёт квадрат прозрачности,
+   *  а размытие накладывается поверх размытия. Оба случая выглядят
+   *  правдоподобно и без pixel-diff неотличимы от задуманного. */
+  const bare = renderNodeBody(
+    {
+      ...placed,
+      style: { ...node.style, opacity: 1, blend: 'normal', blur: null },
+    },
+    defs,
+  )
+  return `<g${attrs}>${bare}${content}</g>`
+}
+
 export const renderScreenToSvg = (screen: Screen): string => {
-  const placed: Placed[] = []
-  flatten(screen.root, [], placed)
-  placed.sort((a, b) => a.node.paintOrder - b.node.paintOrder)
-
   const defs: string[] = []
-  const clippers = new Map<string, IrNode>()
-
-  const body = placed.map(({ node, clippedBy }) => {
-    const element = renderNode(node, defs)
-    if (element === '') return ''
-    return clippedBy.reduceRight((inner, clipper) => {
-      clippers.set(clipper.id, clipper)
-      return `<g clip-path="url(#clip-${clipper.id})">${inner}</g>`
-    }, element)
-  }).join('')
-
-  for (const clipper of clippers.values()) defs.push(clipPathDef(clipper))
+  /** У корня экрана координаты абсолютные, поэтому накопленное смещение
+   *  начинается с нуля. */
+  const body = renderSubtree(screen.root, { x: 0, y: 0 }, defs)
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${screen.width}" ` +

@@ -16,9 +16,19 @@ const frame = (o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({
   ...o,
 })
 
+/** Заливка поверх переданного стиля, а не ВМЕСТО него.
+ *
+ *  Раньше `style` из `o` молча отбрасывался: ключ шёл после `...o` и
+ *  затирал его целиком. Пока фикстуры задавали эффекты мутацией
+ *  (`node.style.opacity = ...`), это не проявлялось, но тест на групповой
+ *  эффект, передающий `style` через переопределения, получал бы узел с
+ *  `opacity: 1` — то есть проверял бы не то условие, которое называет. */
 const filled = (color: { r: number; g: number; b: number; a: number },
                 o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode =>
-  frame({ ...o, style: { ...frame().style, fills: [{ kind: 'solid', color }] } })
+  frame({
+    ...o,
+    style: { ...(o.style ?? frame().style), fills: [{ kind: 'solid', color }] },
+  })
 
 const text = (o: Partial<NodeText> = {}): NodeText => ({
   runs: [{
@@ -349,6 +359,170 @@ describe('renderScreenToSvg: текст', () => {
       lines: [{ x: 0, y: 0, w: 40, h: 20, text: '<a & b>' }],
     }))))
     expect(svg).toContain('&lt;a &amp; b&gt;')
+  })
+})
+
+describe('renderScreenToSvg: вложенность и групповые эффекты', () => {
+  const withChild = (
+    parentOverrides: Partial<Omit<IrNode, 'kind'>>,
+    childOverrides: Partial<Omit<IrNode, 'kind'>> = {},
+  ): IrNode => filled({ r: 1, g: 1, b: 1, a: 1 }, {
+    id: 'parent', paintOrder: 1,
+    rect: { x: 0, y: 0, w: 100, h: 100 },
+    ...parentOverrides,
+    children: [filled({ r: 2, g: 2, b: 2, a: 1 }, {
+      id: 'child', paintOrder: 2,
+      rect: { x: 10, y: 10, w: 20, h: 20 },
+      ...childOverrides,
+    })],
+  })
+
+  it('координаты ребёнка складываются с родительскими', () => {
+    const root = filled({ r: 9, g: 9, b: 9, a: 1 }, {
+      id: 'root', paintOrder: 0,
+      rect: { x: 5, y: 7, w: 200, h: 200 },
+      children: [withChild({ rect: { x: 20, y: 30, w: 100, h: 100 } })],
+    })
+    const svg = renderScreenToSvg(screen(root))
+    // Ребёнок: 5 + 20 + 10 = 35 по x, 7 + 30 + 10 = 47 по y.
+    expect(svg).toContain('x="35"')
+    expect(svg).toContain('y="47"')
+  })
+
+  it('узел с прозрачностью оборачивается в группу', () => {
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, opacity: 0.5 },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg).toContain('<g opacity="0.5"')
+  })
+
+  it('прозрачность применяется к ГРУППЕ, а не к каждому узлу', () => {
+    // Ключевое отличие от плоского рендера. Если прозрачность стоит на
+    // каждой фигуре отдельно, перекрывающиеся потомки просвечивают друг
+    // через друга — измерено как 6000 расходящихся пикселей.
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, opacity: 0.5 },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    const shapeOpacities = svg.match(/<rect[^>]*opacity="0\.5"/g) ?? []
+    expect(shapeOpacities, 'прозрачность не должна дублироваться на фигурах')
+      .toHaveLength(0)
+  })
+
+  it('размытие применяется к группе целиком', () => {
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, blur: { layer: 4, background: 0 } },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg).toMatch(/<g[^>]*filter="url\(#/)
+  })
+
+  it('трансформа группы не применяется к детям повторно', () => {
+    // Дети выражены в системе родителя, поэтому трансформа на группе
+    // действует на них автоматически. Отдельной трансформы у ребёнка
+    // быть не должно.
+    const root = withChild({
+      isStackingContext: true,
+      transform: {
+        angle: 0.2, scaleX: 1, scaleY: 1,
+        translateX: 0, translateY: 0, originX: 50, originY: 50,
+      },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg.match(/rotate\(/g) ?? []).toHaveLength(1)
+  })
+
+  it('размытие не применяется дважды — на группе и на фигуре', () => {
+    // Оставить эффект на обоих означало бы наложить размытие поверх
+    // размытия: визуально правдоподобно и вдвое сильнее нужного.
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, blur: { layer: 4, background: 0 } },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg.match(/filter="url\(#blur-/g) ?? [],
+      'фильтр размытия должен встретиться ровно один раз').toHaveLength(1)
+  })
+
+  /** Отдельно от предыдущего: там считаются ССЫЛКИ на фильтр, здесь —
+   *  сам примитив. Снятие размытия с фигуры обязано убрать и определение
+   *  фильтра, иначе в `<defs>` остаётся мёртвый `fx-parent`, а вместе с
+   *  ним и сомнение, применяется ли он где-то ещё. */
+  it('размытие не оставляет собственного фильтра на фигуре', () => {
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, blur: { layer: 4, background: 0 } },
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg).not.toContain('id="fx-parent"')
+  })
+
+  it('изолирующая группа получает isolation', () => {
+    const root = withChild({
+      isStackingContext: true,
+      style: { ...frame().style, opacity: 0.5 },
+    })
+    expect(renderScreenToSvg(screen(root))).toContain('isolation:isolate')
+  })
+
+  it('узел БЕЗ эффектов не создаёт лишней группы', () => {
+    const root = withChild({})
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg.match(/<g/g) ?? [], 'плоские узлы не должны обрастать группами')
+      .toHaveLength(0)
+  })
+
+  /** Оборачивание идёт по `isStackingContext`, но пустая группа не нужна
+   *  и по нему: `position: relative; z-index: 1` создаёт контекст, не имея
+   *  ни одного эффекта. Проверка существует потому, что «контекст» и
+   *  «эффект» легко считать синонимами — и тогда вывод обрастает
+   *  обёртками, ничего не меняющими в картинке. */
+  it('stacking context БЕЗ эффектов тоже не создаёт группы', () => {
+    const root = withChild({ isStackingContext: true })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg.match(/<g/g) ?? [],
+      'контекст без эффекта оборачивать нечем').toHaveLength(0)
+  })
+
+  it('порядок отрисовки внутри группы сохраняется', () => {
+    const root = filled({ r: 9, g: 9, b: 9, a: 1 }, {
+      id: 'root', paintOrder: 0,
+      isStackingContext: true,
+      style: { ...frame().style, opacity: 0.5 },
+      children: [
+        filled({ r: 1, g: 1, b: 1, a: 1 }, { id: 'late', paintOrder: 2 }),
+        filled({ r: 2, g: 2, b: 2, a: 1 }, { id: 'early', paintOrder: 1 }),
+      ],
+    })
+    const svg = renderScreenToSvg(screen(root))
+    expect(svg.indexOf('rgb(2,2,2)')).toBeLessThan(svg.indexOf('rgb(1,1,1)'))
+  })
+
+  /** Боксы строк стали локальными относительно `rect` своего узла, поэтому
+   *  рендерер обязан складывать их со смещением узла. Без сложения текст
+   *  остался бы там, где его клал прежний абсолютный контракт, а внутри
+   *  трансформированной группы преобразовался бы дважды. */
+  it('строки текста смещаются вместе с узлом', () => {
+    const inner: IrNode = {
+      ...frame({ id: 'label', paintOrder: 1, rect: { x: 10, y: 20, w: 40, h: 20 } }),
+      kind: 'text',
+      text: text({ lines: [{ x: 3, y: 4, w: 40, h: 20, text: 'раз' }] }),
+    }
+    const root = frame({
+      id: 'root', paintOrder: 0,
+      rect: { x: 0, y: 0, w: 200, h: 100 },
+      children: [inner],
+    })
+    const svg = renderScreenToSvg(screen(root))
+    // x: 10 + 3 = 13; базовая линия: 20 + 4 + (20 + 16 * 0.6934) / 2 = 39.5472.
+    // Хвост — шум двоичной дроби: сложение смещения даёт 39.547200000000004,
+    // и округлять в рендерере ради красивого литерала было бы подгонкой.
+    expect(svg).toContain('x="13"')
+    expect(svg).toMatch(/y="39\.5472\d*"/)
   })
 })
 
