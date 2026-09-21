@@ -376,6 +376,59 @@ describe('checkInvariants: токены не в обход проверок', ()
   })
 })
 
+describe('checkInvariants: координаты родителя', () => {
+  it('принимает детей, лежащих внутри родителя', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      rect: { x: 0, y: 0, w: 200, h: 100 },
+      children: [frameNode({
+        id: 'b', paintOrder: 1,
+        rect: { x: 10, y: 10, w: 50, h: 20 },
+      })],
+    })
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
+  })
+
+  it('принимает ребёнка, выходящего за пределы родителя', () => {
+    // Законно: absolute-позиционирование, отрицательные отступы и
+    // overflow: visible выносят ребёнка наружу сплошь и рядом. Инвариант
+    // проверяет систему координат, а не вложенность геометрии.
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      rect: { x: 0, y: 0, w: 100, h: 100 },
+      children: [frameNode({
+        id: 'b', paintOrder: 1,
+        rect: { x: -30, y: 150, w: 50, h: 20 },
+      })],
+    })
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
+  })
+
+  it('ловит ребёнка с подозрительно большим смещением', () => {
+    // Верный признак бандла прошлой редакции: ребёнок несёт абсолютные
+    // координаты документа, поэтому его смещение примерно равно
+    // положению родителя на странице. Проверка эвристическая и потому
+    // уровня предупреждения — но молчать нельзя: тип не изменился, и
+    // ничто другое такую путаницу не поймает.
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      rect: { x: 0, y: 0, w: 1440, h: 900 },
+      children: [frameNode({
+        id: 'b', paintOrder: 1,
+        rect: { x: 0, y: 0, w: 100, h: 50 },
+        children: [frameNode({
+          id: 'c', paintOrder: 2,
+          // Ребёнок узла 100×50 не может законно отстоять на 40000px:
+          // это абсолютные координаты, попавшие в поле для локальных.
+          rect: { x: 40000, y: 40000, w: 10, h: 10 },
+        })],
+      })],
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('rect.suspicious-offset')
+  })
+})
+
 describe('checkInvariants: согласованность ссылок диагностики', () => {
   it('ловит диагностику, у которой узел и экран из разных экранов', () => {
     const b = bundle({

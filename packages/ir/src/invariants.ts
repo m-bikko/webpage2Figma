@@ -481,6 +481,52 @@ const checkDeferredDiagnosed = (bundle: Bundle): InvariantError[] => {
   return errors
 }
 
+/** Ловит бандл прошлой редакции, где `rect` нёс абсолютные координаты.
+ *
+ *  Проверка нужна именно потому, что тип поля не изменился: схема такой
+ *  бандл пропустит целиком, а плагин построит макет, в котором каждый
+ *  вложенный узел уехал на смещение родителя. Версия IR отличает
+ *  редакции формально, но бандл могли собрать вручную или склеить из
+ *  кусков, и тогда версия соврёт.
+ *
+ *  Порог заведомо щедрый: ребёнок законно выходит далеко за пределы
+ *  родителя при `position: absolute`, отрицательных отступах и
+ *  `overflow: visible`. Ловится не «вышел за границы», а «отстоит на
+ *  величину, сопоставимую с размером экрана, будучи ребёнком мелкого
+ *  узла» — признак именно перепутанной системы координат.
+ *
+ *  Уровень предупреждения, а не отказа: эвристика не должна отвергать
+ *  бандл, она должна его объяснить. */
+const SUSPICIOUS_OFFSET_FACTOR = 50
+
+const checkLocalCoordinates = (bundle: Bundle): InvariantError[] => {
+  const errors: InvariantError[] = []
+
+  for (const [index, screen] of bundle.screens.entries()) {
+    const visit = (node: IrNode): void => {
+      for (const child of node.children) {
+        const parentSpan = Math.max(node.rect.w, node.rect.h, 1)
+        const offset = Math.max(Math.abs(child.rect.x), Math.abs(child.rect.y))
+        if (offset > parentSpan * SUSPICIOUS_OFFSET_FACTOR) {
+          errors.push({
+            code: 'rect.suspicious-offset',
+            path: `screens[${index}].{${child.id}}.rect`,
+            message:
+              `Смещение ${Math.round(offset)}px у ребёнка узла размером ` +
+              `${Math.round(node.rect.w)}×${Math.round(node.rect.h)}. Похоже на ` +
+              `абсолютные координаты в поле для координат родителя: с плана 3 ` +
+              `rect задаётся относительно родителя.`,
+          })
+        }
+        visit(child)
+      }
+    }
+    visit(screen.root)
+  }
+
+  return errors
+}
+
 export const checkInvariants = (bundle: Bundle): InvariantError[] => [
   ...bundle.screens.flatMap((screen, index) => checkPaintOrder(screen, index)),
   ...checkNodeIds(bundle),
@@ -490,4 +536,5 @@ export const checkInvariants = (bundle: Bundle): InvariantError[] => [
   ...checkTextCoherence(bundle),
   ...checkPlaceholders(bundle),
   ...checkDeferredDiagnosed(bundle),
+  ...checkLocalCoordinates(bundle),
 ]
