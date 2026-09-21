@@ -97,11 +97,17 @@ const effectsFor = (style: NodeStyle): SceneEffect[] => {
   return effects
 }
 
-const paintsFor = (fills: readonly Fill[]): ScenePaint[] => {
+const paintsFor = (
+  fills: readonly Fill[],
+  /** Размер бокса нужен градиенту: `gradientTransform` действует на
+   *  нормализованных координатах, и на неквадратном боксе без поправки
+   *  диагональный градиент уезжает. Найдено замером в Figma. */
+  box: { w: number; h: number },
+): ScenePaint[] => {
   const paints: ScenePaint[] = []
   for (const fill of fills) {
     if (fill.kind === 'solid') paints.push(solidPaint(fill.color))
-    else if (fill.kind === 'gradient') paints.push(gradientPaint(fill.gradient))
+    else if (fill.kind === 'gradient') paints.push(gradientPaint(fill.gradient, box))
     else if (fill.kind === 'image' && fill.ref.placement.mode === 'tile') {
       /** Плитка — единственный случай, когда краска ложится на САМ
        *  узел: повторение геометрией прямоугольника не выражается.
@@ -220,7 +226,7 @@ const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
     rotation: figmaRotation(node.transform),
     opacity: node.style.opacity,
     blendMode: BLEND[node.style.blend] ?? 'NORMAL',
-    fills: paintsFor(node.style.fills),
+    fills: paintsFor(node.style.fills, { w: node.rect.w, h: node.rect.h }),
     stroke: strokeFor(node.style),
     corner: node.style.corner,
     effects: effectsFor(node.style),

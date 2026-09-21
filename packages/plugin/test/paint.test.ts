@@ -31,6 +31,12 @@ const grad = (from: Gradient['from'], to: Gradient['to']): Gradient => ({
   ],
 })
 
+/** Опорные и безусловные проверки идут на КВАДРАТНОМ боксе: там
+ *  нормализация равномерна, поправка на пропорции тождественна, и
+ *  утверждения из документации сравнимы напрямую. Неквадратный случай
+ *  проверяется отдельно, ниже. */
+const UNIT = { w: 100, h: 100 }
+
 describe('gradientPaint: опорные точки из документации', () => {
   /** Единственные две вещи, которые документация про Transform
    *  утверждает прямо: тождественная матрица — это [[1,0,0],[0,1,0]],
@@ -40,7 +46,7 @@ describe('gradientPaint: опорные точки из документации
    *  размещение: он идёт вдоль оси X от 0 до 1. Проверка привязывает
    *  нашу арифметику к документированному факту, а не к самой себе. */
   it('градиент слева направо даёт тождественную матрицу', () => {
-    const paint = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 }))
+    const paint = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 }), UNIT)
     expect(paint.gradientTransform[0][0]).toBeCloseTo(1, 9)
     expect(paint.gradientTransform[0][1]).toBeCloseTo(0, 9)
     expect(paint.gradientTransform[0][2]).toBeCloseTo(0, 9)
@@ -56,7 +62,7 @@ describe('gradientPaint: опорные точки из документации
    *  Числа выписаны руками из документированной формы, а не получены
    *  прогоном нашего же кода. */
   it('градиент сверху вниз даёт поворот на 90 градусов', () => {
-    const m = gradientPaint(grad({ x: 0, y: 0 }, { x: 0, y: 1 })).gradientTransform
+    const m = gradientPaint(grad({ x: 0, y: 0 }, { x: 0, y: 1 }), UNIT).gradientTransform
     expect(m[0][0]).toBeCloseTo(0, 9)
     expect(m[0][1]).toBeCloseTo(1, 9)
     expect(m[1][0]).toBeCloseTo(-1, 9)
@@ -66,7 +72,7 @@ describe('gradientPaint: опорные точки из документации
 
 describe('gradientPaint: то, что проверяемо безусловно', () => {
   it('порядок остановок сохраняется', () => {
-    const stops = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 })).gradientStops
+    const stops = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 }), UNIT).gradientStops
     expect(stops.map((s) => s.position)).toEqual([0, 1])
     expect(stops[0]?.color).toEqual({ r: 1, g: 0, b: 0, a: 1 })
   })
@@ -77,7 +83,7 @@ describe('gradientPaint: то, что проверяемо безусловно'
    *  а `SolidPaint.color` — как `RGB`. Первая редакция держала одну
    *  форму на всё, и применитель падал на присваивании. */
   it('альфа остановки живёт внутри цвета', () => {
-    const stops = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 })).gradientStops
+    const stops = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 0 }), UNIT).gradientStops
     expect(stops[1]?.color.a).toBe(0.5)
   })
 
@@ -89,8 +95,8 @@ describe('gradientPaint: то, что проверяемо безусловно'
    *  найдена сломом. Здесь начало общее, поэтому отличить их может
    *  только знак направления. */
   it('противоположные направления из одной точки дают разные матрицы', () => {
-    const right = gradientPaint(grad({ x: 0.5, y: 0 }, { x: 1, y: 0 })).gradientTransform
-    const left = gradientPaint(grad({ x: 0.5, y: 0 }, { x: 0, y: 0 })).gradientTransform
+    const right = gradientPaint(grad({ x: 0.5, y: 0 }, { x: 1, y: 0 }), UNIT).gradientTransform
+    const left = gradientPaint(grad({ x: 0.5, y: 0 }, { x: 0, y: 0 }), UNIT).gradientTransform
     expect(left).not.toEqual(right)
   })
 
@@ -106,9 +112,64 @@ describe('gradientPaint: то, что проверяемо безусловно'
    *  g = 2·(x − 0.25) = 2x − 0.5, откуда матрица [[2,0,−0.5],[0,2,0]].
    *  Числа получены из определения, а не прогоном нашего же кода. */
   it('матрица обращается, а не транспонируется', () => {
-    const m = gradientPaint(grad({ x: 0.25, y: 0 }, { x: 0.75, y: 0 })).gradientTransform
+    const m = gradientPaint(grad({ x: 0.25, y: 0 }, { x: 0.75, y: 0 }), UNIT).gradientTransform
     expect(m[0][0]).toBeCloseTo(2, 9)
     expect(m[0][2]).toBeCloseTo(-0.5, 9)
     expect(m[1][1]).toBeCloseTo(2, 9)
+  })
+})
+
+describe('gradientPaint: пропорции бокса', () => {
+  /** Найдено ЗАМЕРОМ в настоящей Figma, круговым обходом не ловилось.
+   *
+   *  `gradientTransform` действует на НОРМАЛИЗОВАННЫХ координатах слоя,
+   *  где бокс — единичный квадрат. Нормализация неравномерна, поэтому
+   *  «перпендикуляр» в ней не перпендикуляр на экране. Для
+   *  горизонтальных и вертикальных градиентов это безразлично — вдоль
+   *  них цвет постоянен, — а для диагонального нет.
+   *
+   *  На боксе 800×160 с `linear-gradient(135deg, …)` отношение вкладов
+   *  осей оказалось 0.2 вместо 5.0: градиент шёл почти вертикально там,
+   *  где должен почти горизонтально. В экспорте из Figma это дало 31429
+   *  расходящихся пикселей, симметрично по краям.
+   *
+   *  Различающее свойство: точка, смещённая от начала градиента
+   *  ПЕРПЕНДИКУЛЯРНО В ПИКСЕЛЯХ, обязана иметь то же значение
+   *  градиента. Проверка на совпадение концов этого не ловит — концы
+   *  сходятся и при неверной матрице. */
+  const apply = (
+    m: [[number, number, number], [number, number, number]],
+    u: number, v: number,
+  ): number => m[0][0] * u + m[0][1] * v + m[0][2]
+
+  const box = { w: 800, h: 160 }
+  /** 135deg на этом боксе, посчитано по правилам CSS. */
+  const diagonal = grad({ x: 0.2, y: -1 }, { x: 0.8, y: 2 })
+
+  it('начало градиента даёт 0, конец — 1', () => {
+    const m = gradientPaint(diagonal, box).gradientTransform
+    expect(apply(m, 0.2, -1)).toBeCloseTo(0, 9)
+    expect(apply(m, 0.8, 2)).toBeCloseTo(1, 9)
+  })
+
+  it('точка, перпендикулярная В ПИКСЕЛЯХ, лежит на той же линии уровня', () => {
+    const m = gradientPaint(diagonal, box).gradientTransform
+    /** Направление в пикселях и перпендикуляр к нему. */
+    const dPx = { x: (0.8 - 0.2) * box.w, y: (2 - -1) * box.h }
+    const perpPx = { x: -dPx.y, y: dPx.x }
+    /** Смещение обратно в нормализованные координаты. */
+    const step = 0.1
+    const u = 0.2 + (perpPx.x * step) / box.w
+    const v = -1 + (perpPx.y * step) / box.h
+    expect(apply(m, u, v)).toBeCloseTo(0, 9)
+  })
+
+  /** Квадратный бокс эту ошибку скрывает полностью: нормализация
+   *  становится равномерной. Тест существует, чтобы будущая правка не
+   *  «починилась» обратно на квадрате. */
+  it('на квадратном боксе результат тот же, что и без поправки', () => {
+    const square = gradientPaint(grad({ x: 0, y: 0 }, { x: 1, y: 1 }), { w: 100, h: 100 })
+    expect(apply(square.gradientTransform, 1, 1)).toBeCloseTo(1, 9)
+    expect(apply(square.gradientTransform, 1, 0)).toBeCloseTo(0.5, 9)
   })
 })

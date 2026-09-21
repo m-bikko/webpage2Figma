@@ -90,17 +90,32 @@ const styleFrom = (base: SceneBase): NodeStyle => ({
        *  остановок, потерянную альфу, сбитую нормализацию позиций.
        *  Первая редакция теряла градиент целиком — 762118 расходящихся
        *  пикселей, — и это она поймала. */
-      const [[a, c, e], [b, d, f]] = paint.gradientTransform
+      /** Обращение матрицы обратно в пару концов. Матрица включает
+       *  разворот нормализованных координат в пиксели, поэтому сначала
+       *  снимается он — делением первого столбца на ширину, второго на
+       *  высоту, — и только потом обращается размещение. Без этого
+       *  шага обратный путь разошёлся бы с прямым на любом
+       *  неквадратном боксе. */
+      const w = base.width === 0 ? 1 : base.width
+      const h = base.height === 0 ? 1 : base.height
+      const [[m00, m01, m02], [m10, m11, m12]] = paint.gradientTransform
+      const a = m00 / w
+      const c = m01 / h
+      const e = m02
+      const b = m10 / w
+      const d = m11 / h
+      const f = m12
       const determinant = a * d - b * c
       if (determinant === 0) return []
       const placement = [
         [d / determinant, -c / determinant, (c * f - d * e) / determinant],
         [-b / determinant, a / determinant, (b * e - a * f) / determinant],
       ] as const
-      const from = { x: placement[0][2], y: placement[1][2] }
+      /** Концы получаются в пикселях и нормализуются обратно по боксу. */
+      const from = { x: placement[0][2] / w, y: placement[1][2] / h }
       const to = {
-        x: placement[0][0] + placement[0][2],
-        y: placement[1][0] + placement[1][2],
+        x: (placement[0][0] + placement[0][2]) / w,
+        y: (placement[1][0] + placement[1][2]) / h,
       }
       return [{
         kind: 'gradient' as const,
