@@ -12,6 +12,9 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
     devDependencies:
+      '@figma/plugin-typings':
+        specifier: ^1.138.0
+        version: 1.138.0
       '@h2d/ir':
         specifier: workspace:*
         version: link:packages/ir
@@ -368,6 +371,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@figma/plugin-typings@1.138.0':
+    resolution: {integrity: sha512-bLP9wRf8c0e4z5GbXpDUXd7YNPXEDpgyeMmTe8Lm4EWMU8JEO1DFRfj1NaucIeRSurbde8y7xS1jas60LTTDaw==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1092,6 +1098,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.7':
     optional: true
+
+  '@figma/plugin-typings@1.138.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

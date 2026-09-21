@@ -1,0 +1,12 @@
+{
+  "name": "html2design",
+  "id": "h2d-local-dev",
+  "api": "1.0.0",
+  "main": "dist/code.global.js",
+  "ui": "src/ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "Плагин не ходит в сеть. Байты изображений приходят внутри файла .h2d, который выбирает пользователь."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@h2d/plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "build": "tsup" },
+  "dependencies": {
+    "@h2d/bundle": "workspace:*",
+    "@h2d/ir": "workspace:*"
+  }
+}

@@ -6,16 +6,18 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer packages/bundle",
+    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer packages/bundle packages/plugin",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
     "build:serializer": "pnpm --filter @h2d/serializer build",
     "capture": "node scripts/capture.mjs",
-    "build:bundle": "pnpm --filter @h2d/bundle build"
+    "build:bundle": "pnpm --filter @h2d/bundle build",
+    "build:plugin": "pnpm --filter @h2d/plugin build"
   },
   "devDependencies": {
+    "@figma/plugin-typings": "^1.138.0",
     "@h2d/ir": "workspace:*",
     "@h2d/reference-renderer": "workspace:*",
     "@playwright/test": "^1.48.0",
