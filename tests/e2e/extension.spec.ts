@@ -68,11 +68,11 @@ test('CDP-эмуляция меняет раскладку, а не только
     const tabId = await tabIdOf(worker, '4317')
 
     const wide = await worker.evaluate(
-      ({ tabId, width, height }) => self.h2d.captureAt(tabId, { width, height, name: 'W' }),
+      ({ tabId, width, height }) => globalThis.h2d.captureAt(tabId, { width, height, name: 'W' }),
       { tabId, width: 1440, height: 900 },
     )
     const narrow = await worker.evaluate(
-      ({ tabId, width, height }) => self.h2d.captureAt(tabId, { width, height, name: 'N' }),
+      ({ tabId, width, height }) => globalThis.h2d.captureAt(tabId, { width, height, name: 'N' }),
       { tabId, width: 390, height: 844 },
     )
 
@@ -99,18 +99,18 @@ test('пять экранов с общей нумерацией узлов', as
     const tabId = await tabIdOf(worker, '4317')
 
     const screens = await worker.evaluate(
-      (tabId) => self.h2d.captureAll(tabId), tabId,
+      (tabId) => globalThis.h2d.captureAll(tabId), tabId,
     )
 
     expect(screens).toHaveLength(5)
-    expect(screens.map((s) => s.screen.width)).toEqual([1920, 1440, 1024, 768, 390])
+    expect(screens.map((item) => item.screen.width)).toEqual([1920, 1440, 1024, 768, 390])
 
     const ids: string[] = []
     const collect = (node: IrNode): void => {
       ids.push(node.id)
       node.children.forEach(collect)
     }
-    screens.forEach((s) => { collect(s.screen.root as IrNode) })
+    screens.forEach((item) => { collect(item.screen.root) })
     expect(new Set(ids).size).toBe(ids.length)
   } finally {
     await context.close()
@@ -146,12 +146,12 @@ test('воркер достаёт байты, которых странице н
     expect(fromPage).toBe('отказано')
 
     const resolved = await worker.evaluate(
-      (tabId) => self.h2d.captureBundle(tabId), tabId,
+      (tabId) => globalThis.h2d.captureBundle(tabId), tabId,
     )
-    const asset = resolved.assets.find((a) => a.id !== undefined)
+    const asset = resolved.assets[0]
     expect(asset).toBeDefined()
     expect(asset?.mimeType).toBe('image/png')
-    expect(resolved.report.filter((d) => d.code === 'fidelity.image-unreadable'))
+    expect(resolved.report.filter((entry) => entry.code === 'fidelity.image-unreadable'))
       .toHaveLength(0)
   } finally {
     await context.close()

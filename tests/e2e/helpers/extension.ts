@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type BrowserContext, type Worker } from '@playwright/test'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const extensionRoot = resolve(here, '../../../packages/extension')
@@ -35,4 +36,36 @@ export const launchWithExtension = async (): Promise<{
   const worker = context.serviceWorkers()[0]
     ?? await context.waitForEvent('serviceworker', { timeout: 15000 })
   return { context, worker }
+}
+
+/** Поверхность, которую воркер расширения ставит на `self`.
+ *
+ *  Объявлена здесь, а не в пакете расширения: тесты его не
+ *  импортируют — воркер живёт в браузере и достижим только через
+ *  `worker.evaluate`. Та же причина, по которой форма `window.__h2d`
+ *  повторена в `helpers/capture.ts`.
+ *
+ *  Типы намеренно неширокие: это ровно то, что вызывают тесты. */
+export type CapturedScreen = {
+  screen: Screen
+  report: Diagnostic[]
+  fonts: FontRequirement[]
+  assetRequests: { id: string; url: string; nodeId: string; screenId: string }[]
+}
+
+export type CapturedBundle = {
+  bundle: Bundle
+  bytes: Record<string, number[]>
+  assets: { id: string; mimeType: string; width: number; height: number }[]
+  report: Diagnostic[]
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var h2d: {
+    captureAt: (tabId: number, size: { name: string; width: number; height: number })
+      => Promise<CapturedScreen>
+    captureAll: (tabId: number) => Promise<CapturedScreen[]>
+    captureBundle: (tabId: number) => Promise<CapturedBundle>
+  }
 }
