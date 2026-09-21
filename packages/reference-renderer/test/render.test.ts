@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { IrNode, NodeText, Screen } from '@h2d/ir'
+import type { ImagePlacement, IrNode, NodeText, Screen } from '@h2d/ir'
 import { renderScreenToSvg } from '../src/render.js'
 
 const frame = (o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({
@@ -549,5 +549,75 @@ describe('renderScreenToSvg: заглушка видна', () => {
     const svg = renderScreenToSvg(screen(placeholder()))
     expect(svg).toContain('<rect')
     expect(svg).toContain('<text')
+  })
+})
+
+describe('renderScreenToSvg: изображения', () => {
+  const IMAGES = new Map([['a0', {
+    dataUri: 'data:image/png;base64,iVBORw0KGgo=', width: 64, height: 32,
+  }]])
+
+  const imageNode = (
+    placement: ImagePlacement,
+    o: Partial<Omit<IrNode, 'kind'>> = {},
+    assetId = 'a0',
+  ): IrNode => ({ ...frame(o), kind: 'image', image: { assetId, placement } })
+
+  const fit: ImagePlacement =
+    { mode: 'fit', offsetX: 10, offsetY: 4, scaleX: 2, scaleY: 2 }
+
+  it('узел изображения рисуется как <image>', () => {
+    expect(renderScreenToSvg(screen(imageNode(fit)), IMAGES)).toContain('<image')
+  })
+
+  /** Размер — НАТУРАЛЬНЫЙ, умноженный на масштаб, а не размер бокса.
+   *  Иначе `contain` растянулся бы на весь бокс и стал неотличим от
+   *  `fill`, то есть вся арифметика размещения пропала бы впустую. */
+  it('размер берётся из натурального и масштаба, а не из бокса', () => {
+    const svg = renderScreenToSvg(screen(imageNode(fit)), IMAGES)
+    expect(svg).toContain('width="128"')
+    expect(svg).toContain('height="64"')
+  })
+
+  /** Пропорции уже учтены в scaleX/scaleY. Дефолтный
+   *  `preserveAspectRatio` подогнал бы картинку ВТОРОЙ раз и
+   *  перечеркнул бы растяжение при CSS `object-fit: fill`. */
+  it('вторая подгонка пропорций отключена', () => {
+    expect(renderScreenToSvg(screen(imageNode(fit)), IMAGES))
+      .toContain('preserveAspectRatio="none"')
+  })
+
+  /** При `cover` нарисованный размер БОЛЬШЕ бокса, и без обрезки
+   *  картинка залезла бы на соседей. */
+  it('изображение обрезается по боксу узла', () => {
+    expect(renderScreenToSvg(screen(imageNode(fit)), IMAGES))
+      .toContain('clip-path="url(#')
+  })
+
+  /** Отсутствующий ассет НЕ пропускается молча: дыра без следа в SVG
+   *  неотличима от прозрачного пикселя, и pixel-diff показал бы
+   *  расхождение без объяснения причины. */
+  it('неизвестный assetId бросает, а не рисует пустоту', () => {
+    expect(() => renderScreenToSvg(screen(imageNode(fit, {}, 'нет-такого')), IMAGES))
+      .toThrow(/нет-такого/)
+  })
+
+  it('плитка рисуется через pattern', () => {
+    const tile: ImagePlacement =
+      { mode: 'tile', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1 }
+    const svg = renderScreenToSvg(screen(imageNode(tile)), IMAGES)
+    expect(svg).toContain('<pattern')
+    expect(svg).toContain('width="64"')
+  })
+
+  /** Заливка-изображение рисуется тем же кодом, что и узел: разница
+   *  только в том, откуда взялась ссылка. Проверка существует потому,
+   *  что два пути легко разъезжаются — и тогда фон теряет обрезку или
+   *  плитку, а узел нет. */
+  it('заливка-изображение рисуется так же, как узел', () => {
+    const node = frame({
+      style: { ...frame().style, fills: [{ kind: 'image', ref: { assetId: 'a0', placement: fit } }] },
+    })
+    expect(renderScreenToSvg(screen(node), IMAGES)).toContain('<image')
   })
 })

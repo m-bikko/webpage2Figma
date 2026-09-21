@@ -1,5 +1,6 @@
 import type {
-  Blur, Corner, Gradient, IrNode, Rect, Rgba8, Screen, Shadow, Sides, Stroke,
+  Blur, Corner, Gradient, ImageRef, IrNode, Rect, Rgba8, Screen, Shadow, Sides,
+  Stroke,
   TextRun,
 } from '@h2d/ir'
 
@@ -251,16 +252,91 @@ const shapeFor = (
   )
 }
 
-const renderBox = (node: IrNode, defs: string[]): string => {
+/** Картинка, готовая к вставке в SVG. `dataUri`, а не путь к файлу:
+ *  SVG рендерится в отрыве от бандла, и внешняя ссылка не разрешилась
+ *  бы — растеризатор просто нарисовал бы пустоту, молча. */
+export type RenderImage = { dataUri: string; width: number; height: number }
+
+/** То, что протаскивается сквозь всю отрисовку. Раньше это был голый
+ *  список `defs`; ассеты добавили второе такое же сквозное значение, и
+ *  тащить их парой параметров значило бы повторять одну и ту же связку
+ *  в каждой сигнатуре. */
+type RenderCtx = {
+  defs: string[]
+  images: ReadonlyMap<string, RenderImage>
+}
+
+/** Тег изображения. Общий для узла `kind: 'image'` и для заливки
+ *  `Fill{kind:'image'}` намеренно: два пути легко разъезжаются, и тогда
+ *  фон теряет обрезку или плитку, а узел нет.
+ *
+ *  Отсутствующий ассет БРОСАЕТ, а не рисует пустоту. Дыра без следа в
+ *  SVG неотличима от прозрачного пикселя: pixel-diff показал бы
+ *  расхождение, не назвав причины, а валидатор бандла сюда не дошёл бы
+ *  вовсе. Пусть падает громко и по имени. */
+const imageTag = (
+  ref: ImageRef,
+  rect: Rect,
+  nodeId: string,
+  ctx: RenderCtx,
+): string => {
+  const image = ctx.images.get(ref.assetId)
+  if (image === undefined) {
+    throw new Error(
+      `Ассет "${ref.assetId}" не передан рендереру (узел ${nodeId}). ` +
+      `Пустое место в SVG было бы неотличимо от прозрачного пикселя.`,
+    )
+  }
+  const { placement } = ref
+  const w = image.width * placement.scaleX
+  const h = image.height * placement.scaleY
+
+  /** Обрезка по боксу узла обязательна: при `cover` нарисованный размер
+   *  БОЛЬШЕ бокса, и без неё картинка залезла бы на соседей. */
+  const clipId = `clip-${nodeId}-${ref.assetId}`
+  ctx.defs.push(
+    `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" ` +
+    `width="${rect.w}" height="${rect.h}"/></clipPath>`,
+  )
+
+  if (placement.mode === 'tile') {
+    const patternId = `tile-${nodeId}-${ref.assetId}`
+    ctx.defs.push(
+      `<pattern id="${patternId}" patternUnits="userSpaceOnUse" ` +
+      `x="${rect.x + placement.offsetX}" y="${rect.y + placement.offsetY}" ` +
+      `width="${w}" height="${h}">` +
+      `<image href="${image.dataUri}" width="${w}" height="${h}" ` +
+      `preserveAspectRatio="none"/></pattern>`,
+    )
+    return (
+      `<rect x="${rect.x}" y="${rect.y}" width="${rect.w}" height="${rect.h}" ` +
+      `fill="url(#${patternId})"/>`
+    )
+  }
+
+  return (
+    `<g clip-path="url(#${clipId})">` +
+    `<image href="${image.dataUri}" ` +
+    `x="${rect.x + placement.offsetX}" y="${rect.y + placement.offsetY}" ` +
+    `width="${w}" height="${h}" ` +
+    /** Пропорции УЖЕ учтены в scaleX/scaleY. Дефолтный
+     *  `preserveAspectRatio` подогнал бы картинку вторым проходом и
+     *  перечеркнул бы растяжение при CSS `object-fit: fill`. */
+    `preserveAspectRatio="none"/></g>`
+  )
+}
+
+const renderBox = (node: IrNode, ctx: RenderCtx): string => {
   const { style } = node
   const solid = style.fills.find((fill) => fill.kind === 'solid')
   const gradientFill = style.fills.find((fill) => fill.kind === 'gradient')
+  const imageFill = style.fills.find((fill) => fill.kind === 'image')
   const hasShadow = style.shadows.length > 0
   /** Фильтр нужен и ради теней, и ради размытия слоя — оба живут в одном
    *  `<filter>`, потому что SVG допускает только один на элемент. */
   const needsFilter = hasShadow || style.blur !== null
   if (
-    solid === undefined && gradientFill === undefined
+    solid === undefined && gradientFill === undefined && imageFill === undefined
     && style.stroke === null && !hasShadow
   ) return ''
 
@@ -281,8 +357,8 @@ const renderBox = (node: IrNode, defs: string[]): string => {
    *  (36409 из 120000 пикселей) на полупрозрачном градиенте поверх цвета:
    *  браузер смешивает, рендерер рисовал только градиент. Ни одна фикстура
    *  этот случай не видела, то есть у гейта было слепое пятно. */
-  const underlay = gradientFill !== undefined && solid !== undefined
-      && solid.kind === 'solid'
+  const underlay = (gradientFill !== undefined || imageFill !== undefined)
+      && solid !== undefined && solid.kind === 'solid'
     ? shapeFor(node, rect, style.corner,
         [`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`],
         '')
@@ -290,7 +366,7 @@ const renderBox = (node: IrNode, defs: string[]): string => {
 
   if (gradientFill !== undefined && gradientFill.kind === 'gradient') {
     const gradientId = `grad-${node.id}`
-    defs.push(gradientDef(gradientId, gradientFill.gradient, rect))
+    ctx.defs.push(gradientDef(gradientId, gradientFill.gradient, rect))
     attrs.push(`fill="url(#${gradientId})"`)
   } else if (solid !== undefined && solid.kind === 'solid') {
     attrs.push(`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`)
@@ -319,14 +395,33 @@ const renderBox = (node: IrNode, defs: string[]): string => {
      *  воспроизводит). Ссылаться на несуществующий фильтр нельзя: браузер
      *  тогда не рисует элемент вовсе, и узел исчез бы молча. */
     if (filter !== '') {
-      defs.push(filter)
+      ctx.defs.push(filter)
       attrs.push(`filter="url(#${filterId})"`)
     }
   }
 
   const ring = ringed && style.stroke !== null ? borderRing(node, style.stroke) : ''
   const dash = style.stroke === null || ringed ? '' : dashArray(style.stroke)
-  return underlay + shapeFor(node, rect, style.corner, attrs, dash) + ring
+  /** Картинка ложится ПОВЕРХ цвета и градиента, но ПОД рамкой — так же,
+   *  как красит браузер: `background-image` над `background-color`,
+   *  а граница поверх обоих. */
+  const overlay = imageFill !== undefined && imageFill.kind === 'image'
+    /** `node.rect`, а НЕ `rect`: последний ужат на половину обводки,
+     *  чтобы SVG рисовал её по центру пути, как CSS рисует внутрь. Но
+     *  смещения в `placement` посчитаны от border box — сложить их с
+     *  ужатым прямоугольником значит прибавить половину рамки дважды.
+     *
+     *  Измерено на фикстуре `image-bg`: 1365 расходящихся пикселей,
+     *  ВСЕ в единственной ячейке с рамкой. Остальные пять ячеек давали
+     *  ноль, потому что рамки у них нет и `rect` совпадает с
+     *  `node.rect`. Ячейку с рамкой пришлось добавить специально —
+     *  без неё ветка `background-origin` ничего не проверяла.
+     *
+     *  Border box верен и для обрезки: `background-clip` по умолчанию
+     *  `border-box`, то есть фон заходит ПОД рамку. */
+    ? imageTag(imageFill.ref, node.rect, node.id, ctx)
+    : ''
+  return underlay + shapeFor(node, rect, style.corner, attrs, dash) + overlay + ring
 }
 
 /** Базовая линия ставится из бокса строки: `y + (h + fontSize * R) / 2`.
@@ -413,16 +508,17 @@ const renderPlaceholder = (node: IrNode & { kind: 'placeholder' }): string => {
 
 /** Исчерпывающий по `kind`: отсутствующая ветка — ошибка компиляции,
  *  а не тихо не нарисованный узел. */
-const renderNodeBody = (node: IrNode, defs: string[]): string => {
+const renderNodeBody = (node: IrNode, ctx: RenderCtx): string => {
   switch (node.kind) {
     case 'frame':
-      return renderBox(node, defs)
+      return renderBox(node, ctx)
     case 'text':
-      return renderBox(node, defs) + renderTextLines(node)
+      return renderBox(node, ctx) + renderTextLines(node)
     case 'image':
-      // Ассеты в плане 1 не снимаются, поэтому рисуется только бокс.
-      // Ветка существует ради исчерпывающего переключения.
-      return renderBox(node, defs)
+      /** Бокс рисуется ПЕРЕД картинкой: у `<img>` бывает собственный
+       *  фон, и при `contain` он виден в незакрытых полях — именно так
+       *  красит браузер. */
+      return renderBox(node, ctx) + imageTag(node.image, node.rect, node.id, ctx)
     case 'vector':
       return node.paths.map((path) =>
         `<path d="${path.data}" ` +
@@ -466,7 +562,7 @@ const shift = (rect: Rect, by: Offset): Rect => ({
  *  а рендерер служит ещё и инструментом отладки. Поэтому `position:
  *  relative; z-index: 1`, создающий контекст без единого эффекта, группы
  *  не получает. */
-const groupAttrs = (node: IrNode, defs: string[], at: Offset): string => {
+const groupAttrs = (node: IrNode, ctx: RenderCtx, at: Offset): string => {
   const parts: string[] = []
   const style: string[] = []
 
@@ -497,7 +593,7 @@ const groupAttrs = (node: IrNode, defs: string[], at: Offset): string => {
   if (node.style.opacity < 1) parts.push(`opacity="${node.style.opacity}"`)
   if (node.style.blur !== null && node.style.blur.layer > 0) {
     const id = `blur-${node.id}`
-    defs.push(
+    ctx.defs.push(
       `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>` +
       `<feGaussianBlur stdDeviation="${node.style.blur.layer}"/></filter>`,
     )
@@ -537,14 +633,14 @@ const groupAttrs = (node: IrNode, defs: string[], at: Offset): string => {
  *  Своя трансформа у узла без контекста невозможна: в CSS `transform`
  *  контекст создаёт всегда. Поэтому условие на группу заодно покрывает
  *  и её. */
-const renderSubtree = (node: IrNode, at: Offset, defs: string[]): string => {
+const renderSubtree = (node: IrNode, at: Offset, ctx: RenderCtx): string => {
   const absolute = shift(node.rect, at)
   const inner: Offset = { x: absolute.x, y: absolute.y }
   const placed: IrNode = { ...node, rect: absolute }
 
   const descendants = [...node.children]
     .sort((a, b) => a.paintOrder - b.paintOrder)
-    .map((child) => renderSubtree(child, inner, defs))
+    .map((child) => renderSubtree(child, inner, ctx))
     .join('')
 
   /** Себя узел не обрезает: `overflow` режет СОДЕРЖИМОЕ, а собственные
@@ -552,13 +648,13 @@ const renderSubtree = (node: IrNode, at: Offset, defs: string[]): string => {
    *  обёртка обнимает только потомков — и не создаётся, когда их нет:
    *  ссылка на `clipPath` без содержимого лишь засоряла бы `<defs>`. */
   const content = node.style.clip && descendants !== ''
-    ? (defs.push(clipPathDef(node, absolute)),
+    ? (ctx.defs.push(clipPathDef(node, absolute)),
        `<g clip-path="url(#clip-${node.id})">${descendants}</g>`)
     : descendants
 
-  const attrs = node.isStackingContext ? groupAttrs(node, defs, at) : ''
+  const attrs = node.isStackingContext ? groupAttrs(node, ctx, at) : ''
 
-  if (attrs === '') return renderNodeBody(placed, defs) + content
+  if (attrs === '') return renderNodeBody(placed, ctx) + content
 
   /** Эффекты сняты с самой фигуры, потому что они уже висят на группе.
    *  Оставить их на обоих — значит применить дважды: полупрозрачная
@@ -570,16 +666,24 @@ const renderSubtree = (node: IrNode, at: Offset, defs: string[]): string => {
       ...placed,
       style: { ...node.style, opacity: 1, blend: 'normal', blur: null },
     },
-    defs,
+    ctx,
   )
   return `<g${attrs}>${bare}${content}</g>`
 }
 
-export const renderScreenToSvg = (screen: Screen): string => {
+export const renderScreenToSvg = (
+  screen: Screen,
+  /** Ассеты по идентификатору. По умолчанию пусто — экран без
+   *  изображений рисуется как раньше, и все прежние вызовы остаются
+   *  верными. Узел, ссылающийся на отсутствующий здесь ассет, БРОСАЕТ:
+   *  см. комментарий в `imageTag`. */
+  images: ReadonlyMap<string, RenderImage> = new Map(),
+): string => {
   const defs: string[] = []
+  const ctx: RenderCtx = { defs, images }
   /** У корня экрана координаты абсолютные, поэтому накопленное смещение
    *  начинается с нуля. */
-  const body = renderSubtree(screen.root, { x: 0, y: 0 }, defs)
+  const body = renderSubtree(screen.root, { x: 0, y: 0 }, ctx)
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${screen.width}" ` +

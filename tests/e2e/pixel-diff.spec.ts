@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
+import { reconcileAssets } from '@h2d/ir'
 import { renderScreenToSvg, wrapSvgInHtml } from '@h2d/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
+import { imagesFor } from './helpers/images.js'
 import { diffPng, shotOfScreen } from './helpers/diff.js'
 
 /** Участвуют ВОСЕМЬ фикстур из шестнадцати, и это не недосмотр.
@@ -29,6 +31,23 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
  *  а не в гейте точности. */
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed', 'blend', 'blur', 'group-effects', 'transform-nested', 'blend-isolated',
+  'image-fit', 'image-bg',
+  /** `image-cors` и `image-broken` здесь НЕ значатся намеренно. Её узлы — заглушки, а
+   *  заглушка нарочно громкая: красная пунктирная рамка с подписью,
+   *  которую браузер не рисует никогда. Расхождение измерено — 21155
+   *  пикселей, — и оно не дефект, а замысел. Поднять порог до этого
+   *  числа значило бы сделать проверку пустой, а это ровно тот способ
+   *  сломать гейт, от которого защищает правило «пороги не
+   *  подгоняются».
+   *
+   *  У `image-cors` причина та же, хотя выглядит иначе: браузер
+   *  кросс-доменную картинку ПОКАЗЫВАЕТ (для показа CORS не мешает), а
+   *  байты не отдаёт — значит у нас на её месте законно стоит заглушка.
+   *  Совпасть эти две картины не могут в принципе.
+   *
+   *  Пиксельно сверять можно только то, что мы в состоянии
+   *  воспроизвести. Обе фикстуры проверяются снапшотом IR в
+   *  fidelity.spec и отдельными тестами в assets.spec. */
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.
@@ -56,10 +75,20 @@ for (const fixture of FIXTURES) {
       await page.setViewportSize({ width: size.width, height: size.height })
       await page.goto(fixtureUrl(fixture))
       const { screen } = await captureScreen(page, `s-${size.width}`, size.name)
+      /** Ассеты забираются ПОСЛЕ снимка: обход синхронен, а байты
+       *  приходят асинхронно. Порядок обратный сломал бы ровно то
+       *  разделение фаз, ради которого оно заведено. */
+      const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+      /** Дерево приводится в согласие с тем, что реально доехало.
+       *  Кросс-доменная картинка отрисовалась, значит узел построен, —
+       *  а байтов нет, и без этого шага рендерер упал бы на ссылке в
+       *  никуда. Именно так гейт и нашёл пробел. */
+      const { screen: reconciled } =
+        reconcileAssets(screen, new Set(resolved.assets.map((a) => a.id)))
 
       const browserShot = await shotOfScreen(page, screen)
 
-      const svg = renderScreenToSvg(screen)
+      const svg = renderScreenToSvg(reconciled, imagesFor(resolved))
       await page.setContent(wrapSvgInHtml(svg, screen.width, screen.height))
       const renderedShot = await shotOfScreen(page, screen)
 

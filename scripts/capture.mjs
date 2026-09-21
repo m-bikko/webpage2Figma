@@ -41,9 +41,9 @@ const rendererDist = resolve(
   dirname(fileURLToPath(import.meta.url)), '../packages/reference-renderer/dist/index.js',
 )
 
-let parseBundle, IR_VERSION, renderScreenToSvg, wrapSvgInHtml
+let parseBundle, IR_VERSION, reconcileAssets, renderScreenToSvg, wrapSvgInHtml
 try {
-  ;({ parseBundle, IR_VERSION } = await import(pathToFileURL(irDist).href))
+  ;({ parseBundle, IR_VERSION, reconcileAssets } = await import(pathToFileURL(irDist).href))
   ;({ renderScreenToSvg, wrapSvgInHtml } = await import(pathToFileURL(rendererDist).href))
 } catch (error) {
   console.error('Не удалось загрузить собранные @h2d/ir или @h2d/reference-renderer.')
@@ -138,7 +138,20 @@ try {
   const browserShot = await page.screenshot({ fullPage: true })
   writeFileSync(resolve(outDir, 'page.png'), browserShot)
 
-  const svg = renderScreenToSvg(captured.screen)
+  /** Байты забираются ПОСЛЕ снимка: обход синхронен, а получение
+   *  байтов асинхронно. */
+  const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+  const images = new Map(resolved.assets.map((asset) => [asset.id, {
+    dataUri: `data:${asset.mimeType};base64,${resolved.base64[asset.id] ?? ''}`,
+    width: asset.width,
+    height: asset.height,
+  }]))
+  /** Дерево приводится в согласие с доехавшим: узел, чья картинка не
+   *  пришла, становится заглушкой. Иначе бандл отверг бы инвариант, а
+   *  рендерер упал бы на ссылке в никуда. */
+  const { screen: reconciledScreen, report: reconcileReport } =
+    reconcileAssets(captured.screen, new Set(resolved.assets.map((a) => a.id)))
+  const svg = renderScreenToSvg(reconciledScreen, images)
   writeFileSync(resolve(outDir, 'render.svg'), svg)
   await page.setContent(wrapSvgInHtml(svg, captured.screen.width, captured.screen.height))
   writeFileSync(resolve(outDir, 'render.png'), await page.screenshot({ fullPage: true }))
@@ -157,17 +170,21 @@ try {
     url,
     title: await page.title().catch(() => ''),
     userAgent: 'capture.mjs',
-    screens: [captured.screen],
-    assets: [],
+    screens: [reconciledScreen],
+    assets: resolved.assets,
     fonts: captured.fonts,
     tokens: { variables: [], textStyles: [], paintStyles: [] },
-    report: captured.report,
+    /** Отчёт экрана И отчёт фазы разрешения: отказ по байтам
+     *  относится к узлу, но случается уже после снимка. Потерять его
+     *  здесь значило бы вернуть ровно тот молчаливый откат, ради
+     *  которого писался план. */
+    report: [...captured.report, ...resolved.report, ...reconcileReport],
   }
   const verdict = parseBundle(bundle)
 
   const nodes = []
   const walk = (node) => { nodes.push(node); node.children.forEach(walk) }
-  walk(captured.screen.root)
+  walk(reconciledScreen.root)
 
   const byKind = {}
   for (const node of nodes) byKind[node.kind] = (byKind[node.kind] ?? 0) + 1

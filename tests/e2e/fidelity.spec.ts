@@ -11,6 +11,7 @@ const FIXTURES = [
   'transformed', 'transform-nested', 'broken-transform', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
   'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated', 'group-effects',
   'blur',
+  'image-fit', 'image-bg', 'image-cors', 'image-broken',
 ] as const
 
 const snapshotPath = (fixture: string, width: number): string =>
