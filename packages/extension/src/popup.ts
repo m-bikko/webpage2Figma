@@ -125,9 +125,29 @@ chrome.runtime.onMessage.addListener((message: Progress) => {
     : `<div class="row info">Auto-layout не применён к ${rejected} узлам — ` +
       'причины ниже.</div>'
 
-  const rows = message.report.length === 0
+  /** Сообщения о ПЕРЕНОСЕ узлов сворачиваются в одну строку.
+   *
+   *  Это не изъяны: перенос делается ради верного порядка отрисовки, и
+   *  каждая запись лишь объясняет, почему слой лежит не там, где
+   *  элемент в разметке. На живой странице их набирается под сотню, и
+   *  развёрнутым списком они топят собой всё остальное — то есть
+   *  мешают увидеть настоящие потери.
+   *
+   *  Совсем убрать их нельзя: иерархия действительно изменилась, и
+   *  человек, ищущий слой не на своём месте, должен найти этому
+   *  объяснение. */
+  const hoisted = message.report
+    .filter((entry) => entry.code === 'fidelity.paint-order-hoisted').length
+  const hoistedRow = hoisted === 0 ? ''
+    : `<div class="row info">${hoisted} узлов перенесено к предкам ради ` +
+      'верного порядка отрисовки — в Figma порядок слоёв и есть z-порядок.' +
+      '</div>'
+
+  const rest = message.report
+    .filter((entry) => entry.code !== 'fidelity.paint-order-hoisted')
+  const rows = rest.length === 0
     ? '<div class="row info">Расхождений не найдено.</div>'
-    : message.report.map((entry) =>
+    : rest.map((entry) =>
         `<div class="row"><span class="lvl ${entry.level}">${entry.level}</span>` +
         `<span>${escapeHtml(entry.message)}</span></div>`).join('')
   /** Кнопка копирования включается ТОЛЬКО когда есть что копировать и
@@ -147,7 +167,7 @@ chrome.runtime.onMessage.addListener((message: Progress) => {
   }
 
   show(`<div class="row"><b>Скачано: ${escapeHtml(message.file)}</b></div>` +
-       `${summary}${rows}`)
+       `${summary}${hoistedRow}${rows}`)
 })
 
 /** Копирование идёт по нажатию, а не само собой после захвата.

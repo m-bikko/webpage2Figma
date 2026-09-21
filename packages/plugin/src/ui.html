@@ -73,7 +73,18 @@
       out.innerHTML = '<div class="row error">' + escapeHtml(msg.text) + '</div>'
       return
     }
-    const rows = msg.report.map((entry) =>
+    // Переносы узлов сворачиваются в одну строку: это не изъяны, а
+    // объяснение, почему слой лежит не там, где элемент в разметке. На
+    // живой странице их под сотню, и списком они топят всё остальное.
+    const hoisted = msg.report.filter(
+      (entry) => entry.code === 'fidelity.paint-order-hoisted').length
+    const hoistedRow = hoisted === 0 ? '' :
+      '<div class="row info">' + hoisted + ' узлов перенесено к предкам ради ' +
+      'верного порядка отрисовки — в Figma порядок слоёв и есть z-порядок.' +
+      '</div>'
+    const rest = msg.report.filter(
+      (entry) => entry.code !== 'fidelity.paint-order-hoisted')
+    const rows = rest.map((entry) =>
       '<div class="row"><span class="lvl ' + entry.level + '">' + entry.level +
       '</span><span>' + escapeHtml(entry.message) + '</span></div>').join('')
     const check = msg.needsVerification.length === 0 ? '' :
@@ -82,6 +93,7 @@
       msg.needsVerification.map((v) => escapeHtml(v.message)).join('<br>') + '</div>'
     out.innerHTML =
       '<div class="row"><b>Экранов создано: ' + msg.screens + '</b></div>' +
+      hoistedRow +
       (rows || '<div class="row info">Расхождений не найдено.</div>') + check
   }
 
