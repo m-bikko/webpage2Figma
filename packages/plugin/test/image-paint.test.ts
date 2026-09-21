@@ -18,7 +18,9 @@ describe('imageNodeFor: размещение сведено к геометри�
   it('прямоугольник картинки имеет пропорции источника', () => {
     const node = imageNodeFor('n1', rect, place({ scaleX: 1.875, scaleY: 1.875 }), 'a0', natural)
     const inner = node.base.children[0]
-    expect(inner?.base.width / inner!.base.height)
+    expect(inner).toBeDefined()
+    if (inner === undefined) return
+    expect(inner.base.width / inner.base.height)
       .toBeCloseTo(natural.width / natural.height, 9)
   })
 
