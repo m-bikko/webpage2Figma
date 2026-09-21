@@ -260,11 +260,26 @@ export type NodeText = {
   align: TextAlign
 }
 
-export type VectorPath = {
-  /** Путь в синтаксисе SVG `d`. */
-  data: string
-  fill: Rgba8 | null
-  stroke: Stroke | null
+/** Вектор переносится ИСХОДНЫМ SVG, а не разобранными путями.
+ *
+ *  Первая редакция контракта описывала список путей с заливками, и это
+ *  означало бы собственный разборщик SVG: `<use>`, `<circle>`,
+ *  вложенные трансформы, градиенты, обрезки. Проверить такой
+ *  разборщик так же хорошо, как остальной проект, нечем — а ошибка в
+ *  нём тиха, потому что кривая «почти та же» выглядит правильно.
+ *
+ *  Исходный SVG позволяет другое: референс-рендерер встраивает его
+ *  напрямую, и pixel-diff сверяет ЗАХВАТ с браузером точно, а в Figma
+ *  разбором занимается `createNodeFromSvg` — тот же импортёр, что и
+ *  при ручной вставке файла.
+ *
+ *  Тот же принцип, что с изображениями: свести собственную семантику
+ *  к минимуму и опереться на то, что проверяемо. */
+export type VectorSource = {
+  /** Полный документ SVG, готовый к встраиванию. Стили вычислены и
+   *  вписаны атрибутами: в отрыве от страницы CSS на него уже не
+   *  подействует, а `currentColor` разрешить будет нечем. */
+  svg: string
 }
 
 type NodeBase = {
@@ -324,7 +339,7 @@ export type IrNode =
   | (NodeBase & { kind: 'frame' })
   | (NodeBase & { kind: 'text'; text: NodeText })
   | (NodeBase & { kind: 'image'; image: ImageRef })
-  | (NodeBase & { kind: 'vector'; paths: VectorPath[] })
+  | (NodeBase & { kind: 'vector'; vector: VectorSource })
   | (NodeBase & {
       kind: 'placeholder'
       /** Видимая заглушка в Figma. Правило «молчаливый fallback — это баг»

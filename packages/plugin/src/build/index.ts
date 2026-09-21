@@ -416,12 +416,40 @@ export const buildNode = (node: IrNode, ctx: BuildCtx): SceneNode => {
   }
 
   if (node.kind === 'vector') {
-    /** Векторы отложены с плана 1 и здесь тоже: перенести кривые без
-     *  способа их сверить значило бы выдать догадку за перенос. */
+    const base = baseFor(node, ctx)
+
+    /** Голая иконка — а это подавляющее большинство векторов — едет
+     *  ОДНИМ узлом, без обёртки. Безусловная обёртка удваивала бы
+     *  число слоёв: на странице со 150 иконками это 150 лишних рамок
+     *  в панели, каждая пустая. */
+    const bare = base.fills.length === 0 && base.stroke === null
+      && base.effects.length === 0 && base.children.length === 0
+    if (bare) return { kind: 'vector', base, svg: node.vector.svg }
+
+    /** С фоном, рамкой или тенью обёртка обязательна: у элемента
+     *  `<svg>` они принадлежат БОКСУ, а не рисунку, и браузер красит
+     *  их под ним. Узел из `createNodeFromSvg` несёт только рисунок,
+     *  и навесить на него фон означало бы поменять их местами. */
     return {
-      kind: 'placeholder', label: 'vector',
-      code: DIAGNOSTIC_CODES.deferredVector,
-      base: baseFor(node, ctx),
+      kind: 'frame',
+      clipsContent: node.style.clip,
+      base: {
+        ...base,
+        children: [
+          {
+            kind: 'vector',
+            svg: node.vector.svg,
+            base: {
+              ...base, id: `${node.id}-svg`,
+              x: 0, y: 0, rotation: 0, opacity: 1, blendMode: 'NORMAL',
+              fills: [], stroke: null,
+              corner: { tl: 0, tr: 0, br: 0, bl: 0 },
+              effects: [], autoLayout: null, children: [],
+            },
+          },
+          ...base.children,
+        ],
+      },
     }
   }
 

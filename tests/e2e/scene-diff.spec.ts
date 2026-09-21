@@ -25,6 +25,11 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'gradient', 'transformed', 'blend', 'blur',
   'group-effects', 'transform-nested', 'blend-isolated', 'image-fit', 'image-bg', 'image-data',
+  /** Вектор здесь ради БОКСА, а не рисунка: сам SVG проходит через
+   *  строитель строкой и сравнивался бы сам с собой. Проверяются
+   *  положение, размер и обёртка с фоном — их строитель считает, и
+   *  ошибиться в них есть чем. */
+  'vector',
 ] as const
 
 type Threshold = { maxDiffPixels: number; maxDiffRatio: number }

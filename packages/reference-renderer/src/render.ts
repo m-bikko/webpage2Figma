@@ -535,12 +535,20 @@ const renderNodeBody = (node: IrNode, ctx: RenderCtx): string => {
        *  красит браузер. */
       return renderBox(node, ctx) + imageTag(node.image, node.rect, node.id, ctx)
     case 'vector':
-      return node.paths.map((path) =>
-        `<path d="${path.data}" ` +
-        `fill="${path.fill === null ? 'none' : rgb(path.fill)}" ` +
-        `${path.stroke === null ? '' : `stroke="${rgb(path.stroke.color)}" ` +
-          `stroke-width="${maxWeight(path.stroke)}"`}/>`,
-      ).join('')
+      /** SVG встраивается КАК ЕСТЬ, внутри группы со сдвигом в место
+       *  узла. Разбирать его самим не нужно и вредно: собственный
+       *  разборщик проверить нечем, а встроенный сверяется pixel-diff
+       *  точно — браузер рисует обе стороны одним и тем же кодом.
+       *
+       *  Стили в захваченном SVG уже вписаны атрибутами: в отрыве от
+       *  страницы CSS на него не подействует. */
+      return (
+        /** Бокс рисуется ПЕРЕД вектором: у элемента `<svg>` бывают
+         *  собственные фон и рамка, и красит их браузер снизу. */
+        renderBox(node, ctx) +
+        `<g transform="translate(${node.rect.x} ${node.rect.y})">` +
+        `${node.vector.svg}</g>`
+      )
     case 'placeholder':
       return renderPlaceholder(node)
   }

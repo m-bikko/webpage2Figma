@@ -23,6 +23,7 @@ import {
   parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
+import { readVector } from './vector.js'
 import type { AssetRequests } from './assets.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
@@ -481,10 +482,14 @@ const reportGaps = (
    *
    *  Код `fidelity.grid-flattened` сохранён: коды стабильны, и его
    *  теперь порождает плагин. */
-  if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
-    sink.report('info', DIAGNOSTIC_CODES.deferredVector,
-      'Векторное содержимое не переносится в этом плане.', id, false)
-  }
+  /** Диагностики «вектор не переносится» здесь БОЛЬШЕ НЕТ: SVG
+   *  захватывается исходником и приезжает вектором. Всё, что с ним
+   *  может пойти не так, сообщается там, где строится узел, — с
+   *  названной причиной вместо общего «не переносится».
+   *
+   *  Код `deferred.vector` сохранён: коды стабильны, и его всё ещё
+   *  порождает `classifyBackgroundImage` для SVG в `background-image`,
+   *  который растром не переносится. */
   for (const pseudo of ['::before', '::after']) {
     const content = window.getComputedStyle(el, pseudo).content
     if (content !== 'none' && content !== 'normal' && content !== '') {
@@ -580,6 +585,8 @@ const readImage = (
   }
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+
 type Built = { node: IrNode; probe: LayoutProbe }
 
 const buildNode = (
@@ -667,9 +674,19 @@ const buildNode = (
    *  ошибку положения и должны быть об этом предупреждены. */
   const brokenTransform = ownMatrixRaw !== null && !usable
 
+  /** Векторный корень. Содержимое SVG уезжает ОДНИМ узлом, исходником,
+   *  и потому вглубь обход не идёт: пройденные отдельно `<path>` дали бы
+   *  второй комплект узлов поверх того же изображения — и в отчёте это
+   *  выглядело бы как «всё перенеслось», хотя нарисовано дважды. */
+  const isVectorRoot = el.namespaceURI === SVG_NS
+    && el.tagName.toLowerCase() === 'svg'
+  const vector = isVectorRoot ? readVector(el, size, id) : null
+
   /** Порядок детей нормализуется по -reverse: сам порядок отрисовки
    *  живёт в paintOrder, а здесь он логический, раскладочный. */
-  const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
+  const ordered = isVectorRoot
+    ? []
+    : isReversed(cs) ? [...el.children].reverse() : [...el.children]
 
   const childCtx: WalkContext = {
     ...ctx,
@@ -730,7 +747,34 @@ const buildNode = (
   const placeholder = placeholderFor(el, ctx.sink, id)
   const image = readImage(el, cs, box, ctx, id)
   let node: IrNode
-  if (image.kind === 'ref') {
+  if (isVectorRoot) {
+    if (vector === null) {
+      /** Заглушка, а не пустой фрейм: иконка, исчезнувшая молча,
+       *  неотличима от места, где её и не было. Парная диагностика с
+       *  `needsPlaceholder: true` обязательна — инвариант в `@w2f/ir`
+       *  отвергнет заглушку, которую отчёт не объясняет. */
+      ctx.sink.report('warning', DIAGNOSTIC_CODES.vectorUnreadable,
+        'Векторный элемент не удалось собрать самодостаточно.', id, true)
+      node = {
+        ...base, kind: 'placeholder',
+        placeholder: { code: DIAGNOSTIC_CODES.vectorUnreadable, label: 'svg' },
+      }
+    } else {
+      if (el.querySelector('foreignObject') !== null) {
+        ctx.sink.report('warning', DIAGNOSTIC_CODES.deferredForeignObject,
+          '<foreignObject> внутри SVG: HTML внутри вектора приедет в ' +
+          'Figma пустым, хотя в браузере он виден.', id, false)
+      }
+      if (vector.collidingIds.length > 0) {
+        ctx.sink.report('warning', DIAGNOSTIC_CODES.vectorIdCollision,
+          `Идентификаторы ${vector.collidingIds.join(', ')} встречаются в ` +
+          `документе выше по порядку: браузер разрешал ссылки в чужой ` +
+          `элемент. Захват сделан самодостаточным и рисует написанное в ` +
+          `этой разметке, а не то, что показала страница.`, id, false)
+      }
+      node = { ...base, kind: 'vector', vector: vector.source }
+    }
+  } else if (image.kind === 'ref') {
     node = { ...base, kind: 'image', image: image.ref }
   } else if (image.kind === 'broken') {
     /** Незагруженный `<img>` обязан стать ЗАГЛУШКОЙ, а не фреймом:

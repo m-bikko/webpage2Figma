@@ -57,6 +57,20 @@ const makeFigma = (missing: string[] = []): FigmaSurface & { calls: Call[] } => 
     createRectangle: () => node('createRectangle'),
     createText: () => node('createText') as never,
     createImage: () => ({ hash: 'h' }),
+    /** Двойник читает размер ИЗ SVG — так же, как настоящая Figma:
+     *  `createNodeFromSvg` берёт габарит из разметки, а не из наших
+     *  пожеланий. Без этого сверка размера в применителе сравнивала бы
+     *  ожидание с нулём и срабатывала всегда, то есть проверяла бы не
+     *  то, что обещает. */
+    createNodeFromSvg: (svg: string) => {
+      calls.push({ op: 'createNodeFromSvg', detail: svg.slice(0, 40) })
+      const self = node('createNodeFromSvg-node')
+      const width = /width="([\d.]+)"/.exec(svg)
+      const height = /height="([\d.]+)"/.exec(svg)
+      self.width = width === null ? 0 : Number(width[1])
+      self.height = height === null ? 0 : Number(height[1])
+      return self
+    },
     loadFontAsync: async (font) => {
       calls.push({ op: 'loadFontAsync', detail: `${font.family}|${font.style}` })
       if (missing.includes(`${font.family}|${font.style}`)) {
@@ -230,5 +244,62 @@ describe('auto-layout: включение и откат', () => {
     expect(root['layoutMode']).toBe('NONE')
     if (kids === undefined) return
     expect(kids.map((kid) => kid.x)).toEqual([0, 20])
+  })
+})
+
+/** Векторы: разбор отдан Figma, а результат СВЕРЯЕТСЯ.
+ *
+ *  Проверки на двойнике здесь законны по тому же признаку, что и у
+ *  auto-layout: утверждается поведение ПРИМЕНИТЕЛЯ — каким вызовом он
+ *  создаёт узел и как реагирует на размер, который ему вернули. Каким
+ *  выйдет сам рисунок, двойник не знает и знать не может; это
+ *  проверяет пиксельный гейт на стороне захвата. */
+describe('векторы', () => {
+  const vector = (svg: string, width: number, height: number): SceneNode => ({
+    kind: 'vector', svg,
+    base: { ...base('v'), width, height },
+  })
+
+  const svgOf = (w: number, h: number) =>
+    `<svg width="${w}" height="${h}" viewBox="0 0 24 24"><path d="M0 0"/></svg>`
+
+  /** Главное утверждение. Новый вариант союза молча провалился бы в
+   *  ветку `else`, то есть стал бы пустой рамкой: иконка исчезла бы,
+   *  не оставив следа ни в отчёте, ни в дереве. Компилятор такого не
+   *  ловит — цепочка `if/else` исчерпывающей не обязана быть. */
+  it('создаются через createNodeFromSvg, а не рамкой', async () => {
+    const figma = makeFigma()
+    await applyScreen(figma, screen(vector(svgOf(48, 48), 48, 48)), [])
+    const ops = figma.calls.map((call) => call.op)
+    expect(ops).toContain('createNodeFromSvg')
+    expect(ops).not.toContain('createFrame')
+  })
+
+  it('сам SVG доезжает до Figma без изменений', async () => {
+    const figma = makeFigma()
+    const svg = svgOf(48, 48)
+    await applyScreen(figma, screen(vector(svg, 48, 48)), [])
+    const call = figma.calls.find((c) => c.op === 'createNodeFromSvg')
+    expect(call?.detail).toBe(svg.slice(0, 40))
+  })
+
+  it('размер совпал — применитель молчит', async () => {
+    const figma = makeFigma()
+    const { report } = await applyScreen(
+      figma, screen(vector(svgOf(48, 48), 48, 48)), [],
+    )
+    expect(report.map((entry) => entry.code))
+      .not.toContain('fidelity.vector-resized')
+  })
+
+  /** Расхождение размера НЕ чинится `resize`: в Figma изменение
+   *  размера рамки не масштабирует её содержимое, и подогнанная
+   *  коробка с прежним рисунком внутри выглядела бы как успех. */
+  it('размер разошёлся — применитель отчитывается', async () => {
+    const figma = makeFigma()
+    const { report } = await applyScreen(
+      figma, screen(vector(svgOf(24, 24), 48, 48)), [],
+    )
+    expect(report.map((entry) => entry.code)).toContain('fidelity.vector-resized')
   })
 })

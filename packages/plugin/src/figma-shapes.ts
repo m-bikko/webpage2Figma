@@ -36,8 +36,24 @@ type _AppliedImageIsFigmaPaint = Assert<AppliedImagePaint, Paint>
  *  фигмовской, иначе лишнее поле уедет в присваивание. */
 type _FigmaRgbaIsOurs = Assert<RGBA, FigmaRgba>
 
+/** `createNodeFromSvg` существует и принимает строку, отдавая рамку.
+ *
+ *  Утверждение не косметическое: применитель вызывает её на КАЖДОМ
+ *  векторе, а промах по имени или по форме в Figma выглядит как
+ *  «not a function» глубоко в рекурсии — ровно та ошибка, из-за
+ *  которой этот файл и заведён. Здесь она становится ошибкой
+ *  компиляции. */
+type _CreateNodeFromSvgExists =
+  Assert<typeof figma.createNodeFromSvg, (svg: string) => FrameNode>
+
+/** Возвращённая рамка обязана нести то, что применитель у неё читает
+ *  и чем пользуется: размер для сверки и `appendChild` для детей. */
+type _SvgFrameHasSize = Assert<FrameNode['width'], number>
+type _SvgFrameAppends = Assert<FrameNode['appendChild'], (child: SceneNode) => void>
+
 export type FigmaShapeAssertions = [
   _PaintIsFigmaPaint, _EffectIsFigmaEffect,
   _StrokePaintIsFigmaPaint, _RgbaIsFigmaRgba, _FigmaRgbaIsOurs,
   _AppliedImageIsFigmaPaint,
+  _CreateNodeFromSvgExists, _SvgFrameHasSize, _SvgFrameAppends,
 ]

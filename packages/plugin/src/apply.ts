@@ -24,6 +24,11 @@ export type FigmaSurface = {
   createRectangle: () => FigmaLikeNode
   createText: () => FigmaLikeText
   createImage: (bytes: Uint8Array) => { hash: string }
+  /** Разбор SVG отдан Figma намеренно: это ТОТ ЖЕ импортёр, который
+   *  работает при ручной вставке SVG на холст. Свой разборщик кривых
+   *  пришлось бы сверять с этим — а сверять нечем, и расхождение
+   *  вылезло бы уже у дизайнера. */
+  createNodeFromSvg: (svg: string) => FigmaLikeNode
   loadFontAsync: (font: { family: string; style: string }) => Promise<void>
 }
 
@@ -243,6 +248,39 @@ export const applyNode = (
       }
     }
     target = text
+  } else if (node.kind === 'vector') {
+    target = figma.createNodeFromSvg(node.svg)
+
+    /** Размер, с которым Figma разобрала SVG, СВЕРЯЕТСЯ, а не
+     *  принимается на веру.
+     *
+     *  Захват вписывает в SVG явные `width`/`height`, равные боксу
+     *  узла, поэтому размеры обязаны совпасть. Если они разошлись —
+     *  импортёр понял разметку иначе, чем мы, и `resize` дела не
+     *  поправит: в Figma изменение размера рамки НЕ масштабирует её
+     *  содержимое, то есть рисунок остался бы прежним внутри коробки
+     *  другого размера. Честный ответ — сказать об этом, а не
+     *  подогнать коробку и выдать за совпадение.
+     *
+     *  Та же схема, что у auto-layout: применить, перечитать у Figma,
+     *  отчитаться при расхождении. Зона между нашей моделью и живым
+     *  API не покрыта ни рендером, ни имитацией — только такими
+     *  утверждениями о ФОРМЕ результата. */
+    const got = { w: target.width, h: target.height }
+    const want = { w: node.base.width, h: node.base.height }
+    const off = typeof got.w === 'number' && typeof got.h === 'number'
+      ? Math.abs(got.w - want.w) > 0.5 || Math.abs(got.h - want.h) > 0.5
+      : true
+    if (off) {
+      report.push({
+        level: 'warning', code: 'fidelity.vector-resized',
+        message:
+          `Figma разобрала SVG в ${String(got.w)} × ${String(got.h)}, ` +
+          `а бокс узла — ${want.w} × ${want.h}. Рисунок внутри рамки не ` +
+          `масштабируется вслед за ней, поэтому размер оставлен как есть.`,
+        nodeId: node.base.id, screenId: null, needsPlaceholder: false,
+      })
+    }
   } else if (node.kind === 'rect') {
     target = figma.createRectangle()
   } else {

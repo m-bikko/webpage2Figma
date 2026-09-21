@@ -19,6 +19,16 @@ const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
    *  и эта проверка не даст ей потеряться при будущих правках. */
   stacking: ['fidelity.paint-order-approximated'],
   'absolute-in-flex': ['fidelity.paint-order-approximated'],
+  /** Патология самой страницы: два SVG с одинаковым `id`. Браузер
+   *  разрешает `url(#g)` в первый по порядку документа и красит обе
+   *  плитки одинаково, а самодостаточный захват рисует написанное в
+   *  разметке — вторую плитку своим цветом.
+   *
+   *  Пиксельно этого не сверить: расхождение измерено в 2354 пикселя,
+   *  и поднять под него порог значило бы требовать воспроизведения
+   *  бага страницы. Утверждается поэтому единственное, что здесь
+   *  действительно проверяемо: захват такое НАЗЫВАЕТ. */
+  'vector-id-collision': ['fidelity.vector-id-collision'],
 }
 
 for (const [fixture, codes] of Object.entries(EXPECTED)) {
@@ -457,4 +467,49 @@ test('text-transform: преобразование применено к сам�
   const first = paragraphs[0]
   if (first === undefined || first.kind !== 'text') throw new Error('нет абзаца')
   expect(first.text.lines.map((l) => l.text).join('')).toContain('ПРОПИСНЫМ')
+})
+
+/** Разведение идентификаторов по пространствам имён.
+ *
+ *  Проверяется в настоящем Chromium, а не юнит-тестом: `readVector`
+ *  опирается на `getComputedStyle` и `XMLSerializer`, и имитировать их
+ *  значило бы проверять имитацию. Здесь же работают те самые функции
+ *  браузера, что и при захвате живой страницы.
+ *
+ *  Ошибка, которую утверждение ловит, тихая по своей природе: без
+ *  разведения оба градиента приедут под одним именем, при склейке в
+ *  один документ победит первый, и вторая иконка покрасится чужим
+ *  цветом. В дереве узлов, в отчёте и в размерах не изменится НИЧЕГО —
+ *  только цвет, и только у той иконки, на которую никто не смотрит. */
+test('идентификаторы внутри SVG разведены по узлам', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('vector-id-collision'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const svgs: string[] = []
+  const visit = (node: typeof screen.root): void => {
+    if (node.kind === 'vector') svgs.push(node.vector.svg)
+    for (const child of node.children) visit(child)
+  }
+  visit(screen.root)
+  expect(svgs, 'фикстура обязана дать ровно два вектора').toHaveLength(2)
+
+  const idsOf = (svg: string) =>
+    [...svg.matchAll(/id="([^"]+)"/g)].map((match) => match[1])
+  const [first, second] = svgs.map((svg) => idsOf(svg ?? ''))
+  expect(first).toHaveLength(1)
+  expect(second).toHaveLength(1)
+  expect(
+    first?.[0],
+    'одинаковый идентификатор в двух векторах — вторая иконка покрасится первой',
+  ).not.toBe(second?.[0])
+
+  /** Мало развести объявления: ссылка обязана поехать за ними. Иначе
+   *  получится ровно наоборот — заливка укажет в никуда, и фигура
+   *  станет чёрной. */
+  for (const [index, svg] of svgs.entries()) {
+    const own = (index === 0 ? first : second)?.[0]
+    expect(svg, `ссылка в векторе ${index} обязана вести в свой градиент`)
+      .toContain(`url(#${own})`)
+  }
 })

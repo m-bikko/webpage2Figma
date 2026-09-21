@@ -90,6 +90,24 @@ var H2DSerializer = (() => {
      *  выражает. Выдать за обычную плитку нельзя — залило бы весь бокс
      *  вместо одной полосы. */
     deferredRepeatMode: "deferred.repeat-mode",
+    /** Векторный элемент не удалось собрать самодостаточно: клон не
+     *  повторил оригинал или сериализация дала пустую строку. Узел
+     *  обязан стать заглушкой, а не пустым фреймом — иначе иконка
+     *  исчезает неотличимо от «её тут и не было». */
+    vectorUnreadable: "fidelity.vector-unreadable",
+    /** Идентификатор внутри SVG встречается в документе раньше: браузер
+     *  разрешал ссылки в чужой элемент, а захват — в свой. Расхождение
+     *  реально и обязано быть названо. */
+    vectorIdCollision: "fidelity.vector-id-collision",
+    /** Figma разобрала SVG в размер, не равный боксу узла. Поправить
+     *  `resize` нельзя: изменение размера рамки не масштабирует её
+     *  содержимое, — поэтому факт называется, а не скрывается. */
+    vectorResized: "fidelity.vector-resized",
+    /** `<foreignObject>` внутри SVG: там лежит HTML, а не векторная
+     *  разметка. Наш рендерер его нарисует — это браузер, — но импортёр
+     *  Figma векторных узлов из HTML не делает, и содержимое пропадёт
+     *  именно на той стороне, где результат некому сверить. */
+    deferredForeignObject: "deferred.foreign-object",
     /** Auto-layout не применён, и названа причина. Молчать нельзя: без
      *  него узел приезжает набором коробок с абсолютными координатами,
      *  и дизайнер вправе знать, что именно в вёрстке этому помешало. */
@@ -870,6 +888,150 @@ var H2DSerializer = (() => {
     };
   };
 
+  // src/vector.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var PRESENTATION = [
+    "fill",
+    "fill-opacity",
+    "fill-rule",
+    "stroke",
+    "stroke-width",
+    "stroke-opacity",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "opacity",
+    "clip-rule"
+  ];
+  var STOP_PRESENTATION = ["stop-color", "stop-opacity", "opacity"];
+  var NON_PAINTING = /* @__PURE__ */ new Set([
+    "defs",
+    "lineargradient",
+    "radialgradient",
+    "clippath",
+    "mask",
+    "filter",
+    "title",
+    "desc",
+    "metadata",
+    "style",
+    "script",
+    "symbol",
+    "marker",
+    "pattern",
+    "switch",
+    "animate",
+    "animatetransform",
+    "animatemotion",
+    "set"
+  ]);
+  var stripPx = (value) => /^-?[\d.]+px$/.test(value) ? value.slice(0, -2) : value;
+  var unquoteIri = (value) => value.replace(/url\(\s*["']([^"']*)["']\s*\)/g, "url($1)");
+  var REFERENCING = [
+    "href",
+    "xlink:href",
+    "fill",
+    "stroke",
+    "clip-path",
+    "mask",
+    "filter",
+    "marker-start",
+    "marker-mid",
+    "marker-end"
+  ];
+  var useTarget = (el) => {
+    const raw = el.getAttribute("href") ?? el.getAttribute("xlink:href");
+    return raw !== null && raw.startsWith("#") ? raw.slice(1) : null;
+  };
+  var resolveUses = (clone, source) => {
+    const doc = source.ownerDocument;
+    const defs = clone.ownerDocument.createElementNS(SVG_NS, "defs");
+    const brought = /* @__PURE__ */ new Set();
+    let pending = Array.from(clone.querySelectorAll("use"));
+    for (let depth = 0; depth < 4 && pending.length > 0; depth += 1) {
+      const next = [];
+      for (const use of pending) {
+        const id = useTarget(use);
+        if (id === null || brought.has(id)) continue;
+        if (clone.querySelector(`#${CSS.escape(id)}`) !== null) {
+          brought.add(id);
+          continue;
+        }
+        const referenced = doc.getElementById(id);
+        if (referenced === null) continue;
+        brought.add(id);
+        const copy = referenced.cloneNode(true);
+        defs.appendChild(copy);
+        next.push(...Array.from(copy.querySelectorAll("use")));
+      }
+      pending = next;
+    }
+    if (defs.childNodes.length > 0) clone.insertBefore(defs, clone.firstChild);
+  };
+  var namespaceIds = (clone, prefix) => {
+    const renamed = /* @__PURE__ */ new Map();
+    const all = [clone, ...Array.from(clone.querySelectorAll("*"))];
+    for (const el of all) {
+      const id = el.getAttribute("id");
+      if (id === null || id === "") continue;
+      const fresh = `${prefix}-${id}`;
+      renamed.set(id, fresh);
+      el.setAttribute("id", fresh);
+    }
+    if (renamed.size === 0) return;
+    for (const el of all) {
+      for (const attribute of REFERENCING) {
+        const value = el.getAttribute(attribute);
+        if (value === null || !value.includes("#")) continue;
+        let next = value;
+        for (const [from, to] of renamed) {
+          next = next.split(`url(#${from})`).join(`url(#${to})`).split(`url("#${from}")`).join(`url("#${to}")`);
+          if (next === `#${from}`) next = `#${to}`;
+        }
+        if (next !== value) el.setAttribute(attribute, next);
+      }
+    }
+  };
+  var readVector = (el, size, prefix) => {
+    if (el.namespaceURI !== SVG_NS || el.tagName.toLowerCase() !== "svg") return null;
+    const clone = el.cloneNode(true);
+    const originals = [el, ...Array.from(el.querySelectorAll("*"))];
+    const clones = [clone, ...Array.from(clone.querySelectorAll("*"))];
+    if (originals.length !== clones.length) return null;
+    const collisions = [];
+    for (const source of originals) {
+      const own = source.getAttribute("id");
+      if (own === null || own === "") continue;
+      if (source.ownerDocument.getElementById(own) !== source) collisions.push(own);
+    }
+    for (let i = 0; i < originals.length; i += 1) {
+      const source = originals[i];
+      const target = clones[i];
+      if (source === void 0 || target === void 0) continue;
+      const tag = source.tagName.toLowerCase();
+      const computed = window.getComputedStyle(source);
+      const properties = tag === "stop" ? STOP_PRESENTATION : NON_PAINTING.has(tag) ? [] : PRESENTATION;
+      for (const property of properties) {
+        const value = computed.getPropertyValue(property);
+        if (value === "") continue;
+        target.setAttribute(property, unquoteIri(stripPx(value)));
+      }
+      target.removeAttribute("style");
+      target.removeAttribute("class");
+    }
+    resolveUses(clone, el);
+    namespaceIds(clone, prefix);
+    clone.setAttribute("width", String(size.w));
+    clone.setAttribute("height", String(size.h));
+    if (!clone.hasAttribute("viewBox")) {
+      clone.setAttribute("viewBox", `0 0 ${size.w} ${size.h}`);
+    }
+    clone.setAttribute("xmlns", SVG_NS);
+    const svg = new XMLSerializer().serializeToString(clone);
+    return svg.length > 0 ? { source: { svg }, collidingIds: collisions } : null;
+  };
+
   // src/layout.ts
   var gapValue = (value) => parsePx(value);
   var ALIGN_MAP = {
@@ -1606,15 +1768,6 @@ var H2DSerializer = (() => {
         false
       );
     }
-    if (el.namespaceURI === "http://www.w3.org/2000/svg") {
-      sink.report(
-        "info",
-        DIAGNOSTIC_CODES.deferredVector,
-        "\u0412\u0435\u043A\u0442\u043E\u0440\u043D\u043E\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u0432 \u044D\u0442\u043E\u043C \u043F\u043B\u0430\u043D\u0435.",
-        id,
-        false
-      );
-    }
     for (const pseudo of ["::before", "::after"]) {
       const content = window.getComputedStyle(el, pseudo).content;
       if (content !== "none" && content !== "normal" && content !== "") {
@@ -1692,6 +1845,7 @@ var H2DSerializer = (() => {
       }
     };
   };
+  var SVG_NS2 = "http://www.w3.org/2000/svg";
   var buildNode = (el, parentCs, ctx) => {
     const cs = window.getComputedStyle(el);
     if (!isRendered(el, cs)) return null;
@@ -1719,7 +1873,9 @@ var H2DSerializer = (() => {
     const children = [];
     const childProbes = [];
     const brokenTransform = ownMatrixRaw !== null && !usable;
-    const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children];
+    const isVectorRoot = el.namespaceURI === SVG_NS2 && el.tagName.toLowerCase() === "svg";
+    const vector = isVectorRoot ? readVector(el, size, id) : null;
+    const ordered = isVectorRoot ? [] : isReversed(cs) ? [...el.children].reverse() : [...el.children];
     const childCtx = {
       ...ctx,
       ancestorMatrix: total,
@@ -1763,7 +1919,42 @@ var H2DSerializer = (() => {
     const placeholder = placeholderFor(el, ctx.sink, id);
     const image = readImage(el, cs, box, ctx, id);
     let node;
-    if (image.kind === "ref") {
+    if (isVectorRoot) {
+      if (vector === null) {
+        ctx.sink.report(
+          "warning",
+          DIAGNOSTIC_CODES.vectorUnreadable,
+          "\u0412\u0435\u043A\u0442\u043E\u0440\u043D\u044B\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0431\u0440\u0430\u0442\u044C \u0441\u0430\u043C\u043E\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E.",
+          id,
+          true
+        );
+        node = {
+          ...base,
+          kind: "placeholder",
+          placeholder: { code: DIAGNOSTIC_CODES.vectorUnreadable, label: "svg" }
+        };
+      } else {
+        if (el.querySelector("foreignObject") !== null) {
+          ctx.sink.report(
+            "warning",
+            DIAGNOSTIC_CODES.deferredForeignObject,
+            "<foreignObject> \u0432\u043D\u0443\u0442\u0440\u0438 SVG: HTML \u0432\u043D\u0443\u0442\u0440\u0438 \u0432\u0435\u043A\u0442\u043E\u0440\u0430 \u043F\u0440\u0438\u0435\u0434\u0435\u0442 \u0432 Figma \u043F\u0443\u0441\u0442\u044B\u043C, \u0445\u043E\u0442\u044F \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435 \u043E\u043D \u0432\u0438\u0434\u0435\u043D.",
+            id,
+            false
+          );
+        }
+        if (vector.collidingIds.length > 0) {
+          ctx.sink.report(
+            "warning",
+            DIAGNOSTIC_CODES.vectorIdCollision,
+            `\u0418\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u043A\u0430\u0442\u043E\u0440\u044B ${vector.collidingIds.join(", ")} \u0432\u0441\u0442\u0440\u0435\u0447\u0430\u044E\u0442\u0441\u044F \u0432 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0435 \u0432\u044B\u0448\u0435 \u043F\u043E \u043F\u043E\u0440\u044F\u0434\u043A\u0443: \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u0440\u0430\u0437\u0440\u0435\u0448\u0430\u043B \u0441\u0441\u044B\u043B\u043A\u0438 \u0432 \u0447\u0443\u0436\u043E\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442. \u0417\u0430\u0445\u0432\u0430\u0442 \u0441\u0434\u0435\u043B\u0430\u043D \u0441\u0430\u043C\u043E\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u044B\u043C \u0438 \u0440\u0438\u0441\u0443\u0435\u0442 \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u043D\u043E\u0435 \u0432 \u044D\u0442\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435, \u0430 \u043D\u0435 \u0442\u043E, \u0447\u0442\u043E \u043F\u043E\u043A\u0430\u0437\u0430\u043B\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430.`,
+            id,
+            false
+          );
+        }
+        node = { ...base, kind: "vector", vector: vector.source };
+      }
+    } else if (image.kind === "ref") {
       node = { ...base, kind: "image", image: image.ref };
     } else if (image.kind === "broken") {
       node = {

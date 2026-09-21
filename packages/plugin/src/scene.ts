@@ -155,6 +155,11 @@ export type SceneNode =
   | { kind: 'frame'; base: SceneBase; clipsContent: boolean }
   | { kind: 'rect'; base: SceneBase }
   | { kind: 'text'; base: SceneBase; text: SceneText }
+  /** Вектор едет ИСХОДНЫМ SVG, а не разобранными кривыми: в Figma его
+   *  разбирает `figma.createNodeFromSvg` — тот же импортёр, что при
+   *  ручной вставке. Свой разборщик пришлось бы сверять с ним, а
+   *  сверять нечем. */
+  | { kind: 'vector'; base: SceneBase; svg: string }
   | { kind: 'placeholder'; base: SceneBase; label: string; code: DiagnosticCode }
 
 export type SceneScreen = {

@@ -61,8 +61,10 @@ ZIP, а не JSON с base64: байты составляют почти весь
 
 ## Что отложено с диагностикой
 
-`deferred.vector` (SVG), `deferred.mask`, `deferred.multi-layer-background`, `deferred.repeat-mode` (`repeat-x`/`repeat-y`/`round`/`space`).
+`deferred.vector`, `deferred.mask`, `deferred.multi-layer-background`, `deferred.repeat-mode` (`repeat-x`/`repeat-y`/`round`/`space`).
+
+`deferred.vector` означает теперь **только SVG в `background-image`**, а не векторы вообще: инлайновый `<svg>` на странице переносится исходником — см. [[vectors]]. Фон остался за границей потому, что захват работает по DOM-элементу, а здесь вектор — ссылка на ресурс, и растром он не идёт. Код порождается дважды: синхронно при разборе фона по виду URL и повторно во второй фазе, если источник отдал `image/svg+xml` вопреки расширению — тип известен только после загрузки, и синхронный обход знать его не мог.
 
 Остаётся **незакрытым без диагностики**: `<video>` и его `poster`. Молчаливая потеря, честно записанная в долг.
 
-См. также [[support-boundaries]], [[correctness-strategy]], [[ir-bundle]].
+См. также [[support-boundaries]], [[correctness-strategy]], [[ir-bundle]], [[vectors]].

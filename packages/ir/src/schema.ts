@@ -151,11 +151,7 @@ const nodeText = z.object({
   align: z.enum(['left', 'center', 'right', 'justify']),
 })
 
-const vectorPath = z.object({
-  data: z.string(),
-  fill: rgba8.nullable(),
-  stroke: stroke.nullable(),
-})
+const vectorSource = z.object({ svg: z.string() })
 
 /** Приведение к непустому кортежу — единственное допущенное здесь,
  *  и оно безопасно: `ALL_DIAGNOSTIC_CODES` собран из `Object.values`
@@ -187,7 +183,7 @@ export const irNodeSchema: z.ZodType<IrNode> = z.lazy(() => {
     base.extend({ kind: z.literal('frame') }),
     base.extend({ kind: z.literal('text'), text: nodeText }),
     base.extend({ kind: z.literal('image'), image: imageRef }),
-    base.extend({ kind: z.literal('vector'), paths: z.array(vectorPath) }),
+    base.extend({ kind: z.literal('vector'), vector: vectorSource }),
     base.extend({
       kind: z.literal('placeholder'),
       placeholder: z.object({ code: diagnosticCode, label: z.string().min(1) }),
