@@ -1,6 +1,6 @@
 import type { Diagnostic } from '@h2d/ir'
 import type {
-  FontRequest, SceneBase, SceneNode, ScenePaint, SceneScreen,
+  AppliedImagePaint, FontRequest, SceneBase, SceneNode, ScenePaint, SceneScreen,
 } from './scene.js'
 
 /** Применитель: механический перебор описания сцены.
@@ -130,7 +130,13 @@ const withImageHashes = (
       `Ассет "${paint.assetId}" не загружен в Figma: краску построить нечем.`,
     )
   }
-  return { ...paint, imageHash: hash }
+  /** `assetId` СНИМАЕТСЯ, а не остаётся рядом: это наше поле, Figma
+   *  его не знает, а лишнее поле в краске отвергается при присваивании.
+   *  Результат объявлен как `ImagePaint`, чтобы компилятор сверил
+   *  форму с официальными типами, а не с нашим представлением о ней. */
+  const { assetId: _dropped, ...rest } = paint
+  const built: AppliedImagePaint = { ...rest, imageHash: hash }
+  return built
 })
 
 const applyBase = (
@@ -146,19 +152,37 @@ const applyBase = (
   target.opacity = base.opacity
   target.blendMode = base.blendMode
   target.fills = withImageHashes(base.fills, images)
-  target.strokes = base.stroke === null ? [] : [base.stroke]
+  /** `strokes` принимает КРАСКИ, а не нашу структуру обводки: толщина
+   *  в краску не входит и живёт отдельными свойствами. Первая редакция
+   *  присваивала сюда всю структуру целиком, и Figma отвергала её —
+   *  код падал на самом глубоком узле, оставляя созданные фигуры
+   *  висеть на странице без родителей. */
+  target.strokes = base.stroke === null ? [] : [base.stroke.paint]
   target.effects = [...base.effects]
-  target['cornerRadius'] = base.corner.tl
-  target['topLeftRadius'] = base.corner.tl
-  target['topRightRadius'] = base.corner.tr
-  target['bottomRightRadius'] = base.corner.br
-  target['bottomLeftRadius'] = base.corner.bl
+  /** Углы и толщины по сторонам есть НЕ У ВСЕХ узлов: у текста
+   *  скруглений нет вовсе. Присваивание несуществующего свойства в
+   *  Figma не молчит, а бросает, поэтому каждое ставится только там,
+   *  где оно объявлено. Проверка `in` — по самому узлу, а не по нашему
+   *  представлению о том, у кого что бывает. */
+  if ('cornerRadius' in target) {
+    target['topLeftRadius'] = base.corner.tl
+    target['topRightRadius'] = base.corner.tr
+    target['bottomRightRadius'] = base.corner.br
+    target['bottomLeftRadius'] = base.corner.bl
+  }
   if (base.stroke !== null) {
-    target['strokeTopWeight'] = base.stroke.weight.top
-    target['strokeRightWeight'] = base.stroke.weight.right
-    target['strokeBottomWeight'] = base.stroke.weight.bottom
-    target['strokeLeftWeight'] = base.stroke.weight.left
-    target['dashPattern'] = base.stroke.dashPattern
+    if ('strokeTopWeight' in target) {
+      target['strokeTopWeight'] = base.stroke.weight.top
+      target['strokeRightWeight'] = base.stroke.weight.right
+      target['strokeBottomWeight'] = base.stroke.weight.bottom
+      target['strokeLeftWeight'] = base.stroke.weight.left
+    } else if ('strokeWeight' in target) {
+      target['strokeWeight'] = Math.max(
+        base.stroke.weight.top, base.stroke.weight.right,
+        base.stroke.weight.bottom, base.stroke.weight.left,
+      )
+    }
+    if ('dashPattern' in target) target['dashPattern'] = base.stroke.dashPattern
   }
 }
 

@@ -31,7 +31,27 @@ const isBundleMessage = (message: unknown): message is IncomingMessage =>
   && (message as { kind?: unknown }).kind === 'bundle'
   && Array.isArray((message as { bytes?: unknown }).bytes)
 
+/** Всё тело обёрнуто в перехват намеренно.
+ *
+ *  При первом запуске у пользователя код упал на присваивании чужой
+ *  формы — и окно плагина навсегда осталось на «Читаю…», потому что
+ *  ответ не пришёл. Исключение ушло в консоль, которую надо было ещё
+ *  догадаться открыть, а созданные узлы остались висеть на странице.
+ *
+ *  Молчаливое зависание хуже любой ошибки: пользователю не видно
+ *  даже того, что что-то случилось. */
 figma.ui.onmessage = async (message: unknown): Promise<void> => {
+  try {
+    await handleMessage(message)
+  } catch (error) {
+    const text = error instanceof Error
+      ? `${error.message}\n${error.stack ?? ''}`
+      : String(error)
+    figma.ui.postMessage({ kind: 'error', text })
+  }
+}
+
+const handleMessage = async (message: unknown): Promise<void> => {
   if (!isBundleMessage(message)) return
 
   let unpacked

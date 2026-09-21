@@ -112,7 +112,7 @@ const styleFrom = (base: SceneBase): NodeStyle => ({
               r: Math.round(stop.color.r * 255),
               g: Math.round(stop.color.g * 255),
               b: Math.round(stop.color.b * 255),
-              a: stop.opacity,
+              a: stop.color.a,
             },
           })),
         },
@@ -122,10 +122,10 @@ const styleFrom = (base: SceneBase): NodeStyle => ({
   }),
   stroke: base.stroke === null ? null : {
     color: {
-      r: Math.round(base.stroke.color.r * 255),
-      g: Math.round(base.stroke.color.g * 255),
-      b: Math.round(base.stroke.color.b * 255),
-      a: base.stroke.opacity,
+      r: Math.round(base.stroke.paint.color.r * 255),
+      g: Math.round(base.stroke.paint.color.g * 255),
+      b: Math.round(base.stroke.paint.color.b * 255),
+      a: base.stroke.paint.opacity,
     },
     weight: base.stroke.weight,
     style: base.stroke.dashPattern.length === 0 ? 'solid'
@@ -136,8 +136,13 @@ const styleFrom = (base: SceneBase): NodeStyle => ({
     effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW'
       ? [{
           kind: effect.type === 'INNER_SHADOW' ? 'inner' as const : 'outer' as const,
-          color: effect.color,
-          offsetX: effect.offsetX, offsetY: effect.offsetY,
+          color: {
+            r: Math.round(effect.color.r * 255),
+            g: Math.round(effect.color.g * 255),
+            b: Math.round(effect.color.b * 255),
+            a: effect.color.a,
+          },
+          offsetX: effect.offset.x, offsetY: effect.offset.y,
           blur: effect.radius, spread: effect.spread,
         }]
       : []),
@@ -257,7 +262,13 @@ const nodeFrom = (
           fontWeight: 400, fontStyle: 'normal',
           fontSize: node.text.runs[0]?.fontSize ?? 16,
           letterSpacing: node.text.runs[0]?.letterSpacing ?? 0,
-          color: node.text.runs[0]?.color ?? { r: 0, g: 0, b: 0, a: 1 },
+          color: (() => {
+            const c = node.text.runs[0]?.color
+            return c === undefined ? { r: 0, g: 0, b: 0, a: 1 } : {
+              r: Math.round(c.r * 255), g: Math.round(c.g * 255),
+              b: Math.round(c.b * 255), a: c.a,
+            }
+          })(),
           decoration: node.text.runs[0]?.decoration ?? 'none',
           shadows: [],
         }],

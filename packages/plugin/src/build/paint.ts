@@ -1,5 +1,5 @@
 import type { Gradient, Rgba8 } from '@h2d/ir'
-import type { FigmaColor, ScenePaint } from '../scene.js'
+import type { FigmaColor, FigmaRgba, ScenePaint } from '../scene.js'
 
 /** Цвет в представлении Figma: доли `0..1`, альфа НЕ входит.
  *
@@ -12,14 +12,20 @@ export const figmaColor = (color: Rgba8): FigmaColor => ({
   b: color.b / 255,
 })
 
+/** Цвет С АЛЬФОЙ внутри — форма `RGBA`. Нужна там, где Figma держит
+ *  альфу в цвете: тени и остановки градиента. Путать её с цветом
+ *  краски нельзя, и компилятор теперь этого не даст. */
+export const figmaRgba = (color: Rgba8): FigmaRgba => ({
+  r: color.r / 255, g: color.g / 255, b: color.b / 255, a: color.a,
+})
+
 export const solidPaint = (color: Rgba8): ScenePaint => ({
   type: 'SOLID',
   color: figmaColor(color),
   opacity: color.a,
 })
 
-type Matrix2x3 = readonly [readonly [number, number, number],
-                           readonly [number, number, number]]
+type Matrix2x3 = [[number, number, number], [number, number, number]]
 
 /** Градиентная краска Figma.
  *
@@ -68,8 +74,7 @@ export const gradientPaint = (gradient: Gradient): Extract<ScenePaint, { type: '
       gradientTransform: [[1, 0, 0], [0, 1, 0]],
       gradientStops: gradient.stops.map((stop) => ({
         position: stop.offset,
-        color: figmaColor(stop.color),
-        opacity: stop.color.a,
+        color: figmaRgba(stop.color),
       })),
     }
   }
@@ -85,8 +90,7 @@ export const gradientPaint = (gradient: Gradient): Extract<ScenePaint, { type: '
     gradientTransform: inverse,
     gradientStops: gradient.stops.map((stop) => ({
       position: stop.offset,
-      color: figmaColor(stop.color),
-      opacity: stop.color.a,
+      color: figmaRgba(stop.color),
     })),
   }
 }

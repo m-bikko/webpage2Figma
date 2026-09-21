@@ -1,4 +1,4 @@
-import type { Corner, DiagnosticCode, Rgba8, Sides } from '@h2d/ir'
+import type { Corner, DiagnosticCode, Sides } from '@h2d/ir'
 
 /** Описание сцены Figma.
  *
@@ -9,13 +9,22 @@ import type { Corner, DiagnosticCode, Rgba8, Sides } from '@h2d/ir'
  *  применитель обязан быть механическим перебором — любое вычисление
  *  в нём означает, что кусок логики ускользнул из проверяемой части. */
 
-/** Цвет в представлении Figma: доли `0..1`, альфа ОТДЕЛЬНО.
+/** Цвет краски: доли `0..1`, альфа ОТДЕЛЬНО.
  *
- *  Разведение не косметическое: в Figma прозрачность краски живёт в
- *  `opacity` самой краски, а не в цвете, и сложить их обратно в RGBA
- *  нельзя — у узла есть ещё собственная непрозрачность, которая на неё
- *  домножается. */
+ *  Разведение не косметическое и не наше: `SolidPaint.color` в Figma
+ *  действительно не имеет альфы, она живёт в `opacity` краски. Сложить
+ *  их обратно нельзя — у узла есть ещё собственная непрозрачность,
+ *  которая на неё домножается.
+ *
+ *  А вот у ТЕНЕЙ и у остановок градиента альфа входит В ЦВЕТ (`RGBA`).
+ *  Формы разные, и держать одну на всё нельзя: применитель присваивает
+ *  их напрямую, и Figma отвергает чужую форму. Так и случилось при
+ *  первом запуске — код падал на присваивании, оставляя созданные узлы
+ *  висеть на странице без родителей. */
 export type FigmaColor = { r: number; g: number; b: number }
+
+/** Цвет с альфой внутри — форма `RGBA` из Figma. */
+export type FigmaRgba = { r: number; g: number; b: number; a: number }
 
 export type ScenePaint =
   | { type: 'SOLID'; color: FigmaColor; opacity: number }
@@ -25,9 +34,12 @@ export type ScenePaint =
        *  Наш контракт держит концы (план 2 выбрал их ровно потому, что
        *  «Figma задаёт градиент матрицей, а не углом»), и перевод
        *  делается здесь. */
-      gradientTransform: readonly [readonly [number, number, number],
-                                   readonly [number, number, number]]
-      gradientStops: { position: number; color: FigmaColor; opacity: number }[]
+      /** Изменяемый кортеж, а не `readonly`: `Transform` в Figma
+       *  объявлен изменяемым, и readonly-версия туда не присваивается.
+       *  Мелочь, которую видит только компилятор. */
+      gradientTransform: [[number, number, number], [number, number, number]]
+      /** Альфа входит В ЦВЕТ: `ColorStop.color` — это `RGBA`. */
+      gradientStops: { position: number; color: FigmaRgba }[]
     }
   | {
       type: 'IMAGE'
@@ -39,8 +51,9 @@ export type ScenePaint =
     }
 
 export type SceneStroke = {
-  color: FigmaColor
-  opacity: number
+  /** Краска обводки — обычный `SolidPaint`, а не наша выдумка: в Figma
+   *  `strokes` принимает массив красок, и толщина в краску не входит. */
+  paint: { type: 'SOLID'; color: FigmaColor; opacity: number }
   /** Толщина ПО СТОРОНАМ, а не одним числом. Figma это умеет
    *  (`IndividualStrokesMixin`), в отличие от SVG, где одиночная
    *  обводка имеет одну ширину на весь путь и референс-рендереру
@@ -53,11 +66,18 @@ export type SceneStroke = {
   dashPattern: number[]
 }
 
+/** Формы взяты из официальных типов Figma, а не придуманы похожими:
+ *  тень несёт `offset` вектором и цвет с альфой внутри, и обязана
+ *  объявлять `visible` и `blendMode`. */
 export type SceneEffect =
   | { type: 'DROP_SHADOW' | 'INNER_SHADOW'
-      color: Rgba8; offsetX: number; offsetY: number
-      radius: number; spread: number }
-  | { type: 'LAYER_BLUR' | 'BACKGROUND_BLUR'; radius: number }
+      color: FigmaRgba; offset: { x: number; y: number }
+      radius: number; spread: number
+      visible: boolean; blendMode: 'NORMAL' }
+  /** `blurType` обязателен в текущем API и угадать его было нельзя —
+   *  нашёл компилятор, сверяя с официальными типами. */
+  | { type: 'LAYER_BLUR' | 'BACKGROUND_BLUR'
+      blurType: 'NORMAL'; radius: number; visible: boolean }
 
 export type SceneText = {
   characters: string
@@ -67,7 +87,7 @@ export type SceneText = {
     start: number; end: number
     family: string; style: string
     fontSize: number; letterSpacing: number
-    color: Rgba8
+    color: FigmaRgba
     decoration: 'none' | 'underline' | 'strikethrough'
   }[]
   lineHeight: number
@@ -128,4 +148,15 @@ export type Scene = {
    *  украшение: без этого списка непроверяемое выдавалось бы за
    *  проверенное. */
   needsVerification: { code: DiagnosticCode; nodeId: string; message: string }[]
+}
+
+/** Краска-изображение В ТОМ ВИДЕ, в каком она уезжает в Figma: наш
+ *  `assetId` уже заменён на хеш. Объявлена здесь, чтобы применитель не
+ *  зависел от глобальных типов Figma — их видит только файл утверждений
+ *  `figma-shapes.ts`, и именно он сверяет эту форму с настоящей. */
+export type AppliedImagePaint = {
+  type: 'IMAGE'
+  imageHash: string
+  scaleMode: 'FILL' | 'FIT' | 'CROP' | 'TILE'
+  scalingFactor?: number
 }

@@ -9,7 +9,7 @@ import type {
 import {
   figmaRotation, originOffset, scaleSubtree, sizeUnderTransform,
 } from './geometry.js'
-import { gradientPaint, solidPaint } from './paint.js'
+import { figmaRgba, gradientPaint, solidPaint } from './paint.js'
 import { imageNodeFor } from './image.js'
 
 /** Режимы наложения CSS и Figma пишутся по-разному: `multiply` против
@@ -46,9 +46,12 @@ const strokeFor = (style: NodeStyle): SceneStroke | null => {
    *  и у исходного дефекта рендерера в плане 2. */
   const longest = Math.max(weight.top, weight.right, weight.bottom, weight.left)
   return {
-    color: { r: style.stroke.color.r / 255, g: style.stroke.color.g / 255,
-             b: style.stroke.color.b / 255 },
-    opacity: style.stroke.color.a,
+    paint: {
+      type: 'SOLID',
+      color: { r: style.stroke.color.r / 255, g: style.stroke.color.g / 255,
+               b: style.stroke.color.b / 255 },
+      opacity: style.stroke.color.a,
+    },
     weight,
     /** Шаг пунктира считается от НАИБОЛЬШЕЙ стороны: у Figma
      *  `dashPattern` один на узел, по сторонам его не развести. */
@@ -58,14 +61,23 @@ const strokeFor = (style: NodeStyle): SceneStroke | null => {
 }
 
 const effectsFor = (style: NodeStyle): SceneEffect[] => {
+  /** Формы взяты из официальных типов Figma: смещение — вектор, цвет —
+   *  с альфой внутри, `visible` и `blendMode` обязательны. Похожая, но
+   *  не та форма отвергается при присваивании — и отвергалась. */
   const effects: SceneEffect[] = style.shadows.map((shadow: Shadow) => ({
     type: shadow.kind === 'inner' ? 'INNER_SHADOW' as const : 'DROP_SHADOW' as const,
-    color: shadow.color,
-    offsetX: shadow.offsetX, offsetY: shadow.offsetY,
+    color: figmaRgba(shadow.color),
+    offset: { x: shadow.offsetX, y: shadow.offsetY },
     radius: shadow.blur, spread: shadow.spread,
+    visible: true, blendMode: 'NORMAL' as const,
   }))
   if (style.blur !== null) {
-    if (style.blur.layer > 0) effects.push({ type: 'LAYER_BLUR', radius: style.blur.layer })
+    if (style.blur.layer > 0) {
+      effects.push({
+        type: 'LAYER_BLUR', blurType: 'NORMAL',
+        radius: style.blur.layer, visible: true,
+      })
+    }
     /** Фоновое размытие в Figma ВЫРАЗИМО, в отличие от плоского
      *  референс-рендерера, у которого «за элементом» не существует.
      *  Поэтому здесь оно переносится, и диагностика `deferred.blur`
@@ -76,7 +88,10 @@ const effectsFor = (style: NodeStyle): SceneEffect[] => {
      *  размытие слоя переносилось с плана 2, а потомки размытого узла
      *  закрыты планом 3. */
     if (style.blur.background > 0) {
-      effects.push({ type: 'BACKGROUND_BLUR', radius: style.blur.background })
+      effects.push({
+        type: 'BACKGROUND_BLUR', blurType: 'NORMAL',
+        radius: style.blur.background, visible: true,
+      })
     }
   }
   return effects
@@ -144,7 +159,7 @@ const textFor = (node: Extract<IrNode, { kind: 'text' }>): SceneText => {
       style: figmaFontStyle(run.fontWeight, run.fontStyle),
       fontSize: run.fontSize,
       letterSpacing: run.letterSpacing,
-      color: run.color,
+      color: figmaRgba(run.color),
       decoration: run.decoration,
     }
   })
