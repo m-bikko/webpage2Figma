@@ -559,7 +559,7 @@ const buildNode = (
   if (placeholder !== null) {
     node = { ...base, kind: 'placeholder', placeholder }
   } else {
-    const text = readText(el, cs, ctx.scrollX, ctx.scrollY)
+    const text = readText(el, cs, screenOrigin)
     if (text.kind === 'text') {
       /** Фактический шрифт отличается от объявленного — главный убийца
        *  точности. Уровень error намеренно: `lines` содержат метрики

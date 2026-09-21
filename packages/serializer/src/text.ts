@@ -219,11 +219,14 @@ const sliceForRect = (node: ChildNode, rect: DOMRect, from: number): string => {
 }
 
 /** Собирает боксы строк для прямых текстовых детей элемента. */
+/** `origin` — экранное положение левого верхнего угла бокса узла.
+ *  Вычитается, чтобы боксы строк легли в систему координат самого узла:
+ *  `Range.getClientRects()` отдаёт экранные координаты, а контракт с
+ *  плана 3 требует локальных. */
 const readLines = (
   el: Element,
   cs: CSSStyleDeclaration,
-  scrollX: number,
-  scrollY: number,
+  origin: { x: number; y: number },
 ): NodeText['lines'] => {
   const lines: NodeText['lines'] = []
   for (const node of el.childNodes) {
@@ -246,8 +249,8 @@ const readLines = (
         index > 0, index < rects.length - 1,
       )
       lines.push({
-        x: rect.left + scrollX,
-        y: rect.top + scrollY,
+        x: rect.left - origin.x,
+        y: rect.top - origin.y,
         w: rect.width,
         h: rect.height,
         // Преобразование применяется и к строкам, и к рану — инвариант
@@ -271,8 +274,7 @@ export type ReadTextResult =
 export const readText = (
   el: Element,
   cs: CSSStyleDeclaration,
-  scrollX: number,
-  scrollY: number,
+  origin: { x: number; y: number },
 ): ReadTextResult => {
   const own = ownText(el)
   if (own.trim() === '') return { kind: 'none' }
@@ -294,7 +296,7 @@ export const readText = (
     shadows: parseBoxShadow(cs.textShadow),
   }
 
-  const lines = readLines(el, cs, scrollX, scrollY)
+  const lines = readLines(el, cs, origin)
   if (lines.length === 0) return { kind: 'lost', sample: own.slice(0, 40) }
 
   return {
