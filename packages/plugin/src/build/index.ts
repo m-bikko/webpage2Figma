@@ -309,7 +309,46 @@ export const buildNode = (node: IrNode, ctx: BuildCtx): SceneNode => {
   }
 
   if (node.kind === 'text') {
-    return { kind: 'text', base: baseFor(node, ctx), text: textFor(node) }
+    const base = baseFor(node, ctx)
+    const text: SceneNode = {
+      kind: 'text',
+      /** Текст занимает ВЕСЬ бокс узла, поэтому стоит в нуле его
+       *  координат и не несёт ни заливок, ни эффектов: они остались
+       *  на обёртке, как и в CSS, где фон принадлежит блоку, а не
+       *  строке. */
+      base: {
+        ...base, id: `${node.id}-text`,
+        x: 0, y: 0, rotation: 0, opacity: 1, blendMode: 'NORMAL',
+        fills: [], stroke: null,
+        corner: { tl: 0, tr: 0, br: 0, bl: 0 },
+        effects: [], children: [],
+      },
+      text: textFor(node),
+    }
+
+    /** БЕЗ детей текстовый узел остаётся текстовым узлом: лишняя
+     *  обёртка — лишний слой в панели, и на странице с тысячами узлов
+     *  это заметно. */
+    if (base.children.length === 0) {
+      return { kind: 'text', base, text: textFor(node) }
+    }
+
+    /** С детьми — обёртка обязательна. В Figma `appendChild` есть
+     *  только у контейнеров; у текстового узла его нет вовсе, и
+     *  попытка добавить ребёнка падает с «not a function» глубоко в
+     *  рекурсии, где причина не видна.
+     *
+     *  Найдено на захвате настоящей страницы: `<div>` с текстом и
+     *  вложенными элементами — обычная вёрстка, но ни одна фикстура
+     *  такого не содержала.
+     *
+     *  Текст идёт ПЕРВЫМ ребёнком: в CSS собственное содержимое блока
+     *  рисуется до вложенных элементов. */
+    return {
+      kind: 'frame',
+      clipsContent: node.style.clip,
+      base: { ...base, children: [text, ...base.children] },
+    }
   }
 
   if (node.kind === 'vector') {
