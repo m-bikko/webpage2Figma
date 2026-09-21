@@ -1,0 +1,13 @@
+{
+  "name": "@h2d/bundle",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@h2d/ir": "workspace:*",
+    "fflate": "^0.8.3"
+  }
+}

@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
+    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer packages/bundle",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
@@ -26,5 +26,8 @@
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
   }
 }

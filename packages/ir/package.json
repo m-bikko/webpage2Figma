@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./codes": "./src/codes.ts",
-    "./version": "./src/version.ts"
+    "./version": "./src/version.ts",
+    "./test-fixtures": "./test/fixtures.ts"
   },
   "dependencies": {
     "zod": "^3.23.0"
