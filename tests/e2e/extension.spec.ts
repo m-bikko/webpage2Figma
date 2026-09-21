@@ -292,3 +292,43 @@ test('расширение дожидается незагруженных ка�
     await context.close()
   }
 })
+
+/** Сериализатор впрыскивается ЗАНОВО на каждый захват.
+ *
+ *  Первая редакция пропускала впрыск, если `window.__w2f` уже стоял, и
+ *  это дало тихую подмену кода: страница переживает перезагрузку
+ *  расширения, и в ней продолжал работать СТАРЫЙ сериализатор с
+ *  прошлого захвата. Воркер ставил свежую версию формата, а поля
+ *  писал старый код — бандл отвергался валидатором на поле, которого
+ *  старый код не знает. Понять такое со стороны невозможно.
+ *
+ *  Проверяется меткой: она ставится на объект после первого захвата и
+ *  обязана исчезнуть после второго. */
+test('повторный захват впрыскивает сериализатор заново', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('flex'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    await worker.evaluate(
+      (tabId) => globalThis.w2f.captureAt(tabId, { name: 'D', width: 800, height: 600 }),
+      tabId,
+    )
+    await page.evaluate(() => {
+      ;(window as unknown as { __w2f: { stale?: boolean } }).__w2f.stale = true
+    })
+
+    await worker.evaluate(
+      (tabId) => globalThis.w2f.captureAt(tabId, { name: 'D', width: 800, height: 600 }),
+      tabId,
+    )
+    const stale = await page.evaluate(() =>
+      (window as unknown as { __w2f: { stale?: boolean } }).__w2f.stale === true)
+
+    expect(stale, 'метка выжила — значит старый сериализатор остался в странице')
+      .toBe(false)
+  } finally {
+    await context.close()
+  }
+})

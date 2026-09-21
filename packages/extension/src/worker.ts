@@ -37,17 +37,28 @@ type CaptureResult = {
 
 const SERIALIZER_PATH = 'vendor/serializer.global.js'
 
-/** Впрыск ОДИН раз на вкладку. Сериализатор держит в странице счётчик
- *  идентификаторов, и повторный впрыск сбросил бы его — узлы разных
- *  экранов получили бы одинаковые имена, а инвариант требует
- *  уникальности в пределах бандла. */
-const injectOnce = async (tabId: number): Promise<void> => {
-  const probe = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: () => typeof (globalThis as { __w2f?: unknown }).__w2f !== 'undefined',
-  })
-  if (probe[0]?.result === true) return
+/** Впрыскивает сериализатор ЗАНОВО, не проверяя, есть ли он уже.
+ *
+ *  Первая редакция проверяла и пропускала впрыск, если `window.__w2f`
+ *  уже стоял. Это дало тихий и очень неприятный дефект: страница
+ *  переживает перезагрузку расширения. Пользователь обновлял
+ *  расширение, снимал ту же вкладку — и в ней работал СТАРЫЙ
+ *  сериализатор с прошлого захвата. Новый воркер ставил свежую версию
+ *  формата, а поля писал старый код, и бандл отвергался валидатором
+ *  на поле, которого старый код не знает.
+ *
+ *  Понять такое со стороны невозможно: сборка свежая, расширение
+ *  перезагружено, а ошибка говорит про поле.
+ *
+ *  Повторный впрыск безопасен, потому что вызывается РОВНО ОДИН раз
+ *  на захват — до `beginCapture`, который и так сбрасывает счётчик
+ *  идентификаторов. Внутри цикла по экранам впрыска нет: вот там он
+ *  сбросил бы нумерацию посреди захвата, и узлы разных экранов
+ *  получили бы одинаковые имена.
+ *
+ *  Цена — 90 КиБ скрипта на захват. Против тихой подмены кода это
+ *  ничто. */
+const injectSerializer = async (tabId: number): Promise<void> => {
   await chrome.scripting.executeScript({
     target: { tabId },
     files: [SERIALIZER_PATH],
@@ -59,7 +70,7 @@ export const captureAt = async (
   tabId: number,
   size: Breakpoint,
 ): Promise<CaptureResult> => withViewport(tabId, size, async () => {
-  await injectOnce(tabId)
+  await injectSerializer(tabId)
   return captureInPage(tabId, size)
 })
 
@@ -116,7 +127,10 @@ export const captureAll = async (
   tabId: number,
   sizes?: readonly Breakpoint[],
 ): Promise<{ screen: CaptureResult; base64: string }[]> => {
-  await injectOnce(tabId)
+  /** Впрыск ровно здесь: один раз на захват, до `beginCapture`.
+   *  Внутри цикла по экранам его нет — там он сбросил бы нумерацию
+   *  посреди захвата. */
+  await injectSerializer(tabId)
   await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
@@ -128,7 +142,7 @@ export const captureAll = async (
   /** Последовательно, а не параллельно: эмуляция применяется к ОДНОЙ
    *  вкладке, и два размера одновременно на ней несовместимы. */
   for (const size of wanted) {
-    const shot = await captureShot(tabId, size)
+    const shot = await shotAt(tabId, size)
     out.push({ screen: shot.screen, base64: shot.base64 })
   }
   return out
@@ -140,13 +154,18 @@ export const captureAll = async (
  *  подключён, а подключить его второй раз к той же вкладке нельзя.
  *  Разнести это на два захода значило бы эмулировать размер дважды —
  *  и получить скриншот от одной раскладки, а дерево от другой. */
-export const captureShot = async (
+/** Снимает экран со скриншотом, СЧИТАЯ, что сериализатор уже
+ *  впрыснут. Отдельно от публичной `captureShot` потому, что внутри
+ *  цикла по экранам впрыскивать нельзя: он сбросил бы счётчик
+ *  идентификаторов посреди захвата, и узлы разных экранов получили бы
+ *  одинаковые имена. Эти два случая пришлось развести явно — общая
+ *  функция с флагом скрыла бы ровно то, что здесь важно. */
+const shotAt = async (
   tabId: number,
   size: Breakpoint,
 ): Promise<{ screen: CaptureResult; base64: string
              contentHeight: number; imageHeight: number }> =>
   withViewport(tabId, size, async () => {
-    await injectOnce(tabId)
     const captured = await captureInPage(tabId, size)
     const base64 = await captureFullPage(
       tabId, captured.screen.width, captured.screen.height,
@@ -167,6 +186,17 @@ const base64ToBytes = (base64: string): Uint8Array => {
   const out = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i)
   return out
+}
+
+/** Снимает один экран со скриншотом, впрыскивая сериализатор.
+ *  Публичная точка входа для одиночного снимка. */
+export const captureShot = async (
+  tabId: number,
+  size: Breakpoint,
+): Promise<{ screen: CaptureResult; base64: string
+             contentHeight: number; imageHeight: number }> => {
+  await injectSerializer(tabId)
+  return shotAt(tabId, size)
 }
 
 /** Высота PNG из его заголовка.
