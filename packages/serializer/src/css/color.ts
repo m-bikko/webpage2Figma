@@ -1,4 +1,4 @@
-import type { Rgba8 } from '@h2d/ir'
+import type { Rgba8 } from '@w2f/ir'
 
 export const TRANSPARENT: Rgba8 = { r: 0, g: 0, b: 0, a: 0 }
 

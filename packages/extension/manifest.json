@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "html2design",
+  "name": "webpage2figma",
   "version": "0.1.0",
-  "description": "Снимает открытую страницу в пяти брейкпоинтах и отдаёт файл .h2d для плагина Figma.",
+  "description": "Снимает открытую страницу в пяти брейкпоинтах и отдаёт файл .w2f для плагина Figma.",
   "permissions": [
     "debugger",
     "scripting",
     "activeTab",
     "tabs",
-    "downloads"
+    "downloads",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -19,7 +20,13 @@
   },
   "action": {
     "default_popup": "src/popup.html",
-    "default_title": "html2design"
+    "default_title": "webpage2figma",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "web_accessible_resources": [
     {
@@ -30,5 +37,11 @@
         "<all_urls>"
       ]
     }
-  ]
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
 }

@@ -4,7 +4,7 @@ type: concept
 tags: [architecture, extension, figma-plugin]
 created: 2026-09-19
 updated: 2026-09-19
-sources: [docs/superpowers/specs/2026-09-19-html2design-design.md]
+sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 ---
 
 # Архитектура
@@ -32,7 +32,7 @@ sources: [docs/superpowers/specs/2026-09-19-html2design-design.md]
 
 ## Транспорт
 
-Файл `.h2d` (ZIP: `ir.json` + `assets/` + `screenshots/`), см. [[ir-bundle]].
+Файл `.w2f` (ZIP: `ir.json` + `assets/` + `screenshots/`), см. [[ir-bundle]].
 
 Localhost-relay отклонён: «один клик вместо двух» не окупает фоновый процесс на машине каждого коллеги, `allowedDomains` в манифесте плагина и класс сетевых сбоев. Файл детерминирован, воспроизводится, прикладывается к багрепорту и переживает перезапуск Figma.
 

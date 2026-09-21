@@ -19,7 +19,7 @@ describe('parseBundle: конверт', () => {
     const result = parseBundle({ foo: 'bar' })
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error).toContain('не похож на бандл html2design')
+    expect(result.error).toContain('не похож на бандл webpage2figma')
     expect(result.error).not.toContain('undefined')
   })
 

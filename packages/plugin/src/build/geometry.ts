@@ -1,4 +1,4 @@
-import type { IrNode, TextRun, Transform } from '@h2d/ir'
+import type { IrNode, TextRun, Transform } from '@w2f/ir'
 
 const scaleRun = (run: TextRun, sx: number): TextRun => ({
   ...run,

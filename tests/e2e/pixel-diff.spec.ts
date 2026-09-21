@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { reconcileAssets } from '@h2d/ir'
-import { renderScreenToSvg, wrapSvgInHtml } from '@h2d/reference-renderer'
+import { reconcileAssets } from '@w2f/ir'
+import { renderScreenToSvg, wrapSvgInHtml } from '@w2f/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 import { imagesFor } from './helpers/images.js'
 import { diffPng, shotOfScreen } from './helpers/diff.js'
@@ -78,7 +78,7 @@ for (const fixture of FIXTURES) {
       /** Ассеты забираются ПОСЛЕ снимка: обход синхронен, а байты
        *  приходят асинхронно. Порядок обратный сломал бы ровно то
        *  разделение фаз, ради которого оно заведено. */
-      const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+      const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
       /** Дерево приводится в согласие с тем, что реально доехало.
        *  Кросс-доменная картинка отрисовалась, значит узел построен, —
        *  а байтов нет, и без этого шага рендерер упал бы на ссылке в

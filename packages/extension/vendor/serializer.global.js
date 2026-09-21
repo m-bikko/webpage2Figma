@@ -1920,7 +1920,7 @@ var H2DSerializer = (() => {
     };
   };
   var emptyBundle = () => ({
-    format: "h2d",
+    format: "w2f",
     version: IR_VERSION,
     capturedAt: (/* @__PURE__ */ new Date()).toISOString(),
     url: window.location.href,
@@ -2112,6 +2112,6 @@ var H2DSerializer = (() => {
     resolvePendingAssets,
     sizeFromDataUrl
   };
-  window.__h2d = api;
+  window.__w2f = api;
 })();
 //# sourceMappingURL=serializer.global.js.map

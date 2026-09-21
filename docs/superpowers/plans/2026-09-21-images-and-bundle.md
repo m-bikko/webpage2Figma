@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Перенести растровые изображения — `<img>` и `background-image: url()` — в IR вместе с байтами, научить референс-рендерер их рисовать и собрать всё в файл-бандл `.h2d`, который примет плагин.
+**Goal:** Перенести растровые изображения — `<img>` и `background-image: url()` — в IR вместе с байтами, научить референс-рендерер их рисовать и собрать всё в файл-бандл `.w2f`, который примет плагин.
 
 **Architecture:** Обход DOM остаётся **синхронным** и лишь регистрирует заявки на ассеты, получая взамен `assetId`. Отдельная асинхронная фаза забирает байты через `fetch`, нормализует формат и размер и отдаёт `Asset[]` вместе с содержимым. Бандл пакуется `fflate` в ZIP: `ir.json` + `assets/` + `screenshots/`.
 
@@ -25,7 +25,7 @@
 | байты | `fetch`, побайтовое совпадение с файлом на диске |
 | рендерер | `<image>` и `<pattern>`, обрезка, отказ по имени на пропавший ассет |
 | гейт | `image-fit` и `image-bg` — 0 пикселей на пяти ширинах |
-| `.h2d` | ZIP, круговой обход, отказ с обеих сторон на оборванную ссылку |
+| `.w2f` | ZIP, круговой обход, отказ с обеих сторон на оборванную ссылку |
 | скриншоты | обычный ассет; проверено, что в дерево не просочился |
 
 **Сверх плана.** Гейт нашёл два дефекта, которых план не предвидел: двойной
@@ -153,7 +153,7 @@ packages/serializer/src/serialize.ts       заявки в SerializeResult
 
 packages/reference-renderer/src/render.ts  <image> и <pattern>
 
-packages/bundle/                   НОВЫЙ ПАКЕТ: упаковка и распаковка .h2d
+packages/bundle/                   НОВЫЙ ПАКЕТ: упаковка и распаковка .w2f
 
 fixtures/image-fit/       object-fit: fill|contain|cover|none
 fixtures/image-bg/        background-size/position/repeat
@@ -466,7 +466,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import { classifyBackgroundImage } from '../src/css/image.js'
 
 describe('classifyBackgroundImage', () => {
@@ -543,7 +543,7 @@ Expected: FAIL, `Cannot find module '../src/css/image.js'`.
 Создай `packages/serializer/src/css/image.ts`:
 
 ```ts
-import { DIAGNOSTIC_CODES, type DiagnosticCode } from '@h2d/ir/codes'
+import { DIAGNOSTIC_CODES, type DiagnosticCode } from '@w2f/ir/codes'
 
 export type BackgroundImageVerdict =
   | { kind: 'none' }
@@ -1036,7 +1036,7 @@ Expected: FAIL, `placementFor is not a function`.
 Добавь в `packages/serializer/src/css/image.ts`:
 
 ```ts
-import type { ImagePlacement } from '@h2d/ir'
+import type { ImagePlacement } from '@w2f/ir'
 
 type Size = { w: number; h: number }
 
@@ -1447,8 +1447,8 @@ test('недоступный источник даёт диагностику, �
 - [ ] **Step 2: Реализовать `resolveAssets`**
 
 ```ts
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
-import type { Asset, Diagnostic } from '@h2d/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
+import type { Asset, Diagnostic } from '@w2f/ir'
 import type { AssetRequest } from './assets.js'
 
 /** Предел `figma.createImage`. Длинная сторона больше — изображение
@@ -1623,7 +1623,7 @@ Run: `npx playwright test tests/e2e/pixel-diff.spec.ts`
 
 ---
 
-### Task 9: Файл-бандл `.h2d`
+### Task 9: Файл-бандл `.w2f`
 
 **Files:**
 - Create: `packages/bundle/` (новый пакет: `package.json`, `tsconfig.json`, `src/pack.ts`, `src/unpack.ts`, `src/index.ts`)
@@ -1657,7 +1657,7 @@ it('ZIP без ir.json отвергается с внятным сообщени
  *  простыню zod вместо «файл другой версии». Ровно та причина, по
  *  которой в контракте есть BundleEnvelope. */
 it('бандл чужой версии отвергается по версии, а не по схеме', async () => {
-  const packed = await packRaw({ format: 'h2d', version: 1 })
+  const packed = await packRaw({ format: 'w2f', version: 1 })
   await expect(unpackBundle(packed)).rejects.toThrow(/версии/)
 })
 
@@ -1697,7 +1697,7 @@ it('ссылка на отсутствующий в архиве ассет от
 
 - [ ] **Step 3: Проверить, что скриншот не попал в дерево.** Отдельный тест: ни один узел не ссылается на `screenshotId`. Иначе картинка страницы приедет ещё и заливкой какого-нибудь фрейма.
 
-- [ ] **Step 4: `pnpm capture` пишет `out/bundle.h2d`** и печатает его размер. Это первый артефакт, который можно отдать плагину в плане 5.
+- [ ] **Step 4: `pnpm capture` пишет `out/bundle.w2f`** и печатает его размер. Это первый артефакт, который можно отдать плагину в плане 5.
 
 - [ ] **Step 5: Полный прогон, обновление вики, коммит.**
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildScene, layOutScreens } from '../src/build/index.js'
 import { bundle as makeBundle, frameNode, nodeText, screen as makeScreen }
-  from '@h2d/ir/test-fixtures'
-import type { IrNode } from '@h2d/ir'
+  from '@w2f/ir/test-fixtures'
+import type { IrNode } from '@w2f/ir'
 import type { SceneNode } from '../src/scene.js'
 
 /** ДЕТЕЙ МОГУТ ИМЕТЬ ТОЛЬКО КОНТЕЙНЕРЫ.
@@ -148,5 +148,61 @@ describe('раскладка экранов на холсте', () => {
   it('порядок сохраняется: от широкого к узкому', () => {
     const placed = layOutScreens(buildScene(fiveScreens()).screens)
     expect(placed.map((item) => item.width)).toEqual([1920, 1440, 1024, 768, 390])
+  })
+})
+
+describe('раскладка учитывает ПЕРЕПОЛНЕНИЕ, а не только ширину вьюпорта', () => {
+  /** Страница может быть шире вьюпорта: горизонтальное переполнение,
+   *  абсолютно позиционированные элементы за краем. Тогда корневой
+   *  фрейм шире, чем `screen.width`, и раскладка по ширине вьюпорта
+   *  кладёт следующий экран ПОВЕРХ предыдущего.
+   *
+   *  Найдено на импорте настоящей страницы: экраны пересеклись. */
+  const overflowing = () => makeBundle({
+    screens: [
+      makeScreen({
+        id: 's-1', width: 400, height: 300,
+        /** Корень шире вьюпорта — так бывает при горизонтальном
+         *  переполнении. */
+        root: frameNode({ id: 'r1', rect: { x: 0, y: 0, w: 900, h: 300 } }),
+      }),
+      makeScreen({
+        id: 's-2', width: 400, height: 300,
+        root: frameNode({ id: 'r2', rect: { x: 0, y: 0, w: 400, h: 300 } }),
+      }),
+    ],
+  })
+
+  it('следующий экран не залезает на переполняющий предыдущий', () => {
+    const scene = buildScene(overflowing())
+    const placed = layOutScreens(scene.screens)
+    const first = placed[0]
+    const second = placed[1]
+    if (first === undefined || second === undefined) return
+    expect(second.x).toBeGreaterThanOrEqual(first.x + 900)
+  })
+
+  /** Ребёнок, торчащий за правый край корня, тоже считается: при
+   *  видимом переполнении браузер его показывает, и в Figma он
+   *  торчит ровно так же. */
+  it('ребёнок за краем корня тоже учитывается', () => {
+    const scene = buildScene(makeBundle({
+      screens: [
+        makeScreen({
+          id: 's-1', width: 400, height: 300,
+          root: frameNode({
+            id: 'r1', rect: { x: 0, y: 0, w: 400, h: 300 },
+            children: [frameNode({ id: 'c', rect: { x: 350, y: 0, w: 500, h: 50 } })],
+          }),
+        }),
+        makeScreen({ id: 's-2', width: 400, height: 300,
+          root: frameNode({ id: 'r2', rect: { x: 0, y: 0, w: 400, h: 300 } }) }),
+      ],
+    }))
+    const placed = layOutScreens(scene.screens)
+    const first = placed[0]
+    const second = placed[1]
+    if (first === undefined || second === undefined) return
+    expect(second.x).toBeGreaterThanOrEqual(first.x + 850)
   })
 })

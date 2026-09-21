@@ -68,7 +68,7 @@ export const screen = (overrides: Partial<Screen> = {}): Screen => ({
 })
 
 export const bundle = (overrides: Partial<Bundle> = {}): Bundle => ({
-  format: 'h2d',
+  format: 'w2f',
   version: IR_VERSION,
   capturedAt: '2026-09-19T10:00:00.000Z',
   url: 'https://example.com/',

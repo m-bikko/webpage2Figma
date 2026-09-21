@@ -1,7 +1,7 @@
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import type {
   Asset, Bundle, Diagnostic, Fill, IrNode, NodeStyle, Screen, Shadow,
-} from '@h2d/ir'
+} from '@w2f/ir'
 import type {
   FontRequest, Scene, SceneBase, SceneEffect, SceneNode, ScenePaint,
   SceneScreen, SceneStroke, SceneText,
@@ -439,13 +439,32 @@ const SCREEN_GAP = 120
  *  Порядок не меняется — он задан порядком брейкпоинтов, от широкого
  *  к узкому, и переставлять его здесь значило бы решать за
  *  пользователя. */
+/** Насколько далеко вправо простирается содержимое узла.
+ *
+ *  Считается по ПОДДЕРЕВУ, а не по самому узлу: при видимом
+ *  переполнении ребёнок законно торчит за правый край родителя, и
+ *  браузер его показывает. В Figma он торчит ровно так же. */
+const rightEdgeOf = (node: SceneNode, offset = 0): number => {
+  const own = offset + node.base.x + node.base.width
+  return node.base.children.reduce(
+    (widest, child) => Math.max(widest, rightEdgeOf(child, offset + node.base.x)),
+    own,
+  )
+}
+
 export const layOutScreens = (
   screens: readonly SceneScreen[],
 ): { id: string; x: number; y: number; width: number; height: number }[] => {
   let x = 0
   return screens.map((screen) => {
-    const placed = { id: screen.id, x, y: 0, width: screen.width, height: screen.height }
-    x += screen.width + SCREEN_GAP
+    /** Шаг считается по ФАКТИЧЕСКОЙ ширине содержимого, а не по
+     *  ширине вьюпорта. Страница бывает шире: горизонтальное
+     *  переполнение, абсолютно позиционированные элементы за краем.
+     *  Раскладка по `screen.width` клала следующий экран ПОВЕРХ
+     *  предыдущего — найдено на импорте настоящей страницы. */
+    const extent = Math.max(screen.width, rightEdgeOf(screen.root))
+    const placed = { id: screen.id, x, y: 0, width: extent, height: screen.height }
+    x += extent + SCREEN_GAP
     return placed
   })
 }

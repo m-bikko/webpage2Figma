@@ -11,6 +11,59 @@ type Progress =
 
 const out = document.getElementById('out')
 const button = document.getElementById('go')
+const sizesBox = document.getElementById('sizes')
+
+const BREAKPOINTS = [
+  { key: '1920', label: 'Desktop XL — 1920×1080' },
+  { key: '1440', label: 'Desktop — 1440×900' },
+  { key: '1024', label: 'Tablet L — 1024×1366' },
+  { key: '768', label: 'Tablet — 768×1024' },
+  { key: '390', label: 'Mobile — 390×844' },
+]
+
+const BREAKPOINTS_KEY = 'breakpoints'
+
+const chosenKeys = (): string[] => Array.from(
+  sizesBox?.querySelectorAll<HTMLInputElement>('input:checked') ?? [],
+).map((input) => input.value)
+
+/** Выбор сохраняется сразу при клике, а не по кнопке: отдельная
+ *  кнопка «сохранить» в окне из двух элементов — лишний шаг, который
+ *  легко забыть, и тогда съёмка пойдёт не с теми размерами. */
+const renderSizes = async (): Promise<void> => {
+  if (sizesBox === null) return
+  const stored = await chrome.storage.sync.get(BREAKPOINTS_KEY)
+  const saved = (stored[BREAKPOINTS_KEY] as string[] | undefined) ?? []
+  const active = saved.length === 0 ? BREAKPOINTS.map((size) => size.key) : saved
+
+  for (const size of BREAKPOINTS) {
+    const label = document.createElement('label')
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.value = size.key
+    input.checked = active.includes(size.key)
+    input.addEventListener('change', () => {
+      const keys = chosenKeys()
+      /** Снятая последняя галочка не сохраняется: снимать нечего, и
+       *  пустой экран в ответ на кнопку выглядел бы поломкой.
+       *  Галочка возвращается на место, чтобы отказ был виден. */
+      if (keys.length === 0) {
+        input.checked = true
+        return
+      }
+      void chrome.storage.sync.set({ [BREAKPOINTS_KEY]: keys })
+    })
+    label.append(input, document.createTextNode(size.label))
+    sizesBox.append(label)
+  }
+
+  const hint = document.createElement('p')
+  hint.className = 'hint'
+  hint.textContent = 'Чем меньше размеров, тем быстрее съёмка.'
+  sizesBox.append(hint)
+}
+
+void renderSizes()
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"]/g, (ch) =>

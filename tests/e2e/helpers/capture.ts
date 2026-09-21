@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import type { Page } from '@playwright/test'
-import type { Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+import type { Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 
 /** То же, что отдаёт сериализатор. Объявлено здесь, потому что тесты
  *  не импортируют сам сериализатор: он читается с диска как текст. */
@@ -38,10 +38,10 @@ export type AssetRequest = {
  *  Объявление обязано жить здесь: `declare global` из `src/global.ts`
  *  сериализатора в область типов тестов не попадает — тесты его не
  *  импортируют. Без этого блока колбэк `page.evaluate` не типизируется
- *  и `pnpm typecheck:root` падает на `window.__h2d`. */
+ *  и `pnpm typecheck:root` падает на `window.__w2f`. */
 declare global {
   interface Window {
-    __h2d: {
+    __w2f: {
       beginCapture: () => void
       captureScreen: (id: string, name: string) => CaptureResult
       resolvePendingAssets: () => Promise<ResolvedAssets>
@@ -105,7 +105,7 @@ export const captureScreen = async (
    *  бандла. Расширение впрыскивает скрипт один раз на вкладку и
    *  переживает ресайзы, поэтому хелпер обязан вести себя так же. */
   const alreadyInjected = await page.evaluate(
-    () => typeof window.__h2d !== 'undefined',
+    () => typeof window.__w2f !== 'undefined',
   )
   if (!alreadyInjected) {
     const source = readFileSync(bundlePath, 'utf8')
@@ -113,10 +113,10 @@ export const captureScreen = async (
   }
   await page.evaluate(() => document.fonts.ready)
   if (options.beginCapture ?? true) {
-    await page.evaluate(() => { window.__h2d.beginCapture() })
+    await page.evaluate(() => { window.__w2f.beginCapture() })
   }
   return page.evaluate(
-    ([id, name]) => window.__h2d.captureScreen(id ?? '', name ?? ''),
+    ([id, name]) => window.__w2f.captureScreen(id ?? '', name ?? ''),
     [screenId, screenName],
   )
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { figmaColor, solidPaint, gradientPaint } from '../src/build/paint.js'
-import type { Gradient } from '@h2d/ir'
+import type { Gradient } from '@w2f/ir'
 
 describe('figmaColor', () => {
   /** Figma держит цвет в долях 0..1, а альфу ОТДЕЛЬНО в `opacity`

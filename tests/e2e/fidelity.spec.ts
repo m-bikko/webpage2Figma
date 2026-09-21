@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import type { IrNode } from '@h2d/ir'
+import type { IrNode } from '@w2f/ir'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 
 type TextNode = Extract<IrNode, { kind: 'text' }>

@@ -1,5 +1,5 @@
-import { DIAGNOSTIC_CODES, type DiagnosticCode } from '@h2d/ir/codes'
-import type { ImagePlacement } from '@h2d/ir'
+import { DIAGNOSTIC_CODES, type DiagnosticCode } from '@w2f/ir/codes'
+import type { ImagePlacement } from '@w2f/ir'
 
 export type BackgroundImageVerdict =
   | { kind: 'none' }

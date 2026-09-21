@@ -1,4 +1,4 @@
-import type { Gradient, GradientStop } from '@h2d/ir'
+import type { Gradient, GradientStop } from '@w2f/ir'
 import { parseColor } from './color.js'
 
 export type BoxSize = { w: number; h: number }

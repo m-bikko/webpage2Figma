@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Построить половину, которая принимает файл `.h2d` и создаёт в Figma страницы с экранами, — и сделать её проверяемой без Figma.
+**Goal:** Построить половину, которая принимает файл `.w2f` и создаёт в Figma страницы с экранами, — и сделать её проверяемой без Figma.
 
 **Architecture:** Плагин разделён на **чистый строитель** (`bundle → SceneSpec`) и **тонкий применитель** (`SceneSpec → вызовы figma.*`). Строитель покрывается тестами целиком. Поверх него — обратная сборка `SceneSpec → IR'` и прогон через уже существующий [pixel-diff гейт](2026-09-19-fidelity-core.md): если картинка по `SceneSpec` совпадает с браузером, значит построение ничего не потеряло.
 
@@ -15,7 +15,7 @@
 
 | обещано | подтверждено |
 |---|---|
-| каркас и контракт сцены | `@h2d/plugin`, сборка в один файл, `networkAccess: none` |
+| каркас и контракт сцены | `@w2f/plugin`, сборка в один файл, `networkAccess: none` |
 | знак поворота | слом «потерять минус» роняет 15 проверок кругового обхода |
 | заливки | опорные точки из документации + 4 слома; две негодные проверки найдены и исправлены |
 | изображения через геометрию | 4 слома, включая «отмечать сверкой всё подряд» |
@@ -151,7 +151,7 @@ tests/e2e/scene-diff.spec.ts   круговой обход через pixel-diff
 
 **Files:** `packages/plugin/{package.json,tsconfig.json,tsup.config.ts,manifest.json}`, `src/scene.ts`
 
-- [ ] **Step 1: Завести пакет.** `@h2d/plugin`, зависимости `@h2d/ir`, `@h2d/bundle`, dev-зависимость `@figma/plugin-typings`. Сборка `tsup` в **один** файл формата `iife`: рантайм Figma не умеет импортов, и `noExternal` обязан втянуть всё.
+- [ ] **Step 1: Завести пакет.** `@w2f/plugin`, зависимости `@w2f/ir`, `@w2f/bundle`, dev-зависимость `@figma/plugin-typings`. Сборка `tsup` в **один** файл формата `iife`: рантайм Figma не умеет импортов, и `noExternal` обязан втянуть всё.
 
 - [ ] **Step 2: Описать `SceneSpec`.** Это контракт между чистой частью и применителем, и он обязан быть описанием, а не набором замыканий: замыкание нельзя ни сравнить в тесте, ни собрать обратно в IR.
 
@@ -371,7 +371,7 @@ frame (clipsContent: true, размер = rect узла)
 
 - [ ] **Step 1: Собрать плагин**, импортировать в Figma через «Import plugin from manifest».
 
-- [ ] **Step 2: Прогнать `out/bundle.h2d`** фикстур `boxes`, `text`, `transformed`, `image-fit`, `image-bg`.
+- [ ] **Step 2: Прогнать `out/bundle.w2f`** фикстур `boxes`, `text`, `transformed`, `image-fit`, `image-bg`.
 
 - [ ] **Step 3: Сверить глазами именно то, что помечено «требует сверки»:** знак поворота на `transformed`, растяжение `object-fit: fill` на `image-fit`, плитка на `image-bg`, перенос строк на `text`.
 

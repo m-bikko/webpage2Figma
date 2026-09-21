@@ -1,4 +1,4 @@
-import type { Corner } from '@h2d/ir'
+import type { Corner } from '@w2f/ir'
 import { parsePx } from './length.js'
 
 /** Эллиптический угол задаётся двумя значениями через пробел.

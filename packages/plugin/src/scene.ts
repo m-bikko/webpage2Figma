@@ -1,4 +1,4 @@
-import type { Corner, DiagnosticCode, Sides } from '@h2d/ir'
+import type { Corner, DiagnosticCode, Sides } from '@w2f/ir'
 
 /** Описание сцены Figma.
  *

@@ -30,7 +30,7 @@ const bundlePath = resolve(here, '../dist/code.global.js')
 describe('собранный плагин выполняется в песочнице без require', () => {
   it('бандл собран', () => {
     if (!existsSync(bundlePath)) {
-      execFileSync('pnpm', ['--filter', '@h2d/plugin', 'build'], {
+      execFileSync('pnpm', ['--filter', '@w2f/plugin', 'build'], {
         cwd: resolve(here, '../../..'), stdio: 'ignore',
       })
     }

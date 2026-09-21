@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildScene } from '../src/build/index.js'
 import { bundle as makeBundle, frameNode, nodeText, screen as makeScreen, textRun }
-  from '@h2d/ir/test-fixtures'
-import type { IrNode } from '@h2d/ir'
+  from '@w2f/ir/test-fixtures'
+import type { IrNode } from '@w2f/ir'
 import type { SceneNode } from '../src/scene.js'
 
 /** Цвет текста живёт в `fills` ТЕКСТОВОГО УЗЛА.

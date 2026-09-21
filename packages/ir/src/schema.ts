@@ -214,7 +214,7 @@ const diagnostic = z.object({
 })
 
 export const bundleSchema: z.ZodType<Bundle> = z.object({
-  format: z.literal('h2d'),
+  format: z.literal('w2f'),
   version: z.literal(IR_VERSION),
   capturedAt: z.string(),
   url: z.string(),

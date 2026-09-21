@@ -50,12 +50,12 @@ export const parseBundle = (input: unknown): ParseResult => {
 
   const envelope = input as BundleEnvelope
 
-  if (envelope.format !== 'h2d') {
+  if (envelope.format !== 'w2f') {
     return {
       ok: false,
       error:
-        'Файл не похож на бандл html2design: отсутствует маркер формата. ' +
-        'Выбери файл .h2d, созданный расширением.',
+        'Файл не похож на бандл webpage2figma: отсутствует маркер формата. ' +
+        'Выбери файл .w2f, созданный расширением.',
     }
   }
 

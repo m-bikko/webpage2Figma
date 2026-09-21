@@ -2,7 +2,7 @@ import type {
   Blur, Corner, Gradient, ImageRef, IrNode, Rect, Rgba8, Screen, Shadow, Sides,
   Stroke,
   TextRun,
-} from '@h2d/ir'
+} from '@w2f/ir'
 
 const escapeXml = (value: string): string =>
   value

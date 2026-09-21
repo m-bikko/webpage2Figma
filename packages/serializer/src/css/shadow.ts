@@ -1,4 +1,4 @@
-import type { Shadow } from '@h2d/ir'
+import type { Shadow } from '@w2f/ir'
 import { parseColor } from './color.js'
 import { parsePx } from './length.js'
 

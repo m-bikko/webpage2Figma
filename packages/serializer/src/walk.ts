@@ -2,11 +2,11 @@
 // то есть zod, который сериализатору не нужен вовсе. Через баррель бандл
 // весил 171 КиБ при ~18 КиБ собственного кода, и всё это впрыскивалось
 // в каждую захватываемую страницу.
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import type {
   Fill, FontRequirement, IrNode, LayoutAlign, NodeStyle,
   ImageRef, SelfLayout, SelfPositioning, Transform,
-} from '@h2d/ir'
+} from '@w2f/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { sizeFromDataUrl } from './css/data-url.js'
@@ -333,7 +333,7 @@ const blurRadius = (value: string): number => {
  *
  *  Разделение обязательное: `unsupported.*` — то, что невозможно в Figma
  *  в принципе, `deferred.*` — то, что ещё не реализовано. Второе
- *  проверяется инвариантом в `@h2d/ir`: узел с ФОНОВЫМ размытием
+ *  проверяется инвариантом в `@w2f/ir`: узел с ФОНОВЫМ размытием
  *  без парной диагностики отвергается на входе плагина. Именно так правило
  *  «молчаливый fallback — это баг» стало машинным.
  *
@@ -468,7 +468,7 @@ const reportGaps = (
 
 /** Содержимое, которое невозможно перенести в принципе, становится
  *  ВИДИМОЙ заглушкой, а не пустым фреймом. Парная диагностика с тем же
- *  кодом и `needsPlaceholder: true` обязательна: инвариант в `@h2d/ir`
+ *  кодом и `needsPlaceholder: true` обязательна: инвариант в `@w2f/ir`
  *  отвергнет заглушку, которую отчёт не объясняет. */
 const placeholderFor = (
   el: Element,
@@ -789,7 +789,7 @@ const collectStackingContexts = (probe: LayoutProbe, out: Set<string>): void => 
 /** Собирает требования к шрифтам из текстовых узлов поддерева.
  *
  *  Данные есть только здесь, а нужны на уровне бандла: инвариант
- *  `font.uncovered` в `@h2d/ir` требует, чтобы каждое использованное в
+ *  `font.uncovered` в `@w2f/ir` требует, чтобы каждое использованное в
  *  тексте семейство было перечислено в `Bundle.fonts`, иначе плагин не
  *  сможет предзагрузить шрифт и создание текста упадёт посреди
  *  построения. Обходчик их не записывает — это не его уровень — но

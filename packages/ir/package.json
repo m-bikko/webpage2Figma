@@ -1,5 +1,5 @@
 {
-  "name": "@h2d/ir",
+  "name": "@w2f/ir",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",

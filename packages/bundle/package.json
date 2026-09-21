@@ -1,5 +1,5 @@
 {
-  "name": "@h2d/bundle",
+  "name": "@w2f/bundle",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@h2d/ir": "workspace:*",
+    "@w2f/ir": "workspace:*",
     "fflate": "^0.8.3"
   },
   "scripts": {

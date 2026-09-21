@@ -1,4 +1,4 @@
-import type { LayoutAlign, LayoutJustify, LayoutMode, NodeLayout } from '@h2d/ir'
+import type { LayoutAlign, LayoutJustify, LayoutMode, NodeLayout } from '@w2f/ir'
 import { parsePx } from './css/length.js'
 
 /** `column-gap: normal` для flex и grid означает ноль, и `parsePx` уже

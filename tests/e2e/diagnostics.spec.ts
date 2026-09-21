@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { DiagnosticCode } from '@h2d/ir'
+import type { DiagnosticCode } from '@w2f/ir'
 import { captureScreen, fixtureUrl } from './helpers/capture.js'
 
 /** Коды, обязанные появиться на каждой фикстуре. Список положительный
@@ -299,7 +299,7 @@ test('blur: размытие слоя доезжает и не диагност�
   const { screen, report } = await captureScreen(page, 's0', 'Desktop')
 
   // Неразмытый блок обязан приехать с blur === null, а не с нулевым
-  // объектом: пустой `{0,0}` заставил бы инвариант @h2d/ir требовать
+  // объектом: пустой `{0,0}` заставил бы инвариант @w2f/ir требовать
   // диагностику там, где откладывать нечего.
   const blurs = screen.root.children.map((n) => n.style.blur)
   expect(blurs).toEqual([

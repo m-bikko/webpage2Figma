@@ -8,5 +8,5 @@ export default defineConfig({
   target: 'chrome120',
   sourcemap: true,
   clean: true,
-  noExternal: ['@h2d/ir'],
+  noExternal: ['@w2f/ir'],
 })

@@ -4,7 +4,7 @@ type: analysis
 tags: [figma, platform, constraints]
 created: 2026-09-19
 updated: 2026-09-19
-sources: [docs/superpowers/specs/2026-09-19-html2design-design.md]
+sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 ---
 
 # Почему не Figma REST API

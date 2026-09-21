@@ -1,5 +1,5 @@
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
-import type { Asset, Diagnostic } from '@h2d/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
+import type { Asset, Diagnostic } from '@w2f/ir'
 import type { AssetRequest } from './assets.js'
 
 /** Предел `figma.createImage`: изображение с большей стороной не

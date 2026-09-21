@@ -51,7 +51,7 @@ try {
   ;({ renderScreenToSvg, wrapSvgInHtml } = await import(pathToFileURL(rendererDist).href))
   ;({ packBundle } = await import(pathToFileURL(bundleDist).href))
 } catch (error) {
-  console.error('Не удалось загрузить собранные @h2d/ir, @h2d/reference-renderer или @h2d/bundle.')
+  console.error('Не удалось загрузить собранные @w2f/ir, @w2f/reference-renderer или @w2f/bundle.')
   console.error(`Ожидались: ${irDist}\n           ${rendererDist}\n           ${bundleDist}`)
   console.error('Собери их: pnpm typecheck && pnpm build:bundle')
   console.error(
@@ -137,8 +137,8 @@ try {
   await page.evaluate(() => document.fonts.ready)
 
   await page.addScriptTag({ content: serializer })
-  await page.evaluate(() => { window.__h2d.beginCapture() })
-  const captured = await page.evaluate(() => window.__h2d.captureScreen('s0', 'Capture'))
+  await page.evaluate(() => { window.__w2f.beginCapture() })
+  const captured = await page.evaluate(() => window.__w2f.captureScreen('s0', 'Capture'))
 
   const browserShot = await page.screenshot({ fullPage: true })
   const shotId = `shot-${captured.screen.id}`
@@ -146,7 +146,7 @@ try {
 
   /** Байты забираются ПОСЛЕ снимка: обход синхронен, а получение
    *  байтов асинхронно. */
-  const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+  const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
   const images = new Map(resolved.assets.map((asset) => [asset.id, {
     dataUri: `data:${asset.mimeType};base64,${resolved.base64[asset.id] ?? ''}`,
     width: asset.width,
@@ -170,7 +170,7 @@ try {
   // Собираем полноценный бандл и прогоняем через валидатор: так сразу
   // видно, прошёл бы этот захват входную проверку плагина Figma.
   const bundle = {
-    format: 'h2d',
+    format: 'w2f',
     version: IR_VERSION,
     capturedAt: new Date().toISOString(),
     url,
@@ -205,7 +205,7 @@ try {
     ...resolved.assets.map((a) => [a.id, Buffer.from(resolved.base64[a.id] ?? '', 'base64')]),
     [shotId, browserShot],
   ])
-  writeFileSync(resolve(outDir, 'bundle.h2d'), await packBundle(bundle, { assets: assetBytes }))
+  writeFileSync(resolve(outDir, 'bundle.w2f'), await packBundle(bundle, { assets: assetBytes }))
 
   const nodes = []
   const walk = (node) => { nodes.push(node); node.children.forEach(walk) }
@@ -236,9 +236,9 @@ try {
   )
   if (!verdict.ok) console.log(verdict.error.split('\n').slice(0, 12).join('\n'))
 
-  const bundleSize = statSync(resolve(outDir, 'bundle.h2d')).size
+  const bundleSize = statSync(resolve(outDir, 'bundle.w2f')).size
   console.log(`\nв out/: ir.json, page.png, render.svg, render.png, ` +
-              `bundle.h2d (${(bundleSize / 1024).toFixed(1)} КиБ)`)
+              `bundle.w2f (${(bundleSize / 1024).toFixed(1)} КиБ)`)
   console.log('сравни page.png и render.png — это и есть проверка точности глазами\n')
 } finally {
   await browser.close()

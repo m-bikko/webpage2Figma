@@ -1,4 +1,4 @@
-import type { Stroke, StrokeStyle } from '@h2d/ir'
+import type { Stroke, StrokeStyle } from '@w2f/ir'
 import { parseColor } from './color.js'
 import { parsePx } from './length.js'
 

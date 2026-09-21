@@ -1,4 +1,4 @@
-import type { Fill, IrNode, NodeStyle, Screen, Transform } from '@h2d/ir'
+import type { Fill, IrNode, NodeStyle, Screen, Transform } from '@w2f/ir'
 import type { SceneBase, SceneNode, SceneScreen } from './scene.js'
 
 /** Обратная сборка сцены в IR — для кругового обхода.

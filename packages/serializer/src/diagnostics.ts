@@ -1,8 +1,8 @@
-import type { Diagnostic, DiagnosticCode, DiagnosticLevel } from '@h2d/ir'
+import type { Diagnostic, DiagnosticCode, DiagnosticLevel } from '@w2f/ir'
 
 /** Собирает диагностику одного экрана.
  *
- *  Коды не определяются здесь: они живут в `@h2d/ir`, потому что их обязан
+ *  Коды не определяются здесь: они живут в `@w2f/ir`, потому что их обязан
  *  знать плагин Figma, а импортировать из сериализатора он не может —
  *  тот собирается как IIFE для контекста страницы. */
 export class DiagnosticSink {

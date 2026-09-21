@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type BrowserContext, type Worker } from '@playwright/test'
-import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 
 const here = dirname(fileURLToPath(import.meta.url))
 export const extensionRoot = resolve(here, '../../../packages/extension')
@@ -23,7 +23,7 @@ export const launchWithExtension = async (): Promise<{
   worker: Worker
 }> => {
   const context = await chromium.launchPersistentContext(
-    mkdtempSync(join(tmpdir(), 'h2d-ext-')),
+    mkdtempSync(join(tmpdir(), 'w2f-ext-')),
     {
       headless: false,
       args: [
@@ -42,7 +42,7 @@ export const launchWithExtension = async (): Promise<{
  *
  *  Объявлена здесь, а не в пакете расширения: тесты его не
  *  импортируют — воркер живёт в браузере и достижим только через
- *  `worker.evaluate`. Та же причина, по которой форма `window.__h2d`
+ *  `worker.evaluate`. Та же причина, по которой форма `window.__w2f`
  *  повторена в `helpers/capture.ts`.
  *
  *  Типы намеренно неширокие: это ровно то, что вызывают тесты. */
@@ -62,7 +62,7 @@ export type CapturedBundle = {
 
 declare global {
   // eslint-disable-next-line no-var
-  var h2d: {
+  var w2f: {
     captureAt: (tabId: number, size: { name: string; width: number; height: number })
       => Promise<CapturedScreen>
     captureAll: (tabId: number)

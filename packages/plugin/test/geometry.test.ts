@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   figmaRotation, originOffset, scaleSubtree, sizeUnderTransform,
 } from '../src/build/geometry.js'
-import { frameNode } from '@h2d/ir/test-fixtures'
-import type { Transform } from '@h2d/ir'
+import { frameNode } from '@w2f/ir/test-fixtures'
+import type { Transform } from '@w2f/ir'
 
 const t = (o: Partial<Transform> = {}): Transform => ({
   angle: 0, scaleX: 1, scaleY: 1,

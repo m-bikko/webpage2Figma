@@ -1,4 +1,4 @@
-import type { RenderImage } from '@h2d/reference-renderer'
+import type { RenderImage } from '@w2f/reference-renderer'
 import type { ResolvedAssets } from './capture.js'
 
 /** Превращает разрешённые ассеты в то, что читает рендерер.

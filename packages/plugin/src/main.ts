@@ -1,7 +1,7 @@
-import { unpackBundle } from '@h2d/bundle'
+import { unpackBundle } from '@w2f/bundle'
 import { buildScene, layOutScreens } from './build/index.js'
 import { applyScreen, type FigmaSurface } from './apply.js'
-import type { Diagnostic } from '@h2d/ir'
+import type { Diagnostic } from '@w2f/ir'
 
 /** Точка входа плагина.
  *

@@ -11,6 +11,30 @@ export const BREAKPOINTS = [
 
 export type Breakpoint = { name: string; width: number; height: number }
 
+/** Ключ брейкпоинта для хранения выбора. Ширина, а не имя: имя может
+ *  поменяться, ширина — это и есть суть. */
+export const keyOf = (size: Breakpoint): string => String(size.width)
+
+/** Выбранные брейкпоинты по сохранённым ключам.
+ *
+ *  Пустой или отсутствующий выбор означает ВСЕ ПЯТЬ, а не ни одного:
+ *  расширение, запущенное впервые, обязано работать без настройки, а
+ *  пустой экран в ответ на кнопку выглядел бы поломкой.
+ *
+ *  Порядок берётся из `BREAKPOINTS`, а не из сохранённого списка: он
+ *  задан от широкого к узкому, и менять его выбором пользователя
+ *  значило бы раскладывать экраны в случайном порядке. */
+export const selectedBreakpoints = (
+  keys: readonly string[] | undefined,
+): Breakpoint[] => {
+  if (keys === undefined || keys.length === 0) return [...BREAKPOINTS]
+  const wanted = new Set(keys)
+  const chosen = BREAKPOINTS.filter((size) => wanted.has(keyOf(size)))
+  /** Ни одного совпадения — значит сохранён мусор от старой редакции.
+   *  Снимать нечего, и честнее снять всё, чем ничего. */
+  return chosen.length === 0 ? [...BREAKPOINTS] : chosen
+}
+
 /** Выполняет действие при заданном размере вьюпорта.
  *
  *  ОТСОЕДИНЕНИЕ В `finally` ОБЯЗАТЕЛЬНО, и это не осторожность.

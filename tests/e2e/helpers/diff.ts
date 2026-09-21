@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs'
 import pixelmatch from 'pixelmatch'
 import { PNG } from 'pngjs'
 import type { Page } from '@playwright/test'
-import type { Screen } from '@h2d/ir'
+import type { Screen } from '@w2f/ir'
 
 export type DiffResult = { diffPixels: number; total: number; ratio: number }
 

@@ -1,4 +1,4 @@
-import type { Transform } from '@h2d/ir'
+import type { Transform } from '@w2f/ir'
 import { parsePx } from './length.js'
 
 /** Коэффициенты `matrix(a, b, c, d, e, f)` из CSS.

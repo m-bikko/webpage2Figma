@@ -1,4 +1,4 @@
-import type { Gradient, Rgba8 } from '@h2d/ir'
+import type { Gradient, Rgba8 } from '@w2f/ir'
 import type { FigmaColor, FigmaRgba, ScenePaint } from '../scene.js'
 
 /** Цвет в представлении Figma: доли `0..1`, альфа НЕ входит.

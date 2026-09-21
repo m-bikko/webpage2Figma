@@ -65,8 +65,8 @@ const api = {
 
 declare global {
   interface Window {
-    __h2d: typeof api
+    __w2f: typeof api
   }
 }
 
-window.__h2d = api
+window.__w2f = api

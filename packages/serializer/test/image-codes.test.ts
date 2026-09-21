@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import { classifyBackgroundImage } from '../src/css/image.js'
 
 describe('classifyBackgroundImage', () => {

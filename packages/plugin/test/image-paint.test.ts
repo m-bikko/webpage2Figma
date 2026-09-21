@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { imageNodeFor } from '../src/build/image.js'
-import type { ImagePlacement } from '@h2d/ir'
+import type { ImagePlacement } from '@w2f/ir'
 
 const rect = { x: 0, y: 0, w: 120, h: 90 }
 const natural = { width: 64, height: 32 }

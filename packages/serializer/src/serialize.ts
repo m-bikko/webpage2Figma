@@ -1,5 +1,5 @@
-import { IR_VERSION } from '@h2d/ir/version'
-import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+import { IR_VERSION } from '@w2f/ir/version'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 import { DiagnosticSink } from './diagnostics.js'
 import type { AssetRequest, AssetRequests } from './assets.js'
 import {
@@ -67,7 +67,7 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
 }
 
 export const emptyBundle = (): Bundle => ({
-  format: 'h2d',
+  format: 'w2f',
   version: IR_VERSION,
   capturedAt: new Date().toISOString(),
   url: window.location.href,

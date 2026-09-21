@@ -1,4 +1,4 @@
-import type { Diagnostic } from '@h2d/ir'
+import type { Diagnostic } from '@w2f/ir'
 import type {
   AppliedImagePaint, FontRequest, SceneBase, SceneNode, ScenePaint, SceneScreen,
 } from './scene.js'

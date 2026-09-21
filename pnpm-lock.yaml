@@ -15,21 +15,6 @@ importers:
       '@figma/plugin-typings':
         specifier: ^1.138.0
         version: 1.138.0
-      '@h2d/bundle':
-        specifier: workspace:*
-        version: link:packages/bundle
-      '@h2d/extension':
-        specifier: workspace:*
-        version: link:packages/extension
-      '@h2d/ir':
-        specifier: workspace:*
-        version: link:packages/ir
-      '@h2d/plugin':
-        specifier: workspace:*
-        version: link:packages/plugin
-      '@h2d/reference-renderer':
-        specifier: workspace:*
-        version: link:packages/reference-renderer
       '@playwright/test':
         specifier: ^1.48.0
         version: 1.63.0
@@ -45,6 +30,21 @@ importers:
       '@types/pngjs':
         specifier: ^6.0.5
         version: 6.0.5
+      '@w2f/bundle':
+        specifier: workspace:*
+        version: link:packages/bundle
+      '@w2f/extension':
+        specifier: workspace:*
+        version: link:packages/extension
+      '@w2f/ir':
+        specifier: workspace:*
+        version: link:packages/ir
+      '@w2f/plugin':
+        specifier: workspace:*
+        version: link:packages/plugin
+      '@w2f/reference-renderer':
+        specifier: workspace:*
+        version: link:packages/reference-renderer
       pixelmatch:
         specifier: ^6.0.0
         version: 6.0.0
@@ -63,7 +63,7 @@ importers:
 
   packages/bundle:
     dependencies:
-      '@h2d/ir':
+      '@w2f/ir':
         specifier: workspace:*
         version: link:../ir
       fflate:
@@ -72,10 +72,10 @@ importers:
 
   packages/extension:
     dependencies:
-      '@h2d/bundle':
+      '@w2f/bundle':
         specifier: workspace:*
         version: link:../bundle
-      '@h2d/ir':
+      '@w2f/ir':
         specifier: workspace:*
         version: link:../ir
 
@@ -87,22 +87,22 @@ importers:
 
   packages/plugin:
     dependencies:
-      '@h2d/bundle':
+      '@w2f/bundle':
         specifier: workspace:*
         version: link:../bundle
-      '@h2d/ir':
+      '@w2f/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/reference-renderer:
     dependencies:
-      '@h2d/ir':
+      '@w2f/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/serializer:
     dependencies:
-      '@h2d/ir':
+      '@w2f/ir':
         specifier: workspace:*
         version: link:../ir
 

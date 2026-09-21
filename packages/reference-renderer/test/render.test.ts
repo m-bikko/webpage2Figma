@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ImagePlacement, IrNode, NodeText, Screen } from '@h2d/ir'
+import type { ImagePlacement, IrNode, NodeText, Screen } from '@w2f/ir'
 import { renderScreenToSvg } from '../src/render.js'
 
 const frame = (o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({

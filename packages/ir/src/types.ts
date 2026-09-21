@@ -368,7 +368,7 @@ export type Tokens = {
 export type Bundle = {
   /** Маркер формата. Позволяет отличить «это не наш файл» от
    *  «наш файл чужой версии» и не сообщать «версия undefined». */
-  format: 'h2d'
+  format: 'w2f'
   version: IrVersion
   capturedAt: string
   url: string

@@ -1,9 +1,9 @@
 {
-  "name": "@h2d/serializer",
+  "name": "@w2f/serializer",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "tsup" },
-  "dependencies": { "@h2d/ir": "workspace:*" }
+  "dependencies": { "@w2f/ir": "workspace:*" }
 }

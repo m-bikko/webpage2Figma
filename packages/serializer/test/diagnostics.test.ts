@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DIAGNOSTIC_CODES } from '@h2d/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir'
 import { DiagnosticSink } from '../src/diagnostics.js'
 
 describe('DiagnosticSink', () => {

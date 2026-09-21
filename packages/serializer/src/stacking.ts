@@ -73,7 +73,7 @@ const byZIndex = (items: LayoutProbe[]): LayoutProbe[] =>
  * инлайны → позиционированные с auto/0 → положительные z-index.
  *
  * Возвращает Map id → индекс отрисовки. Индексы плотные и уникальные,
- * и это инвариант, который валидируется в `@h2d/ir`.
+ * и это инвариант, который валидируется в `@w2f/ir`.
  */
 export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
   const order = new Map<string, number>()
@@ -129,7 +129,7 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
    *  Без этого `<div style="opacity:.5">` с содержимым терял ВСЁ поддерево:
    *  `collectInto` внутрь не спускался (правильно — узел атомарен), а
    *  `paintFlowNode` только испускал индекс. Ни одна сторона поддерево
-   *  не посещала, и инвариант плотности в `@h2d/ir` отверг бы такой бандл.
+   *  не посещала, и инвариант плотности в `@w2f/ir` отверг бы такой бандл.
    *
    *  Размещение в бакете `flow` при этом верное: по CSS 2.1 Appendix E
    *  непозиционированный stacking context красится атомарно на своём

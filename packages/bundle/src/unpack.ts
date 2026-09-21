@@ -1,8 +1,8 @@
 import { unzipSync, strFromU8 } from 'fflate'
-import { parseBundle } from '@h2d/ir'
+import { parseBundle } from '@w2f/ir'
 import type { UnpackedBundle } from './types.js'
 
-/** Разбирает файл `.h2d`.
+/** Разбирает файл `.w2f`.
  *
  *  Порядок проверок не случаен и идёт от самой понятной ошибки к самой
  *  подробной: это наш файл вообще? — та ли версия? — цел ли по схеме и
@@ -19,7 +19,7 @@ export const unpackBundle = async (zip: Uint8Array): Promise<UnpackedBundle> => 
   const irBytes = entries['ir.json']
   if (irBytes === undefined) {
     throw new Error(
-      'В архиве нет ir.json — это не бандл h2d. Похоже, выбран не тот файл.',
+      'В архиве нет ir.json — это не бандл w2f. Похоже, выбран не тот файл.',
     )
   }
 

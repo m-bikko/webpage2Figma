@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Построить движок точности html2design: сериализатор `DOM → IR`, референс-рендерер `IR → SVG` и автоматический тестовый контур, который в настоящем Chrome доказывает pixel-diff'ом, что IR верно описывает нарисованную браузером страницу.
+**Goal:** Построить движок точности webpage2figma: сериализатор `DOM → IR`, референс-рендерер `IR → SVG` и автоматический тестовый контур, который в настоящем Chrome доказывает pixel-diff'ом, что IR верно описывает нарисованную браузером страницу.
 
 **Architecture:** pnpm-воркспейс из трёх пакетов. `packages/ir` — типы и zod-валидация формата обмена. `packages/serializer` — чистые функции обхода DOM, собираются в IIFE-бандл и инжектятся в страницу. `packages/reference-renderer` — обратное преобразование IR в SVG, служит и инструментом отладки, и эталоном для pixel-diff. Playwright гоняет локальные HTML-фикстуры на пяти ширинах, сравнивает IR со закоммиченными снапшотами и диффит скриншот браузера со скриншотом отрендеренного из IR SVG.
 
 **Tech Stack:** TypeScript strict (без `any`), pnpm workspaces, vitest (юнит), Playwright (E2E в настоящем Chrome), tsup (IIFE-бандл сериализатора), zod (валидация IR), pixelmatch + pngjs (диффы).
 
-**Источник требований:** `docs/superpowers/specs/2026-09-19-html2design-design.md`
+**Источник требований:** `docs/superpowers/specs/2026-09-19-webpage2figma-design.md`
 
 **Место в карте планов:** план 1 из 4. Дальше: 2 — extension, 3 — плагин Figma, 4 — компоненты и токены.
 
@@ -69,7 +69,7 @@ packages/serializer/
   src/diagnostics.ts                      DiagnosticSink
   src/walk.ts                             обход DOM → IrNode
   src/serialize.ts                        serializeScreen
-  src/global.ts                           точка входа IIFE: window.__h2d
+  src/global.ts                           точка входа IIFE: window.__w2f
   src/index.ts
   test/color.test.ts
   test/shadow.test.ts
@@ -111,7 +111,7 @@ tests/
 
 ```json
 {
-  "name": "html2design",
+  "name": "webpage2figma",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },
@@ -121,10 +121,10 @@ tests/
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
-    "build:serializer": "pnpm --filter @h2d/serializer build"
+    "build:serializer": "pnpm --filter @w2f/serializer build"
   },
   "devDependencies": {
-    "@h2d/ir": "workspace:*",
+    "@w2f/ir": "workspace:*",
     "@playwright/test": "^1.48.0",
     "@types/node": "^22.7.0",
     "@types/pixelmatch": "^5.2.6",
@@ -138,9 +138,9 @@ tests/
 }
 ```
 
-`@h2d/ir` объявлен зависимостью корня намеренно: без этого `tests/e2e/` его не разрешит.
+`@w2f/ir` объявлен зависимостью корня намеренно: без этого `tests/e2e/` его не разрешит.
 
-**Важно: пакеты подключаются по мере появления.** `workspace:*`-зависимость на несуществующий пакет валит `pnpm install`, а `tsc -b` на несуществующий путь валит typecheck. Поэтому здесь в `typecheck` только `packages/ir`, а `@h2d/reference-renderer` в зависимостях отсутствует. Расширения делают Task 4 (добавляет `packages/serializer` в `typecheck`) и Task 12 (добавляет `packages/reference-renderer` и в `typecheck`, и в корневые `devDependencies` — второе обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит импорт).
+**Важно: пакеты подключаются по мере появления.** `workspace:*`-зависимость на несуществующий пакет валит `pnpm install`, а `tsc -b` на несуществующий путь валит typecheck. Поэтому здесь в `typecheck` только `packages/ir`, а `@w2f/reference-renderer` в зависимостях отсутствует. Расширения делают Task 4 (добавляет `packages/serializer` в `typecheck`) и Task 12 (добавляет `packages/reference-renderer` и в `typecheck`, и в корневые `devDependencies` — второе обязательно, иначе `tests/e2e/pixel-diff.spec.ts` из Task 14 не разрешит импорт).
 
 - [ ] **Step 2: Создать `pnpm-workspace.yaml`**
 
@@ -177,7 +177,7 @@ packages:
 
 Отдельный от `tsconfig.base.json`: базовый наследуют пакеты, а этот обслуживает тесты в корне и проверяется скриптом `typecheck:root`.
 
-**Без `paths` и `baseUrl`.** Разрешение воркспейс-пакетов по именам обеспечивают pnpm-симлинк и поле `exports` в `package.json` пакета, указывающее прямо на `src/index.ts`. При `moduleResolution: bundler` компилятор следует `exports` точно так же, как сборщик, — проверено удалением записи из `paths`: реальный импорт значения `IR_VERSION` из `@h2d/ir` продолжает резолвиться.
+**Без `paths` и `baseUrl`.** Разрешение воркспейс-пакетов по именам обеспечивают pnpm-симлинк и поле `exports` в `package.json` пакета, указывающее прямо на `src/index.ts`. При `moduleResolution: bundler` компилятор следует `exports` точно так же, как сборщик, — проверено удалением записи из `paths`: реальный импорт значения `IR_VERSION` из `@w2f/ir` продолжает резолвиться.
 
 `paths` был бы вторым, независимо поддерживаемым утверждением того же факта, причём асимметрично опасным: **tsc предпочитает `paths`**, когда он есть. Если `exports` пакета когда-нибудь переведут на собранный `dist/index.js`, компилятор продолжит проверять исходники, а Vitest и Playwright уедут на новую цель, и никто об этом не узнает. `baseUrl` удалён вместе с `paths`: он существовал только чтобы их якорить, а оставленный сам по себе позволил бы случайно разрешаться импортам вида `packages/ir/src/types`.
 
@@ -196,7 +196,7 @@ packages:
 
 - [ ] **Step 5: Создать `vitest.config.ts`**
 
-Без `resolve.alias`. Алиасы были бы инертной дубликацией: Vitest разрешает `@h2d/ir` через воркспейс-симлинк и `exports` пакета. Проверено удалением блока — тесты продолжают проходить.
+Без `resolve.alias`. Алиасы были бы инертной дубликацией: Vitest разрешает `@w2f/ir` через воркспейс-симлинк и `exports` пакета. Проверено удалением блока — тесты продолжают проходить.
 
 ```ts
 import { defineConfig } from 'vitest/config'
@@ -233,7 +233,7 @@ Expected: строка с совпадением на `*.tsbuildinfo`.
 
 ```json
 {
-  "name": "@h2d/ir",
+  "name": "@w2f/ir",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -298,7 +298,7 @@ export type BundleEnvelope = { format?: unknown; version?: unknown }
 
 - [ ] **Step 2: Создать `packages/ir/src/codes.ts`**
 
-Коды диагностики живут в `@h2d/ir`, а не в сериализаторе. Причина конкретная: плагин Figma не может импортировать из сериализатора — тот собран как IIFE для контекста страницы. Держать список в сериализаторе означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код из плана 2 провалился бы в плагине в общую ветку без заглушки. Тогда неподдерживаемый элемент приехал бы в Figma обычной пустой коробкой — ровно молчаливо неверный результат.
+Коды диагностики живут в `@w2f/ir`, а не в сериализаторе. Причина конкретная: плагин Figma не может импортировать из сериализатора — тот собран как IIFE для контекста страницы. Держать список в сериализаторе означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код из плана 2 провалился бы в плагине в общую ветку без заглушки. Тогда неподдерживаемый элемент приехал бы в Figma обычной пустой коробкой — ровно молчаливо неверный результат.
 
 ```ts
 /** Коды стабильны: на них ссылается UI отчёта в плагине Figma и тесты.
@@ -644,7 +644,7 @@ export type Tokens = {
 export type Bundle = {
   /** Маркер формата. Позволяет отличить «это не наш файл» от
    *  «наш файл чужой версии» и не сообщать «версия undefined». */
-  format: 'h2d'
+  format: 'w2f'
   version: IrVersion
   capturedAt: string
   url: string
@@ -808,7 +808,7 @@ export const screen = (overrides: Partial<Screen> = {}): Screen => ({
 })
 
 export const bundle = (overrides: Partial<Bundle> = {}): Bundle => ({
-  format: 'h2d',
+  format: 'w2f',
   version: IR_VERSION,
   capturedAt: '2026-09-19T10:00:00.000Z',
   url: 'https://example.com/',
@@ -1433,7 +1433,7 @@ const diagnostic = z.object({
 })
 
 export const bundleSchema: z.ZodType<Bundle> = z.object({
-  format: z.literal('h2d'),
+  format: z.literal('w2f'),
   version: z.literal(IR_VERSION),
   capturedAt: z.string(),
   url: z.string(),
@@ -1486,7 +1486,7 @@ describe('parseBundle: конверт', () => {
     const result = parseBundle({ foo: 'bar' })
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error).toContain('не похож на бандл html2design')
+    expect(result.error).toContain('не похож на бандл webpage2figma')
     expect(result.error).not.toContain('undefined')
   })
 
@@ -1606,12 +1606,12 @@ export const parseBundle = (input: unknown): ParseResult => {
 
   const envelope = input as BundleEnvelope
 
-  if (envelope.format !== 'h2d') {
+  if (envelope.format !== 'w2f') {
     return {
       ok: false,
       error:
-        'Файл не похож на бандл html2design: отсутствует маркер формата. ' +
-        'Выбери файл .h2d, созданный расширением.',
+        'Файл не похож на бандл webpage2figma: отсутствует маркер формата. ' +
+        'Выбери файл .w2f, созданный расширением.',
     }
   }
 
@@ -1942,13 +1942,13 @@ git commit -m "feat(ir): инварианты связи заглушек и д�
 
 ```json
 {
-  "name": "@h2d/serializer",
+  "name": "@w2f/serializer",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "build": "tsup" },
-  "dependencies": { "@h2d/ir": "workspace:*" }
+  "dependencies": { "@w2f/ir": "workspace:*" }
 }
 ```
 
@@ -2057,7 +2057,7 @@ export const parsePx = (value: string): number => {
 - [ ] **Step 7: Создать `packages/serializer/src/css/color.ts`**
 
 ```ts
-import type { Rgba8 } from '@h2d/ir'
+import type { Rgba8 } from '@w2f/ir'
 
 export const TRANSPARENT: Rgba8 = { r: 0, g: 0, b: 0, a: 0 }
 
@@ -2218,7 +2218,7 @@ Expected: FAIL — `Failed to resolve import "../src/css/shadow.js"`.
 - [ ] **Step 3: Создать `packages/serializer/src/css/shadow.ts`**
 
 ```ts
-import type { Shadow } from '@h2d/ir'
+import type { Shadow } from '@w2f/ir'
 import { parseColor } from './color.js'
 import { parsePx } from './length.js'
 
@@ -2486,7 +2486,7 @@ Expected: FAIL — `Failed to resolve import "../src/css/stroke.js"`.
 - [ ] **Step 3: Создать `packages/serializer/src/css/corner.ts`**
 
 ```ts
-import type { Corner } from '@h2d/ir'
+import type { Corner } from '@w2f/ir'
 import { parsePx } from './length.js'
 
 /** Эллиптический угол задаётся двумя значениями через пробел.
@@ -2514,7 +2514,7 @@ export const isEllipticalCorner = (cs: CSSStyleDeclaration): boolean =>
 - [ ] **Step 4: Создать `packages/serializer/src/css/stroke.ts`**
 
 ```ts
-import type { Stroke, StrokeStyle } from '@h2d/ir'
+import type { Stroke, StrokeStyle } from '@w2f/ir'
 import { parseColor } from './color.js'
 import { parsePx } from './length.js'
 
@@ -3035,7 +3035,7 @@ const byZIndex = (items: LayoutProbe[]): LayoutProbe[] =>
  * инлайны → позиционированные с auto/0 → положительные z-index.
  *
  * Возвращает Map id → индекс отрисовки. Индексы плотные и уникальные,
- * и это инвариант, который валидируется в `@h2d/ir`.
+ * и это инвариант, который валидируется в `@w2f/ir`.
  */
 export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
   const order = new Map<string, number>()
@@ -3091,7 +3091,7 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
    *  Без этого `<div style="opacity:.5">` с содержимым терял ВСЁ поддерево:
    *  `collectInto` внутрь не спускался (правильно — узел атомарен), а
    *  `paintFlowNode` только испускал индекс. Ни одна сторона поддерево
-   *  не посещала, и инвариант плотности в `@h2d/ir` отверг бы такой бандл.
+   *  не посещала, и инвариант плотности в `@w2f/ir` отверг бы такой бандл.
    *
    *  Размещение в бакете `flow` при этом верное: по CSS 2.1 Appendix E
    *  непозиционированный stacking context красится атомарно на своём
@@ -3348,7 +3348,7 @@ Expected: FAIL — `Failed to resolve import "../src/layout.js"`.
 - [ ] **Step 3: Создать `packages/serializer/src/layout.ts`**
 
 ```ts
-import type { LayoutAlign, LayoutJustify, LayoutMode, NodeLayout } from '@h2d/ir'
+import type { LayoutAlign, LayoutJustify, LayoutMode, NodeLayout } from '@w2f/ir'
 import { parsePx } from './css/length.js'
 
 /** `column-gap: normal` для flex и grid означает ноль, и `parsePx` уже
@@ -3437,9 +3437,9 @@ git commit -m "feat(serializer): чтение flex- и grid-раскладки"
 
 Два изменения против первой редакции, каждое по конкретной причине.
 
-**Коды больше не определяются здесь.** Они живут в `@h2d/ir` (файл `codes.ts`), и задача их импортирует. Причина: плагин Figma обязан знать коды, чтобы отрисовать отчёт, но импортировать из сериализатора не может — тот собирается как IIFE для контекста страницы. Держать список здесь означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код провалился бы в плагине в общую ветку без заглушки.
+**Коды больше не определяются здесь.** Они живут в `@w2f/ir` (файл `codes.ts`), и задача их импортирует. Причина: плагин Figma обязан знать коды, чтобы отрисовать отчёт, но импортировать из сериализатора не может — тот собирается как IIFE для контекста страницы. Держать список здесь означало бы, что плагин его дублирует или сравнивает строки, и первый же новый код провалился бы в плагине в общую ветку без заглушки.
 
-**`needsPlaceholder` — обязательный параметр, а не со значением по умолчанию.** Решение осознанное: значение по умолчанию приглашает забыть, а забытая заглушка означает, что неподдерживаемая фича приедет обычной пустой коробкой. Пусть каждый вызов решает явно. Инвариант в `@h2d/ir` проверяет согласованность, но лучше не доводить до отказа валидатора.
+**`needsPlaceholder` — обязательный параметр, а не со значением по умолчанию.** Решение осознанное: значение по умолчанию приглашает забыть, а забытая заглушка означает, что неподдерживаемая фича приедет обычной пустой коробкой. Пусть каждый вызов решает явно. Инвариант в `@w2f/ir` проверяет согласованность, но лучше не доводить до отказа валидатора.
 
 **Files:**
 - Create: `packages/serializer/src/diagnostics.ts`
@@ -3449,7 +3449,7 @@ git commit -m "feat(serializer): чтение flex- и grid-раскладки"
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { DIAGNOSTIC_CODES } from '@h2d/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir'
 import { DiagnosticSink } from '../src/diagnostics.js'
 
 describe('DiagnosticSink', () => {
@@ -3547,11 +3547,11 @@ Expected: FAIL — `Failed to resolve import "../src/diagnostics.js"`.
 - [ ] **Step 3: Создать `packages/serializer/src/diagnostics.ts`**
 
 ```ts
-import type { Diagnostic, DiagnosticCode, DiagnosticLevel } from '@h2d/ir'
+import type { Diagnostic, DiagnosticCode, DiagnosticLevel } from '@w2f/ir'
 
 /** Собирает диагностику одного экрана.
  *
- *  Коды не определяются здесь: они живут в `@h2d/ir`, потому что их обязан
+ *  Коды не определяются здесь: они живут в `@w2f/ir`, потому что их обязан
  *  знать плагин Figma, а импортировать из сериализатора он не может —
  *  тот собирается как IIFE для контекста страницы. */
 export class DiagnosticSink {
@@ -3603,7 +3603,7 @@ Expected: PASS, 10 тестов.
 
 ```bash
 git add packages/serializer
-git commit -m "feat(serializer): сборщик диагностики с кодами из @h2d/ir"
+git commit -m "feat(serializer): сборщик диагностики с кодами из @w2f/ir"
 ```
 
 ---
@@ -3614,7 +3614,7 @@ git commit -m "feat(serializer): сборщик диагностики с код
 
 Четыре изменения против первой редакции, каждое закрывает найденную ревью молчаливую потерю.
 
-**`run.text` — только собственный текст узла.** Было `el.textContent`, то есть весь подграф, при том что `readLines` обходит только прямые текстовые узлы. Для `<p>Hello <b>world</b></p>` абзац получал `runs[0].text = "Hello world"` и одну строку `"Hello"`, а `<b>` — свой узел со своим «world». Референс-рендерер читает только `lines` и оставался зелёным; плагин Figma взял бы `runs[0].text` и нарисовал «world» дважды с наложением. Инвариант в `@h2d/ir` теперь требует, чтобы конкатенация ранов равнялась конкатенации строк.
+**`run.text` — только собственный текст узла.** Было `el.textContent`, то есть весь подграф, при том что `readLines` обходит только прямые текстовые узлы. Для `<p>Hello <b>world</b></p>` абзац получал `runs[0].text = "Hello world"` и одну строку `"Hello"`, а `<b>` — свой узел со своим «world». Референс-рендерер читает только `lines` и оставался зелёным; плагин Figma взял бы `runs[0].text` и нарисовал «world» дважды с наложением. Инвариант в `@w2f/ir` теперь требует, чтобы конкатенация ранов равнялась конкатенации строк.
 
 **`fontStack` и `usedFamily` вместо `fontFamily`.** Было: берётся первое семейство из объявленного списка. Но если его нет в системе, браузер рисует следующим, и `lines` содержат метрики **фактического** шрифта, а IR называет объявленный. В Figma, где объявленный шрифт может быть установлен, плагин применил бы чужие метрики и получил вылезающий из боксов текст, считая, что шрифт найден. Спека требует, чтобы этот отчёт «кричал» — теперь он может.
 
@@ -3628,7 +3628,7 @@ git commit -m "feat(serializer): сборщик диагностики с код
 - [ ] **Step 1: Создать `packages/serializer/src/text.ts`**
 
 ```ts
-import type { NodeText, TextAlign, TextDecoration, TextRun } from '@h2d/ir'
+import type { NodeText, TextAlign, TextDecoration, TextRun } from '@w2f/ir'
 import { parseColor } from './css/color.js'
 import { parsePx } from './css/length.js'
 import { parseBoxShadow } from './css/shadow.js'
@@ -3923,7 +3923,7 @@ git commit -m "feat(serializer): чтение текста с фактическ
 
 ## Task 11: Обход DOM и сериализация экрана
 
-**Тело переписано после ревизии контракта.** Это точка сборки: здесь сходятся все парсеры, резолвер, диагностика и текст, и здесь же рождается каждое требование контракта, которое `@h2d/ir` потом проверяет.
+**Тело переписано после ревизии контракта.** Это точка сборки: здесь сходятся все парсеры, резолвер, диагностика и текст, и здесь же рождается каждое требование контракта, которое `@w2f/ir` потом проверяет.
 
 Изменения против первой редакции: присвоение `kind`, `selfLayout`, `isStackingContext`, диагностики отложенных фич, узлы-заглушки вместо пустых фреймов, глобальные по бандлу идентификаторы, `Screen.id` и `scroll`, падение вместо `?? 0` в порядке отрисовки, обработка варианта `lost` у текста, запись переплетения.
 
@@ -3937,7 +3937,7 @@ import {
   DIAGNOSTIC_CODES,
   type Fill, type IrNode, type LayoutAlign, type NodeStyle,
   type SelfLayout, type SelfPositioning,
-} from '@h2d/ir'
+} from '@w2f/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
@@ -4095,7 +4095,7 @@ const blurRadius = (value: string): number => {
  *
  *  Разделение обязательное: `unsupported.*` — то, что невозможно в Figma
  *  в принципе, `deferred.*` — то, что реализуется в плане 2. Второе
- *  проверяется инвариантом в `@h2d/ir`: узел с непустым `transform` без
+ *  проверяется инвариантом в `@w2f/ir`: узел с непустым `transform` без
  *  парной диагностики `deferred.transform` отвергается на входе плагина.
  *  Именно так правило «молчаливый fallback — это баг» стало машинным. */
 const reportGaps = (
@@ -4167,7 +4167,7 @@ const reportGaps = (
 
 /** Содержимое, которое невозможно перенести в принципе, становится
  *  ВИДИМОЙ заглушкой, а не пустым фреймом. Парная диагностика с тем же
- *  кодом и `needsPlaceholder: true` обязательна: инвариант в `@h2d/ir`
+ *  кодом и `needsPlaceholder: true` обязательна: инвариант в `@w2f/ir`
  *  отвергнет заглушку, которую отчёт не объясняет. */
 const placeholderFor = (
   el: Element,
@@ -4383,7 +4383,7 @@ export const walkDocument = (
 - [ ] **Step 2: Создать `packages/serializer/src/serialize.ts`**
 
 ```ts
-import { IR_VERSION, type Bundle, type Diagnostic, type Screen } from '@h2d/ir'
+import { IR_VERSION, type Bundle, type Diagnostic, type Screen } from '@w2f/ir'
 import { DiagnosticSink } from './diagnostics.js'
 import { createIdAllocator, walkDocument, type IdAllocator } from './walk.js'
 
@@ -4428,7 +4428,7 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
 }
 
 export const emptyBundle = (): Bundle => ({
-  format: 'h2d',
+  format: 'w2f',
   version: IR_VERSION,
   capturedAt: new Date().toISOString(),
   url: window.location.href,
@@ -4501,11 +4501,11 @@ const api = { beginCapture, captureScreen, emptyBundle }
 
 declare global {
   interface Window {
-    __h2d: typeof api
+    __w2f: typeof api
   }
 }
 
-window.__h2d = api
+window.__w2f = api
 ```
 
 - [ ] **Step 5: Создать `packages/serializer/tsup.config.ts`**
@@ -4521,7 +4521,7 @@ export default defineConfig({
   target: 'chrome120',
   sourcemap: true,
   clean: true,
-  noExternal: ['@h2d/ir'],
+  noExternal: ['@w2f/ir'],
 })
 ```
 
@@ -4530,11 +4530,11 @@ export default defineConfig({
 Run: `pnpm build:serializer`
 Expected: создан `packages/serializer/dist/serializer.global.js`.
 
-Проверить, что бандл действительно самодостаточен: в нём не должно остаться `require(` или `from "@h2d/ir"`. Если остались, бандл упадёт в контексте страницы.
+Проверить, что бандл действительно самодостаточен: в нём не должно остаться `require(` или `from "@w2f/ir"`. Если остались, бандл упадёт в контексте страницы.
 
-**Но знай, что именно доказывает эта проверка, а что нет.** Проверено экспериментом: `noExternal` под tsup для воркспейс-зависимости — no-op, бандл выходит **байт в байт тем же** и без него, и даже с `external`. Греп-шаблон при этом верный: прямой запуск esbuild с `--external:@h2d/ir` даёт `__require("@h2d/ir")`, который шаблон ловит. То есть шаблон сработает на настоящей утечке, но зелёный греп не подтверждает, что `noExternal` что-то сделал.
+**Но знай, что именно доказывает эта проверка, а что нет.** Проверено экспериментом: `noExternal` под tsup для воркспейс-зависимости — no-op, бандл выходит **байт в байт тем же** и без него, и даже с `external`. Греп-шаблон при этом верный: прямой запуск esbuild с `--external:@w2f/ir` даёт `__require("@w2f/ir")`, который шаблон ловит. То есть шаблон сработает на настоящей утечке, но зелёный греп не подтверждает, что `noExternal` что-то сделал.
 
-Положительное свидетельство самодостаточности — **наличие вшитого содержимого**: `grep -c "unsupported.canvas"` должен вернуть не ноль. И отдельно проверь размер: он обязан быть около 38 КБ. Если внезапно 170 КБ — значит значения импортируются из барреля `@h2d/ir`, а он тянет `schema.ts` вместе с zod, и вся эта масса впрыскивается в каждую захватываемую страницу. Значения берутся из подпутей `@h2d/ir/codes` и `@h2d/ir/version` именно поэтому.
+Положительное свидетельство самодостаточности — **наличие вшитого содержимого**: `grep -c "unsupported.canvas"` должен вернуть не ноль. И отдельно проверь размер: он обязан быть около 38 КБ. Если внезапно 170 КБ — значит значения импортируются из барреля `@w2f/ir`, а он тянет `schema.ts` вместе с zod, и вся эта масса впрыскивается в каждую захватываемую страницу. Значения берутся из подпутей `@w2f/ir/codes` и `@w2f/ir/version` именно поэтому.
 
 - [ ] **Step 7: Проверить typecheck и все тесты**
 
@@ -4576,12 +4576,12 @@ git commit -m "feat(serializer): обход DOM, сериализация экр
 
 ```json
 {
-  "name": "@h2d/reference-renderer",
+  "name": "@w2f/reference-renderer",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/index.ts",
   "exports": { ".": "./src/index.ts" },
-  "dependencies": { "@h2d/ir": "workspace:*" }
+  "dependencies": { "@w2f/ir": "workspace:*" }
 }
 ```
 
@@ -4604,7 +4604,7 @@ git commit -m "feat(serializer): обход DOM, сериализация экр
     "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer",
 ```
 ```json
-    "@h2d/reference-renderer": "workspace:*",
+    "@w2f/reference-renderer": "workspace:*",
 ```
 
 Run: `pnpm install`
@@ -4615,7 +4615,7 @@ Expected: пакет слинкован, ошибок нет.
 ```ts
 // packages/reference-renderer/test/render.test.ts
 import { describe, expect, it } from 'vitest'
-import type { IrNode, NodeText, Screen } from '@h2d/ir'
+import type { IrNode, NodeText, Screen } from '@w2f/ir'
 import { renderScreenToSvg } from '../src/render.js'
 
 const frame = (o: Partial<Omit<IrNode, 'kind'>> = {}): IrNode => ({
@@ -4797,7 +4797,7 @@ Expected: FAIL — `Failed to resolve import "../src/render.js"`.
 ```ts
 import type {
   Corner, IrNode, Rect, Rgba8, Screen, Shadow, Stroke, TextRun,
-} from '@h2d/ir'
+} from '@w2f/ir'
 
 const escapeXml = (value: string): string =>
   value
@@ -5570,7 +5570,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import type { Page } from '@playwright/test'
-import type { Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+import type { Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 
 /** То же, что отдаёт сериализатор. Объявлено здесь, потому что тесты
  *  не импортируют сам сериализатор: он читается с диска как текст. */
@@ -5618,9 +5618,9 @@ export const captureScreen = async (
   const source = readFileSync(bundlePath, 'utf8')
   await page.addScriptTag({ content: source })
   await page.evaluate(() => document.fonts.ready)
-  await page.evaluate(() => { window.__h2d.beginCapture() })
+  await page.evaluate(() => { window.__w2f.beginCapture() })
   return page.evaluate(
-    ([id, name]) => window.__h2d.captureScreen(id ?? '', name ?? ''),
+    ([id, name]) => window.__w2f.captureScreen(id ?? '', name ?? ''),
     [screenId, screenName],
   )
 }
@@ -5859,7 +5859,7 @@ export const diffPng = (
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { renderScreenToSvg, wrapSvgInHtml } from '@h2d/reference-renderer'
+import { renderScreenToSvg, wrapSvgInHtml } from '@w2f/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 import { diffPng } from './helpers/diff.js'
 
@@ -5946,12 +5946,12 @@ git commit -m "test: pixel-diff гейт, доказывающий вернос�
 - [ ] **Step 1: Создать `README.md`**
 
 ```markdown
-# html2design
+# webpage2figma
 
 Снимает страницу, открытую в браузере, в макет Figma: пять экранов под разные
 дисплеи плюс библиотека компонентов.
 
-Дизайн: `docs/superpowers/specs/2026-09-19-html2design-design.md`
+Дизайн: `docs/superpowers/specs/2026-09-19-webpage2figma-design.md`
 База знаний: `wiki/index.md`
 
 ## Состояние
@@ -6029,7 +6029,7 @@ Expected: PASS целиком. Если что-то падает после чи
 
 Выполнен план `docs/superpowers/plans/2026-09-19-fidelity-core.md`.
 
-Появились пакеты `@h2d/ir`, `@h2d/serializer`, `@h2d/reference-renderer`.
+Появились пакеты `@w2f/ir`, `@w2f/serializer`, `@w2f/reference-renderer`.
 Работает автоматический контур: Playwright снимает фикстуры на пяти ширинах,
 сравнивает IR со снапшотами и диффит рендер из IR со скриншотом браузера.
 
@@ -6065,7 +6065,7 @@ git commit -m "docs: README и запись в базу знаний по ито
 > - ~~Task 10~~ — **переписана, тело актуально.**
 > - ~~Task 12~~ — **переписана, тело актуально.**
 >
-> Задачи 2, 3, 6, 9, 10 и 12 переписаны под текущий контракт. Если в каком-то теле всё же встретится конструкция, не сходящаяся с `@h2d/ir`, — **останови работу и сообщи**, не пытайся согласовать сам: расхождений может быть больше, чем видно из одного файла.
+> Задачи 2, 3, 6, 9, 10 и 12 переписаны под текущий контракт. Если в каком-то теле всё же встретится конструкция, не сходящаяся с `@w2f/ir`, — **останови работу и сообщи**, не пытайся согласовать сам: расхождений может быть больше, чем видно из одного файла.
 
 
 Design-ревью контракта IR (после реализации первой редакции в `5e09c07`) вернуло **changes required**. Task 2 переписан полностью. Ниже — что именно меняется в остальных задачах. **Исполнитель каждой задачи обязан прочитать свою дельту вместе с телом задачи**: тела задач ниже написаны против первой редакции контракта и в перечисленных местах устарели.
@@ -6087,7 +6087,7 @@ Design-ревью контракта IR (после реализации пер�
 1. **Связать схему типом.** Было `export const irNodeSchema: z.ZodType<unknown>` и `parsed.data as Bundle`. Становится `z.ZodType<IrNode>` на ленивой схеме, а приведение `as Bundle` удаляется. Причина: с `unknown` и приведением схема и типы расходятся при зелёном typecheck. Добавили поле в `types.ts`, забыли в `schema.ts` — валидация пропускает бандл без него, плагин читает `node.transform.angle`, Figma падает **посреди построения**. Это ровно «половинчатый импорт», который преамбула Task 3 называет худшим исходом.
 2. **`z.discriminatedUnion('kind', …)`** для `IrNode`, обёрнутая в `z.lazy` ради рекурсии `children`.
 3. **`Rgba8`: `.int()`** на `r`, `g`, `b`. Без этого `{r:1,g:1,b:1}` — валидные единицы Figma и почти чёрный в наших — проходит проверку и рисуется неверно. `getComputedStyle` и канвас-путь дают целые, так что ограничение бесплатно.
-4. **Маркер формата**: `format: z.literal('h2d')`, проверяется в `parseBundle` до версии.
+4. **Маркер формата**: `format: z.literal('w2f')`, проверяется в `parseBundle` до версии.
 5. **Инварианты `paintOrder` валидируются**, а не документируются: по каждому экрану собрать все `paintOrder`, проверить, что их количество равно количеству узлов, что все уникальны и что множество равно `0..n-1`. Инвариант, существующий только в комментарии резолвера, продюсер может нарушить, и тогда сортировка в плагине станет недетерминированной между запусками.
 6. **Ссылочная целостность** в `parseBundle`: каждый `assetId` из `Fill` и `ImageRef` существует в `assets`; `screenshotId` существует; `nodeId` каждой диагностики существует; `screenId` существует; каждое `usedFamily` из ранов покрыто `fonts`. Причина: при неудачной загрузке картинки `assetId` повисает, `figma.createImage` не вызывается, узел приезжает пустым прямоугольником, диагностики нет, бандл «валиден». Висячая ссылка — это молчаливый fallback, а проверка стоит двадцать строк в единственном месте, общем для обеих половин.
 7. **Уникальность `id` узлов в пределах всего бандла**, а не экрана.
@@ -6103,7 +6103,7 @@ Design-ревью контракта IR (после реализации пер�
 
 **Тело задачи переписано полностью, дельта применена в нём.** Оставлено здесь для истории.
 
-1. `DiagnosticSink` **импортирует коды из `@h2d/ir`**, своего списка не держит. Задача больше не создаёт `DIAGNOSTIC_CODES` — они переехали в Task 2.
+1. `DiagnosticSink` **импортирует коды из `@w2f/ir`**, своего списка не держит. Задача больше не создаёт `DIAGNOSTIC_CODES` — они переехали в Task 2.
 2. Конструктор принимает `screenId`, а не отображаемое имя.
 3. `report()` получает параметр `needsPlaceholder`.
 
@@ -6131,7 +6131,7 @@ Design-ревью контракта IR (после реализации пер�
 2. `kind: 'placeholder'` рисуется **видимо**: пунктирная рамка и подпись из `placeholder.label`. Правило проекта требует, чтобы неподдерживаемое было видно.
 3. Продолжать плющить и сортировать по `paintOrder`. Обнаруживать переплетение рендереру **не нужно** — и это решение стоит объяснить, потому что ревью предлагало иначе.
 
-   Ревью предлагало вынести детектор в `@h2d/ir`, поскольку он нужен и рендереру, и плагину. Но если продюсер **записывает** переплетение диагностикой в бандл, вычислять его заново не нужно никому: плагин читает отчёт. Поэтому `findInterleaved` живёт в сериализаторе, где дерево проб уже под рукой, а Task 11 обязан породить `paintOrderInterleaved`. Так убирается дубликат, которого предложение ревью потребовало бы.
+   Ревью предлагало вынести детектор в `@w2f/ir`, поскольку он нужен и рендереру, и плагину. Но если продюсер **записывает** переплетение диагностикой в бандл, вычислять его заново не нужно никому: плагин читает отчёт. Поэтому `findInterleaved` живёт в сериализаторе, где дерево проб уже под рукой, а Task 11 обязан породить `paintOrderInterleaved`. Так убирается дубликат, которого предложение ревью потребовало бы.
 
    Рендерер переплетение переживает — он плющит и сортирует. Не переживает плагин, и именно поэтому знание нужно в бандле, а не в рендерере.
 4. Текст рендерится из `lines`, как раньше, но `usedFamily` подставляется в `font-family` — иначе диффится не тот шрифт, которым рисовал браузер.

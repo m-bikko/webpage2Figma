@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { IR_VERSION, parseBundle, type Bundle } from '@h2d/ir'
+import { IR_VERSION, parseBundle, type Bundle } from '@w2f/ir'
 import { captureScreen, fixtureUrl, SIZES } from './helpers/capture.js'
 
 /**
@@ -7,7 +7,7 @@ import { captureScreen, fixtureUrl, SIZES } from './helpers/capture.js'
  * плагина Figma.
  *
  * Эта проверка существует потому, что её отсутствие было дырой, найденной
- * скриптом capture.mjs, а не тестами. Двадцать инвариантов в `@h2d/ir`
+ * скриптом capture.mjs, а не тестами. Двадцать инвариантов в `@w2f/ir`
  * были покрыты юнит-тестами на СИНТЕТИЧЕСКИХ бандлах и ни разу не
  * прогонялись против того, что реально выдаёт сериализатор. В результате
  * инвариант связности текста падал на первой же живой странице с
@@ -33,7 +33,7 @@ for (const fixture of FIXTURES) {
     const captured = await captureScreen(page, 's0', 'Desktop')
 
     const bundle: Bundle = {
-      format: 'h2d',
+      format: 'w2f',
       version: IR_VERSION,
       capturedAt: new Date().toISOString(),
       url: fixtureUrl(fixture),
@@ -78,7 +78,7 @@ test('бандл из пяти экранов принимается: идент
   }
 
   const bundle: Bundle = {
-    format: 'h2d',
+    format: 'w2f',
     version: IR_VERSION,
     capturedAt: new Date().toISOString(),
     url: fixtureUrl('flex'),

@@ -418,7 +418,7 @@ const checkPlaceholders = (bundle: Bundle): InvariantError[] => {
  *  вглубь в сериализаторе.
  *
  *  Для `blend` есть оговорка: рендерер плоский (см. `render.ts` в
- *  `@h2d/reference-renderer`), а `mix-blend-mode` по спеке CSS Compositing
+ *  `@w2f/reference-renderer`), а `mix-blend-mode` по спеке CSS Compositing
  *  композитится с backdrop'ом ближайшего ИЗОЛИРУЮЩЕГО предка, а не со
  *  всем холстом. IR вообще не несёт признак `isolation` (см. комментарий
  *  над `collectStackingContexts` в сериализаторе), поэтому узел с

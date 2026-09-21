@@ -159,10 +159,10 @@ sources: [packages/plugin/, docs/superpowers/plans/2026-09-21-figma-plugin.md]
 
 ```bash
 pnpm typecheck && pnpm build:bundle && pnpm build:plugin
-pnpm capture fixtures/image-fit/index.html 1440 900   # даёт out/bundle.h2d
+pnpm capture fixtures/image-fit/index.html 1440 900   # даёт out/bundle.w2f
 ```
 
-В Figma: **Plugins → Development → Import plugin from manifest** → `packages/plugin/manifest.json`. Запустить, выбрать `out/bundle.h2d`.
+В Figma: **Plugins → Development → Import plugin from manifest** → `packages/plugin/manifest.json`. Запустить, выбрать `out/bundle.w2f`.
 
 Смотреть надо ровно то, что перечислено в таблице догадок, и записывать результат сюда.
 

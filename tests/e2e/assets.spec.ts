@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { IrNode } from '@h2d/ir'
+import type { IrNode } from '@w2f/ir'
 import { captureScreen, fixtureUrl, repoRoot } from './helpers/capture.js'
 
 /** Проверка не про наш код, а про СРЕДУ. Она существует потому, что под
@@ -67,7 +67,7 @@ test('битый <img> становится заглушкой с диагнос
 test('байты ассета доезжают и совпадают с исходником побайтно', async ({ page }) => {
   await page.goto(fixtureUrl('image-fit'))
   await captureScreen(page, 's', 'Probe')
-  const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+  const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
 
   expect(resolved.report).toEqual([])
   expect(resolved.assets).toHaveLength(1)
@@ -88,7 +88,7 @@ test('байты ассета доезжают и совпадают с исхо
 test('недоступный источник даёт диагностику, а не тишину', async ({ page }) => {
   await page.goto(fixtureUrl('image-broken'))
   await captureScreen(page, 's', 'Probe')
-  const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+  const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
 
   /** Битые <img> до заявок не доходят вовсе: их отсеивает синхронный
    *  обход, потому что `naturalWidth` нулевой. Заявок нет — и отчёт
@@ -114,7 +114,7 @@ test('кросс-доменная картинка: узел есть, байт�
   expect(kinds).toEqual(['image'])
   expect(assetRequests).toHaveLength(1)
 
-  const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+  const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
   /** Ассета нет — и это намеренно. Узел на него ссылается, поэтому
    *  бандл отвергнет инвариант `asset.dangling`: в Figma такой узел
    *  дал бы пустой прямоугольник без всяких объяснений. */
@@ -168,8 +168,8 @@ test('незнакомый data:-URL не даёт размера через к�
 
     const viaHeader = await page.evaluate((url) => {
       const api = (globalThis as unknown as {
-        __h2d: { sizeFromDataUrl?: (u: string) => { w: number; h: number } | null }
-      }).__h2d
+        __w2f: { sizeFromDataUrl?: (u: string) => { w: number; h: number } | null }
+      }).__w2f
       return api.sizeFromDataUrl?.(url) ?? null
     }, unseen ?? '')
     expect(viaHeader).toEqual({ w: 33, h: 17 })

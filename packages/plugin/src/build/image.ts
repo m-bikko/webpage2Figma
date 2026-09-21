@@ -1,5 +1,5 @@
-import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
-import type { ImagePlacement, Rect } from '@h2d/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
+import type { ImagePlacement, Rect } from '@w2f/ir'
 import type { SceneBase, SceneNode } from '../scene.js'
 
 /** Допуск на сравнение масштабов. Браузер отдаёт вычисленные размеры

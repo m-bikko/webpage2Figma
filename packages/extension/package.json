@@ -1,13 +1,13 @@
 {
-  "name": "@h2d/extension",
+  "name": "@w2f/extension",
   "version": "0.1.0",
   "type": "module",
   "main": "./src/worker.ts",
   "scripts": {
-    "build": "node scripts/vendor-serializer.mjs && tsup"
+    "build": "node scripts/vendor-serializer.mjs && node scripts/make-icons.mjs && tsup"
   },
   "dependencies": {
-    "@h2d/bundle": "workspace:*",
-    "@h2d/ir": "workspace:*"
+    "@w2f/bundle": "workspace:*",
+    "@w2f/ir": "workspace:*"
   }
 }

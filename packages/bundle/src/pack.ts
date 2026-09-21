@@ -1,8 +1,8 @@
 import { zipSync, strToU8 } from 'fflate'
-import type { Bundle } from '@h2d/ir'
+import type { Bundle } from '@w2f/ir'
 import type { BundleFiles } from './types.js'
 
-/** Пакует бандл в файл `.h2d`.
+/** Пакует бандл в файл `.w2f`.
  *
  *  Файл, а не REST: Figma REST API не умеет создавать содержимое
  *  файла — только плагин внутри Figma. Это ограничение платформы, и

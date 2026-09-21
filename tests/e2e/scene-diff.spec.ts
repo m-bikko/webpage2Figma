@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { reconcileAssets, type Bundle } from '@h2d/ir'
-import { IR_VERSION } from '@h2d/ir/version'
-import { buildScene, sceneToIr } from '@h2d/plugin'
-import { renderScreenToSvg, wrapSvgInHtml } from '@h2d/reference-renderer'
+import { reconcileAssets, type Bundle } from '@w2f/ir'
+import { IR_VERSION } from '@w2f/ir/version'
+import { buildScene, sceneToIr } from '@w2f/plugin'
+import { renderScreenToSvg, wrapSvgInHtml } from '@w2f/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 import { imagesFor } from './helpers/images.js'
 import { diffPng, shotOfScreen } from './helpers/diff.js'
@@ -59,14 +59,14 @@ for (const fixture of FIXTURES) {
       await page.setViewportSize({ width: size.width, height: size.height })
       await page.goto(fixtureUrl(fixture))
       const { screen, report, fonts } = await captureScreen(page, `s-${size.width}`, size.name)
-      const resolved = await page.evaluate(() => window.__h2d.resolvePendingAssets())
+      const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
       const { screen: reconciled } =
         reconcileAssets(screen, new Set(resolved.assets.map((a) => a.id)))
 
       const browserShot = await shotOfScreen(page, screen)
 
       const bundle: Bundle = {
-        format: 'h2d', version: IR_VERSION,
+        format: 'w2f', version: IR_VERSION,
         capturedAt: '2026-09-21T00:00:00.000Z',
         url: fixtureUrl(fixture), title: fixture, userAgent: 'scene-diff',
         screens: [reconciled], assets: resolved.assets, fonts,

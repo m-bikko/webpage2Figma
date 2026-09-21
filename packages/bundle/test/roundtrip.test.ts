@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
-import { IR_VERSION } from '@h2d/ir/version'
+import { IR_VERSION } from '@w2f/ir/version'
 import { packBundle, unpackBundle } from '../src/index.js'
-import { bundle as makeBundle, frameNode, screen as makeScreen } from '@h2d/ir/test-fixtures'
-import type { Bundle, IrNode } from '@h2d/ir'
+import { bundle as makeBundle, frameNode, screen as makeScreen } from '@w2f/ir/test-fixtures'
+import type { Bundle, IrNode } from '@w2f/ir'
 
 const sample = (): Bundle => makeBundle({
   screens: [makeScreen({ root: frameNode() })],
@@ -32,7 +32,7 @@ describe('packBundle / unpackBundle', () => {
    *  контракте есть BundleEnvelope. */
   it('бандл чужой версии отвергается по версии, а не по схеме', async () => {
     const foreign = zipSync({
-      'ir.json': strToU8(JSON.stringify({ format: 'h2d', version: IR_VERSION + 1 })),
+      'ir.json': strToU8(JSON.stringify({ format: 'w2f', version: IR_VERSION + 1 })),
     })
     await expect(unpackBundle(foreign)).rejects.toThrow(/верси/i)
   })

@@ -1,5 +1,5 @@
 {
-  "name": "html2design",
+  "name": "webpage2figma",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,19 +11,19 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm typecheck:root && pnpm build && pnpm test:unit && pnpm test:e2e",
-    "build:serializer": "pnpm --filter @h2d/serializer build",
+    "build:serializer": "pnpm --filter @w2f/serializer build",
     "capture": "node scripts/capture.mjs",
-    "build:bundle": "pnpm --filter @h2d/bundle build",
-    "build:plugin": "pnpm --filter @h2d/plugin build",
+    "build:bundle": "pnpm --filter @w2f/bundle build",
+    "build:plugin": "pnpm --filter @w2f/plugin build",
     "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin && pnpm build:extension",
     "verify-figma": "node scripts/verify-figma.mjs",
-    "build:extension": "pnpm --filter @h2d/extension build"
+    "build:extension": "pnpm --filter @w2f/extension build"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",
-    "@h2d/ir": "workspace:*",
-    "@h2d/plugin": "workspace:*",
-    "@h2d/reference-renderer": "workspace:*",
+    "@w2f/ir": "workspace:*",
+    "@w2f/plugin": "workspace:*",
+    "@w2f/reference-renderer": "workspace:*",
     "@playwright/test": "^1.48.0",
     "@types/chrome": "^0.3.0",
     "@types/node": "^22.7.0",
@@ -34,8 +34,8 @@
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
-    "@h2d/extension": "workspace:*",
-    "@h2d/bundle": "workspace:*"
+    "@w2f/extension": "workspace:*",
+    "@w2f/bundle": "workspace:*"
   },
   "dependencies": {
     "fflate": "^0.8.3"

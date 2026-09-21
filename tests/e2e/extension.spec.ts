@@ -1,6 +1,6 @@
 import { expect, test, type Worker } from '@playwright/test'
-import type { IrNode } from '@h2d/ir'
-import { unpackBundle } from '@h2d/bundle'
+import type { IrNode } from '@w2f/ir'
+import { unpackBundle } from '@w2f/bundle'
 import { captureScreen, fixtureUrl } from './helpers/capture.js'
 import { launchWithExtension } from './helpers/extension.js'
 
@@ -86,11 +86,11 @@ test('CDP-эмуляция меняет раскладку, а не только
     const tabId = await tabIdOf(worker, '4317')
 
     const wide = await worker.evaluate(
-      ({ tabId, width, height }) => globalThis.h2d.captureAt(tabId, { width, height, name: 'W' }),
+      ({ tabId, width, height }) => globalThis.w2f.captureAt(tabId, { width, height, name: 'W' }),
       { tabId, width: 1440, height: 900 },
     )
     const narrow = await worker.evaluate(
-      ({ tabId, width, height }) => globalThis.h2d.captureAt(tabId, { width, height, name: 'N' }),
+      ({ tabId, width, height }) => globalThis.w2f.captureAt(tabId, { width, height, name: 'N' }),
       { tabId, width: 390, height: 844 },
     )
 
@@ -117,7 +117,7 @@ test('пять экранов с общей нумерацией узлов', as
     const tabId = await tabIdOf(worker, '4317')
 
     const screens = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureAll(tabId), tabId,
+      (tabId) => globalThis.w2f.captureAll(tabId), tabId,
     )
 
     expect(screens).toHaveLength(5)
@@ -165,7 +165,7 @@ test('воркер достаёт байты, которых странице н
     expect(fromPage).toBe('отказано')
 
     const resolved = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureBundle(tabId), tabId,
+      (tabId) => globalThis.w2f.captureBundle(tabId), tabId,
     )
     const asset = resolved.assets[0]
     expect(asset).toBeDefined()
@@ -191,7 +191,7 @@ test('скриншот снимается на полную высоту сод�
     const tabId = await tabIdOf(worker, '4317')
 
     const shot = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureShot(tabId, { name: 'M', width: 390, height: 300 }),
+      (tabId) => globalThis.w2f.captureShot(tabId, { name: 'M', width: 390, height: 300 }),
       tabId,
     )
     expect(shot.contentHeight).toBeGreaterThan(300)
@@ -213,12 +213,12 @@ test('бандл расширения принимается валидатор�
     const tabId = await tabIdOf(worker, '4317')
 
     const packed = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureToFile(tabId), tabId,
+      (tabId) => globalThis.w2f.captureToFile(tabId), tabId,
     )
     const back = await unpackBundle(Uint8Array.from(packed.zip))
 
     expect(back.bundle.screens).toHaveLength(5)
-    expect(back.bundle.format).toBe('h2d')
+    expect(back.bundle.format).toBe('w2f')
     /** Каждый экран несёт скриншот, и каждый скриншот лежит в архиве. */
     for (const screen of back.bundle.screens) {
       expect(screen.screenshotId).not.toBeNull()
@@ -247,7 +247,7 @@ test('дерево расширения совпадает с деревом п�
     const tabId = await tabIdOf(worker, '4317')
 
     const viaExtension = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureAt(tabId, { name: 'D', width: 1440, height: 900 }),
+      (tabId) => globalThis.w2f.captureAt(tabId, { name: 'D', width: 1440, height: 900 }),
       tabId,
     )
 
@@ -277,7 +277,7 @@ test('расширение дожидается незагруженных ка�
     const tabId = await tabIdOf(worker, '4317')
 
     const captured = await worker.evaluate(
-      (tabId) => globalThis.h2d.captureAt(tabId, { name: 'D', width: 800, height: 400 }),
+      (tabId) => globalThis.w2f.captureAt(tabId, { name: 'D', width: 800, height: 400 }),
       tabId,
     )
 

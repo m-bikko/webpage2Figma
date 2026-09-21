@@ -1,4 +1,4 @@
-import type { NodeText, TextAlign, TextDecoration, TextRun } from '@h2d/ir'
+import type { NodeText, TextAlign, TextDecoration, TextRun } from '@w2f/ir'
 import { parseColor } from './css/color.js'
 import { parsePx } from './css/length.js'
 import { parseBoxShadow } from './css/shadow.js'

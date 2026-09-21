@@ -1,17 +1,18 @@
-import { IR_VERSION } from '@h2d/ir/version'
-import { reconcileAssets } from '@h2d/ir'
-import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
+import { IR_VERSION } from '@w2f/ir/version'
+import { reconcileAssets } from '@w2f/ir'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 import {
-  BREAKPOINTS, captureFullPage, waitForImages, withViewport, type Breakpoint,
+  BREAKPOINTS, captureFullPage, selectedBreakpoints, waitForImages, withViewport,
+  type Breakpoint,
 } from './breakpoints.js'
-import { packBundle } from '@h2d/bundle'
+import { packBundle } from '@w2f/bundle'
 import { resolveAssets, type AssetRequest } from './assets.js'
 
 /** Оркестровка, и только она.
  *
  *  Своей логики у расширения быть не должно: разбор DOM живёт в
- *  сериализаторе, сборка бандла — в `@h2d/bundle`, проверки — в
- *  `@h2d/ir`. Всё, что появится здесь сверх «позвать в правильном
+ *  сериализаторе, сборка бандла — в `@w2f/bundle`, проверки — в
+ *  `@w2f/ir`. Всё, что появится здесь сверх «позвать в правильном
  *  порядке», будет кодом, который проверяется только через целое
  *  расширение, — а это дороже и хуже.
  *
@@ -44,7 +45,7 @@ const injectOnce = async (tabId: number): Promise<void> => {
   const probe = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
-    func: () => typeof (globalThis as { __h2d?: unknown }).__h2d !== 'undefined',
+    func: () => typeof (globalThis as { __w2f?: unknown }).__w2f !== 'undefined',
   })
   if (probe[0]?.result === true) return
   await chrome.scripting.executeScript({
@@ -78,7 +79,7 @@ const captureInPage = async (
     world: 'MAIN',
     args: [size.name],
     func: (name: string) => {
-      const api = (globalThis as unknown as { __h2d: PageApi }).__h2d
+      const api = (globalThis as unknown as { __w2f: PageApi }).__w2f
       return api.captureScreen(`s-${String(window.innerWidth)}`, name)
     },
   })
@@ -102,20 +103,31 @@ const captureInPage = async (
  *  инвариант `asset.dangling` проверяет ссылки в пределах бандла, а
  *  отчёт ссылается на узлы по имени. Сброс счётчика перед каждым
  *  экраном дал бы пять узлов `n0`, и ссылка стала бы неоднозначной. */
+/** Ключ, под которым лежит выбор брейкпоинтов. */
+export const BREAKPOINTS_KEY = 'breakpoints'
+
+const chosenBreakpoints = async (): Promise<Breakpoint[]> => {
+  const stored = await chrome.storage.sync.get(BREAKPOINTS_KEY)
+  const keys = stored[BREAKPOINTS_KEY] as string[] | undefined
+  return selectedBreakpoints(keys)
+}
+
 export const captureAll = async (
   tabId: number,
+  sizes?: readonly Breakpoint[],
 ): Promise<{ screen: CaptureResult; base64: string }[]> => {
   await injectOnce(tabId)
   await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
-    func: () => { (globalThis as unknown as { __h2d: PageApi }).__h2d.beginCapture() },
+    func: () => { (globalThis as unknown as { __w2f: PageApi }).__w2f.beginCapture() },
   })
 
   const out: { screen: CaptureResult; base64: string }[] = []
+  const wanted = sizes ?? await chosenBreakpoints()
   /** Последовательно, а не параллельно: эмуляция применяется к ОДНОЙ
    *  вкладке, и два размера одновременно на ней несовместимы. */
-  for (const size of BREAKPOINTS) {
+  for (const size of wanted) {
     const shot = await captureShot(tabId, size)
     out.push({ screen: shot.screen, base64: shot.base64 })
   }
@@ -193,13 +205,16 @@ const dedupeFonts = (fonts: readonly FontRequirement[]): FontRequirement[] => {
  *
  *  Заявки берутся с ПОСЛЕДНЕГО экрана: накопитель в странице общий на
  *  весь захват, и на пятом экране в нём лежат заявки всех пяти. */
-export const captureBundle = async (tabId: number): Promise<{
+export const captureBundle = async (
+  tabId: number,
+  sizes?: readonly Breakpoint[],
+): Promise<{
   bundle: Bundle
   bytes: Record<string, Uint8Array>
   assets: Bundle['assets']
   report: Diagnostic[]
 }> => {
-  const captured = await captureAll(tabId)
+  const captured = await captureAll(tabId, sizes)
   const last = captured[captured.length - 1]
   if (last === undefined) throw new Error('Ни одного экрана не снято.')
 
@@ -244,7 +259,7 @@ export const captureBundle = async (tabId: number): Promise<{
 
   return {
     bundle: {
-      format: 'h2d', version: IR_VERSION,
+      format: 'w2f', version: IR_VERSION,
       capturedAt: new Date().toISOString(),
       url, title,
       userAgent: navigator.userAgent,
@@ -261,7 +276,7 @@ export const captureBundle = async (tabId: number): Promise<{
 
 /** Поверхность для тестов. Воркер MV3 не имеет экспорта наружу, и
  *  вызвать его функции иначе нечем. */
-/** Пакует бандл в файл `.h2d`.
+/** Пакует бандл в файл `.w2f`.
  *
  *  Байты отдаются массивом чисел: границу `worker.evaluate` переживает
  *  только то, что сериализуется как JSON, — `Uint8Array` приехал бы
@@ -275,7 +290,7 @@ export const fileNameFor = (bundle: Bundle): string => {
     try { return new URL(bundle.url).hostname } catch { return 'page' }
   })()
   const stamp = bundle.capturedAt.slice(0, 19).replace(/[:T]/g, '-')
-  return `${host === '' ? 'page' : host}-${stamp}.h2d`
+  return `${host === '' ? 'page' : host}-${stamp}.w2f`
 }
 
 export const captureToFile = async (
@@ -310,11 +325,11 @@ export const downloadCapture = async (
      *
      *  Chrome сверяет тип с расширением и переименовывает файл, если
      *  считает, что знает лучше: с `application/zip` он молча
-     *  превращал `page.h2d` в `page.zip`. Проверено на настоящем
+     *  превращал `page.w2f` в `page.zip`. Проверено на настоящем
      *  захвате — файл приехал с расширением `.zip`.
      *
      *  Нейтральный тип заставляет его уважать имя. Содержимое от
-     *  этого не меняется: `.h2d` и есть ZIP, просто с нашим
+     *  этого не меняется: `.w2f` и есть ZIP, просто с нашим
      *  расширением, и плагин ждёт именно его. */
     url: `data:application/octet-stream;base64,${btoa(binary)}`,
     filename: name,
@@ -323,9 +338,9 @@ export const downloadCapture = async (
   return name
 }
 
-;(self as unknown as { h2d: unknown }).h2d = {
+;(self as unknown as { w2f: unknown }).w2f = {
   captureAt, captureAll, captureBundle, captureShot, captureToFile,
-  downloadCapture, BREAKPOINTS,
+  downloadCapture, BREAKPOINTS, selectedBreakpoints,
 }
 
 /** Приём команды из окна расширения.

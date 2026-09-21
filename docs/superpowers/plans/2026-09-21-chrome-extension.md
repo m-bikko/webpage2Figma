@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Снять страницу, на которой пользователь сейчас находится, в пяти брейкпоинтах и отдать файл `.h2d`, который принимает плагин из плана 5.
+**Goal:** Снять страницу, на которой пользователь сейчас находится, в пяти брейкпоинтах и отдать файл `.w2f`, который принимает плагин из плана 5.
 
 **Architecture:** Расширение MV3. Фоновый воркер управляет размерами через CDP-эмуляцию, впрыскивает уже существующий сериализатор в страницу, собирает пять экранов с общей нумерацией, **сам** забирает байты изображений (обходя CORS страницы), пакует бандл и отдаёт его через `chrome.downloads`.
 
-**Tech Stack:** тот же воркспейс; `chrome.debugger` (CDP), `chrome.scripting`, `chrome.downloads`, `fflate` через `@h2d/bundle`.
+**Tech Stack:** тот же воркспейс; `chrome.debugger` (CDP), `chrome.scripting`, `chrome.downloads`, `fflate` через `@w2f/bundle`.
 
 **Место в карте планов:** план 6 из 7. Дальше: 7 — компоненты, токены и auto-layout.
 
@@ -223,7 +223,7 @@ test('расширение поднимается и видит свои раз�
 
 - [ ] **Step 1: Падающий тест.** Бандл, собранный расширением, проходит `parseBundle` и `unpackBundle`.
 
-- [ ] **Step 2: Реализовать.** `packBundle` из `@h2d/bundle`, затем `chrome.downloads.download` с `data:`-URL или Blob URL — проверить, что работает в MV3-воркере (там нет `URL.createObjectURL` в части версий; если так, использовать `data:`).
+- [ ] **Step 2: Реализовать.** `packBundle` из `@w2f/bundle`, затем `chrome.downloads.download` с `data:`-URL или Blob URL — проверить, что работает в MV3-воркере (там нет `URL.createObjectURL` в части версий; если так, использовать `data:`).
 
 - [ ] **Step 3. Коммит.**
 
