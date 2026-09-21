@@ -4,17 +4,35 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#fff;padding:24px}
-  .backdrop{height:40px;background:#ef4444}
-  /* Изоляция ограничивает подложку своей группой: в браузере зелёный
-     остаётся зелёным, а плоский рендерер смешивает его с красным выше и
-     чернит. Фикстура в pixel-diff НЕ входит — рендер заведомо разойдётся.
-     Её задача доказать, что расхождение объяснено, а не молчит. */
-  .isolated{isolation:isolate;height:80px}
-  .faded{opacity:0.99;height:80px}
-  .blended{height:60px;background:#22c55e;mix-blend-mode:multiply}
+  /* Блоки обязаны ПЕРЕКРЫВАТЬСЯ, иначе наложение не с чем считать и
+     фикстура ничего не проверяет. Первая редакция ставила подложку и
+     группу встык: multiply композитил с белым в обоих случаях, и
+     pixel-diff не отличал верную группировку от сломанной. */
+  .stage{position:relative;height:180px}
+  .backdrop{position:absolute;inset:0 0 60px 0;background:#ef4444}
+  /* Изоляция ограничивает подложку своей группой: зелёный НЕ смешивается
+     с красным под ним. Без группировки в рендерере он бы почернел. */
+  .isolated{position:absolute;isolation:isolate;top:40px;left:40px;
+    width:220px;height:120px}
+  /* opacity < 1 изолирует не хуже явного isolation — это неочевидно и
+     потому проверяется отдельно. */
+  .faded{position:absolute;opacity:0.99;top:40px;left:300px;
+    width:220px;height:120px}
+  /* Зеркальный случай: stacking context БЕЗ изоляции. `position:relative`
+     с `z-index` контекст создаёт, но наложение потомков сквозь себя
+     пропускает — зелёный обязан почернеть о красный. Нужен потому, что
+     лишняя изоляция так же неверна, как её нехватка, а без этого блока
+     проверка её не ловила: «изолировать каждый stacking context» не
+     роняло ни одной ширины. */
+  .ctx{position:relative;z-index:1;top:40px;left:560px;
+    width:220px;height:120px}
+  .blended{width:100%;height:100%;background:#22c55e;mix-blend-mode:multiply}
 </style></head>
 <body>
-  <div class="backdrop"></div>
-  <div class="isolated"><div class="blended"></div></div>
-  <div class="faded"><div class="blended"></div></div>
+  <div class="stage">
+    <div class="backdrop"></div>
+    <div class="isolated"><div class="blended"></div></div>
+    <div class="faded"><div class="blended"></div></div>
+    <div class="ctx"><div class="blended"></div></div>
+  </div>
 </body></html>

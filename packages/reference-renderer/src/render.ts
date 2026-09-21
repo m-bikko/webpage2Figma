@@ -505,10 +505,16 @@ const groupAttrs = (node: IrNode, defs: string[], at: Offset): string => {
   }
   if (node.style.blend !== 'normal') style.push(`mix-blend-mode:${node.style.blend}`)
 
-  /** Изоляция обязательна на любой группе с собственным эффектом: иначе
-   *  наложение внутри неё композитит со всем холстом, как это делал
-   *  плоский рендерер, и защита теряется. */
-  if (parts.length > 0 || style.length > 0) style.push('isolation:isolate')
+  /** Изоляция безусловна, потому что `groupAttrs` вызывается ТОЛЬКО для
+   *  stacking context, а всякий stacking context изолирует. Это измерено,
+   *  а не выведено: в фикстуре `blend-isolated` блок с `position:relative;
+   *  z-index:1` сохраняет чистый зелёный [34,197,94] поверх красного, и
+   *  стоит убрать один только `z-index` — чернеет до [32,53,25].
+   *
+   *  Прежнее условие ставило изоляцию по наличию ДРУГИХ эффектов. Узел с
+   *  единственным `isolation: isolate` эффектов не имеет, группы не
+   *  получал вовсе, и наложение потомков доставало до фона под ней. */
+  style.push('isolation:isolate')
   if (style.length > 0) parts.push(`style="${style.join(';')}"`)
 
   return parts.length > 0 ? ` ${parts.join(' ')}` : ''

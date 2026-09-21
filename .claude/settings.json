@@ -158,7 +158,20 @@
       "Bash(git commit -q -m 'feat\\(contact\\): Telegram, WhatsApp and Instagram links *)",
       "Bash(git commit -q -m 'refactor\\(sections\\): no reveal curtain on hackathons, travel strip scrolls sideways *)",
       "Bash(node -e ' *)",
-      "Bash(git commit -q -m 'feat\\(footer\\): 3D social tiles that tilt to the cursor and press toward the touch *)"
+      "Bash(git commit -q -m 'feat\\(footer\\): 3D social tiles that tilt to the cursor and press toward the touch *)",
+      "WebFetch",
+      "Bash(*)",
+      "Bash(sed \"s#fixtures/blend/index.html#fixtures/transformed/index.html#\" scripts/_measure-blend-tmp.mjs)",
+      "Bash(node scripts/_measure-transformed-tmp.mjs)",
+      "Bash(npx playwright *)",
+      "Bash(tee /tmp/full-test-output.txt)",
+      "Bash(MEASURE=boxes pnpm exec playwright test measure.tmp)",
+      "Bash(MEASURE=blur pnpm exec playwright test measure.tmp)",
+      "Bash(MEASURE=blur,boxes pnpm exec playwright test measure.tmp)",
+      "Bash(perl -0pi -e \"s/'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated',\\\\n\\\\] as const/'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated',\\\\n  'blur',\\\\n] as const/g\" tests/e2e/fidelity.spec.ts tests/e2e/bundle.spec.ts)",
+      "Bash(perl -0pi -e \"s/\\\\? \\\\`<feGaussianBlur stdDeviation=\\\\\"\\\\\\\\\\\\$\\\\{blur.layer\\\\}\\\\\"\\\\/>\\\\`/? ''/\" packages/reference-renderer/src/render.ts)",
+      "Bash(perl -0pi -e 's/stdDeviation=\"\\\\$\\\\{blur\\\\.layer\\\\}\"/stdDeviation=\"\\\\${blur.layer \\\\/ 2}\"/' packages/reference-renderer/src/render.ts)",
+      "Bash(perl -0pi -e 's/stdDeviation=\"\\\\$\\\\{blur\\\\.layer\\\\}\"/stdDeviation=\"\\\\${blur.layer * 2}\"/' packages/reference-renderer/src/render.ts)"
     ],
     "additionalDirectories": [
       "/tmp",

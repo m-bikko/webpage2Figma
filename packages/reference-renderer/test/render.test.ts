@@ -469,6 +469,7 @@ describe('renderScreenToSvg: вложенность и групповые эфф
     expect(renderScreenToSvg(screen(root))).toContain('isolation:isolate')
   })
 
+
   it('узел БЕЗ эффектов не создаёт лишней группы', () => {
     const root = withChild({})
     const svg = renderScreenToSvg(screen(root))
@@ -476,16 +477,18 @@ describe('renderScreenToSvg: вложенность и групповые эфф
       .toHaveLength(0)
   })
 
-  /** Оборачивание идёт по `isStackingContext`, но пустая группа не нужна
-   *  и по нему: `position: relative; z-index: 1` создаёт контекст, не имея
-   *  ни одного эффекта. Проверка существует потому, что «контекст» и
-   *  «эффект» легко считать синонимами — и тогда вывод обрастает
-   *  обёртками, ничего не меняющими в картинке. */
-  it('stacking context БЕЗ эффектов тоже не создаёт группы', () => {
+  /** Этот тест утверждал ОБРАТНОЕ — что контекст без эффектов группы не
+   *  получает, раз обёртка «ничего не меняет в картинке». Меняет: всякий
+   *  stacking context изолирует наложение потомков.
+   *
+   *  Измерено на `blend-isolated`: блок `position:relative; z-index:1`
+   *  поверх красного держит чистый зелёный [34,197,94], а стоит убрать
+   *  один только `z-index` — чернеет до [32,53,25]. Тест в прежнем виде
+   *  прикрывал дефект, из-за которого зелёный чернел и у нас. */
+  it('stacking context БЕЗ эффектов всё равно создаёт изолирующую группу', () => {
     const root = withChild({ isStackingContext: true })
     const svg = renderScreenToSvg(screen(root))
-    expect(svg.match(/<g/g) ?? [],
-      'контекст без эффекта оборачивать нечем').toHaveLength(0)
+    expect(svg).toContain('isolation:isolate')
   })
 
   it('порядок отрисовки внутри группы сохраняется', () => {
