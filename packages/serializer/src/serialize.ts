@@ -1,6 +1,7 @@
 import { IR_VERSION } from '@h2d/ir/version'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
 import { DiagnosticSink } from './diagnostics.js'
+import type { AssetRequest, AssetRequests } from './assets.js'
 import {
   collectFonts, createIdAllocator, walkDocument, type IdAllocator,
 } from './walk.js'
@@ -13,6 +14,14 @@ export type SerializeResult = {
    *  Сборщик бандла обязан объединить их по всем экранам: без этого
    *  инвариант `font.uncovered` отвергнет бандл на входе плагина. */
   fonts: FontRequirement[]
+  /** Заявки на байты, поданные к этому моменту. Отдаются наружу по той
+   *  же причине, что и `fonts`: `Bundle.assets` — уровень бандла, а
+   *  данные есть только у обходчика.
+   *
+   *  Накопитель общий на весь захват, поэтому на пятом экране здесь
+   *  будут и заявки первых четырёх. Это верно: сборщику бандла нужен
+   *  полный список, а не приращение. */
+  assetRequests: AssetRequest[]
 }
 
 export type SerializeOptions = {
@@ -23,6 +32,8 @@ export type SerializeOptions = {
   /** Общий на весь захват аллокатор: идентификаторы узлов уникальны
    *  в пределах бандла, а не экрана. */
   allocId: IdAllocator
+  /** Общий на весь захват накопитель заявок на изображения. */
+  requests: AssetRequests
 }
 
 /** Снимает текущее состояние документа как один Screen.
@@ -30,7 +41,7 @@ export type SerializeOptions = {
  *  ничего не знает и ничего не эмулирует. */
 export const serializeScreen = (options: SerializeOptions): SerializeResult => {
   const sink = new DiagnosticSink(options.id)
-  const root = walkDocument(sink, options.allocId)
+  const root = walkDocument(sink, options.allocId, options.requests)
   if (root === null) {
     throw new Error('Документ пуст: <body> не отрисован.')
   }
@@ -51,6 +62,7 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
     },
     report: sink.drain(),
     fonts: collectFonts(root),
+    assetRequests: options.requests.drain(),
   }
 }
 

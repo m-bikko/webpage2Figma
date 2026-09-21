@@ -19,6 +19,7 @@ import {
   parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
+import type { AssetRequests } from './assets.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
 import {
@@ -51,6 +52,10 @@ const GROUP_EFFECT_MESSAGES = {
 
 type WalkContext = {
   sink: DiagnosticSink
+  /** Накопитель заявок на байты изображений. Общий на весь ЗАХВАТ, а не
+   *  на экран: инвариант `asset.dangling` проверяет ссылки в пределах
+   *  бандла, и один логотип на пяти экранах обязан быть одним ассетом. */
+  requests: AssetRequests
   scrollX: number
   scrollY: number
   allocId: IdAllocator
@@ -650,9 +655,11 @@ export const collectFonts = (node: IrNode): FontRequirement[] => {
 export const walkDocument = (
   sink: DiagnosticSink,
   allocId: IdAllocator,
+  requests: AssetRequests,
 ): IrNode | null => {
   const ctx: WalkContext = {
     sink,
+    requests,
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,

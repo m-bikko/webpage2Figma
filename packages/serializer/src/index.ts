@@ -1,6 +1,8 @@
 export { serializeScreen, emptyBundle, createIdAllocator } from './serialize.js'
 export type { SerializeResult, SerializeOptions } from './serialize.js'
 export { DiagnosticSink } from './diagnostics.js'
+export { AssetRequests } from './assets.js'
+export type { AssetRequest } from './assets.js'
 export { establishesStackingContext, findInterleaved, resolvePaintOrder } from './stacking.js'
 export { parseColor, TRANSPARENT, isInvisible } from './css/color.js'
 export { parseBoxShadow } from './css/shadow.js'
