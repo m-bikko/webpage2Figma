@@ -1,4 +1,8 @@
+import { IR_VERSION } from '@h2d/ir/version'
+import { reconcileAssets } from '@h2d/ir'
+import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
 import { BREAKPOINTS, withViewport, type Breakpoint } from './breakpoints.js'
+import { resolveAssets, type AssetRequest } from './assets.js'
 
 /** Оркестровка, и только она.
  *
@@ -21,11 +25,10 @@ type PageApi = {
 }
 
 type CaptureResult = {
-  screen: { id: string; name: string; width: number; height: number; root: unknown }
-  report: unknown[]
-  fonts: unknown[]
-  assetRequests: { id: string; url: string; naturalWidth: number
-                   naturalHeight: number; nodeId: string; screenId: string }[]
+  screen: Screen
+  report: Diagnostic[]
+  fonts: FontRequirement[]
+  assetRequests: AssetRequest[]
 }
 
 const SERIALIZER_PATH = 'vendor/serializer.global.js'
@@ -75,6 +78,107 @@ export const captureAt = async (
   return result as CaptureResult
 })
 
+/** Снимает все пять брейкпоинтов одним заходом.
+ *
+ *  `beginCapture` вызывается РОВНО ОДИН раз, до первого экрана.
+ *  Счётчик идентификаторов живёт в странице именно для этого:
+ *  инвариант `asset.dangling` проверяет ссылки в пределах бандла, а
+ *  отчёт ссылается на узлы по имени. Сброс счётчика перед каждым
+ *  экраном дал бы пять узлов `n0`, и ссылка стала бы неоднозначной. */
+export const captureAll = async (tabId: number): Promise<CaptureResult[]> => {
+  await injectOnce(tabId)
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: () => { (globalThis as unknown as { __h2d: PageApi }).__h2d.beginCapture() },
+  })
+
+  const screens: CaptureResult[] = []
+  /** Последовательно, а не параллельно: эмуляция применяется к ОДНОЙ
+   *  вкладке, и два размера одновременно на ней несовместимы. */
+  for (const size of BREAKPOINTS) {
+    screens.push(await captureAt(tabId, size))
+  }
+  return screens
+}
+
+/** Шрифты объединяются по всем экранам: без этого инвариант
+ *  `font.uncovered` отвергнет бандл, в котором текст пятого экрана
+ *  набран шрифтом, не объявленным на первом. */
+const dedupeFonts = (fonts: readonly FontRequirement[]): FontRequirement[] => {
+  const seen = new Set<string>()
+  const out: FontRequirement[] = []
+  for (const font of fonts) {
+    const key = `${font.family}|${font.weight}|${font.style}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(font)
+  }
+  return out
+}
+
+/** Собирает бандл: пять экранов, байты и отчёт.
+ *
+ *  Байты забирает ВОРКЕР, а не страница. В этом весь смысл: страница
+ *  ограничена CORS, и кросс-доменная картинка — которая отрисовалась,
+ *  значит узел построен — осталась бы без байтов. Воркер с
+ *  `host_permissions` их достаёт.
+ *
+ *  Заявки берутся с ПОСЛЕДНЕГО экрана: накопитель в странице общий на
+ *  весь захват, и на пятом экране в нём лежат заявки всех пяти. */
+export const captureBundle = async (tabId: number): Promise<{
+  bundle: Bundle
+  bytes: Record<string, Uint8Array>
+  assets: Bundle['assets']
+  report: Diagnostic[]
+}> => {
+  const captured = await captureAll(tabId)
+  const last = captured[captured.length - 1]
+  if (last === undefined) throw new Error('Ни одного экрана не снято.')
+
+  const resolved = await resolveAssets(last.assetRequests)
+  const available = new Set(resolved.assets.map((asset) => asset.id))
+
+  const screens: Screen[] = []
+  const report: Diagnostic[] = [...resolved.report]
+  for (const item of captured) {
+    report.push(...item.report)
+    /** Дерево приводится в согласие с доехавшим: узел, чья картинка не
+     *  пришла даже воркеру, становится заглушкой. Иначе инвариант
+     *  `asset.dangling` отверг бы бандл целиком. */
+    const fixed = reconcileAssets(item.screen, available)
+    screens.push(fixed.screen)
+    report.push(...fixed.report)
+  }
+
+  const identity = await chrome.scripting.executeScript({
+    target: { tabId }, world: 'MAIN',
+    func: () => ({ url: location.href, title: document.title }),
+  })
+  /** Пустой результат означает, что вкладка закрылась. Подставить
+   *  пустые строки честнее, чем упасть: экраны уже сняты, и терять их
+   *  из-за адреса было бы несоразмерно. */
+  const { url, title } = identity[0]?.result ?? { url: '', title: '' }
+
+  return {
+    bundle: {
+      format: 'h2d', version: IR_VERSION,
+      capturedAt: new Date().toISOString(),
+      url, title,
+      userAgent: navigator.userAgent,
+      screens, assets: resolved.assets,
+      fonts: dedupeFonts(captured.flatMap((item) => item.fonts)),
+      tokens: { variables: [], textStyles: [], paintStyles: [] },
+      report,
+    },
+    bytes: resolved.bytes,
+    assets: resolved.assets,
+    report,
+  }
+}
+
 /** Поверхность для тестов. Воркер MV3 не имеет экспорта наружу, и
  *  вызвать его функции иначе нечем. */
-;(self as unknown as { h2d: unknown }).h2d = { captureAt, BREAKPOINTS }
+;(self as unknown as { h2d: unknown }).h2d = {
+  captureAt, captureAll, captureBundle, BREAKPOINTS,
+}
