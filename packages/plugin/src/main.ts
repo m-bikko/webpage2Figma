@@ -65,6 +65,39 @@ figma.ui.onmessage = async (message: unknown): Promise<void> => {
   }
 }
 
+
+/** UTF-8 своими руками.
+ *
+ *  `TextDecoder` в песочнице плагина есть не всегда, а отказ там
+ *  выглядит как «плагин не работает» без единой подсказки. Разбор
+ *  короткий и полностью определённый, так что своя реализация надёжнее
+ *  проверки наличия чужой. */
+const decodeUtf8 = (bytes: Uint8Array): string => {
+  let out = ''
+  for (let i = 0; i < bytes.length;) {
+    const first = bytes[i] ?? 0
+    if (first < 0x80) { out += String.fromCharCode(first); i += 1; continue }
+    if (first < 0xe0) {
+      out += String.fromCharCode(((first & 0x1f) << 6) | ((bytes[i + 1] ?? 0) & 0x3f))
+      i += 2
+      continue
+    }
+    if (first < 0xf0) {
+      out += String.fromCharCode(
+        ((first & 0x0f) << 12) | (((bytes[i + 1] ?? 0) & 0x3f) << 6)
+        | ((bytes[i + 2] ?? 0) & 0x3f),
+      )
+      i += 3
+      continue
+    }
+    const code = ((first & 0x07) << 18) | (((bytes[i + 1] ?? 0) & 0x3f) << 12)
+      | (((bytes[i + 2] ?? 0) & 0x3f) << 6) | ((bytes[i + 3] ?? 0) & 0x3f)
+    out += String.fromCodePoint(code)
+    i += 4
+  }
+  return out
+}
+
 const handleMessage = async (message: unknown): Promise<void> => {
   if (!isBundleMessage(message)) return
 
@@ -101,13 +134,27 @@ const handleMessage = async (message: unknown): Promise<void> => {
   }
 
   const { bundle, files } = unpacked
-  const scene = buildScene(bundle)
+
+  /** Векторные ассеты отделяются ДО загрузки картинок: SVG в
+   *  `figma.createImage` не идёт вовсе — он принимает растр, — и
+   *  попытка кончилась бы отказом на первой же иконке. Вместо
+   *  картинки из них строится векторный узел. */
+  const svgTexts = new Map<string, string>()
+  for (const asset of bundle.assets) {
+    if (asset.mimeType !== 'image/svg+xml') continue
+    const bytes = files.assets[asset.id]
+    if (bytes === undefined) continue
+    svgTexts.set(asset.id, decodeUtf8(bytes))
+  }
+
+  const scene = buildScene(bundle, svgTexts)
 
   /** Картинки загружаются ОДИН раз на бандл: один и тот же ассет может
    *  стоять на многих узлах и на всех пяти экранах, а `createImage`
    *  каждый раз клал бы в файл новую копию. */
   const images = new Map<string, string>()
   for (const asset of bundle.assets) {
+    if (svgTexts.has(asset.id)) continue
     const bytes = files.assets[asset.id]
     if (bytes === undefined) continue
     images.set(asset.id, figma.createImage(bytes).hash)

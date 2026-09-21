@@ -15,14 +15,19 @@ describe('classifyBackgroundImage', () => {
       .toBe('gradient')
   })
 
-  /** SVG по url() — вектор, а не растр: перенести его пикселями значило
-   *  бы молча потерять масштабируемость. Отдельная ветка нужна именно
-   *  поэтому, а не ради аккуратности. */
-  it('svg по url() отправляется в вектор, а не в растр', () => {
+  /** Утверждение ПЕРЕВЁРНУТО: SVG больше не отделяется от растра.
+   *
+   *  Раньше он уходил в отдельную ветку и не переносился вовсе — на
+   *  Hacker News это давало 30 записей из 31 всего отчёта. Теперь он
+   *  едет тем же путём ассета, только байтами исходника, и плагин
+   *  строит из них векторный узел. Требовать здесь `vector` значило бы
+   *  заморозить пробел: тест падал бы именно тогда, когда его
+   *  закрыли. */
+  it('svg по url() идёт обычным путём ассета, как и растр', () => {
     const verdict = classifyBackgroundImage('url("/icon.svg")')
-    expect(verdict.kind).toBe('vector')
-    if (verdict.kind !== 'vector') return
-    expect(verdict.code).toBe(DIAGNOSTIC_CODES.deferredVector)
+    expect(verdict.kind).toBe('raster')
+    if (verdict.kind !== 'raster') return
+    expect(verdict.url).toBe('/icon.svg')
   })
 
   /** Несколько слоёв фона контракт представить может (`fills` — список),

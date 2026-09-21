@@ -56,6 +56,7 @@ const FIXTURES = [
   'clip-hidden',
   'radial-gradient',
   'background-layers',
+  'svg-background',
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.

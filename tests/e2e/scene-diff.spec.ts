@@ -34,6 +34,7 @@ const FIXTURES = [
    *  становятся несколькими вложенными прямоугольниками, и потерять
    *  один из них легко — прежняя редакция брала только первый. */
   'background-layers',
+  'svg-background',
 ] as const
 
 type Threshold = { maxDiffPixels: number; maxDiffRatio: number }
@@ -83,7 +84,20 @@ for (const fixture of FIXTURES) {
         report,
       }
 
-      const scene = buildScene(bundle)
+      /** Векторные ассеты передаются строителю ОТДЕЛЬНО — так же, как
+       *  это делает плагин: байты живут в файлах бандла, а строитель
+       *  чист и архив сам не распаковывает. Без этого SVG-фон пошёл
+       *  бы по растровой ветке, и круговой обход проверял бы не то,
+       *  что поедет в Figma. */
+      const svgTexts = new Map<string, string>()
+      for (const asset of resolved.assets) {
+        if (asset.mimeType !== 'image/svg+xml') continue
+        const base64 = resolved.base64[asset.id]
+        if (base64 === undefined) continue
+        svgTexts.set(asset.id, Buffer.from(base64, 'base64').toString('utf8'))
+      }
+
+      const scene = buildScene(bundle, svgTexts)
       const natural = new Map(resolved.assets.map(
         (asset) => [asset.id, { width: asset.width, height: asset.height }],
       ))

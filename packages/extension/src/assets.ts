@@ -76,10 +76,29 @@ export const resolveAssets = async (
     }
 
     const mimeType = blob.type.split(';')[0]?.trim() ?? ''
+
+    /** SVG едет ИСХОДНЫМИ БАЙТАМИ, мимо растеризации.
+     *
+     *  Растеризовать его было бы проще, но вектор в Figma лучше
+     *  растра ровно тем, ради чего дизайнер и открывает макет: его
+     *  можно масштабировать и править. Байты доезжают как есть,
+     *  эталонный рендерер рисует их через `data:`-URL в `<image>`, а
+     *  плагин строит из них векторный узел `createNodeFromSvg`.
+     *
+     *  Ужатие и переупаковка ниже к нему неприменимы: у вектора нет
+     *  стороны в пикселях, которую надо ограничивать. */
     if (mimeType === 'image/svg+xml') {
-      complain(request, DIAGNOSTIC_CODES.deferredVector,
-        `Источник отдал SVG, вектор не переносится растром: ${request.url}`,
-        'info', true)
+      const raw = new Uint8Array(await blob.arrayBuffer())
+      bytes[request.id] = raw
+      assets.push({
+        id: request.id, mimeType,
+        /** Размеры взяты из ЗАЯВКИ: их измерил обходчик на странице,
+         *  где SVG уже отрисован. Свой разбор `viewBox` здесь был бы
+         *  вторым источником истины, а расходятся такие источники
+         *  молча. */
+        width: request.naturalWidth, height: request.naturalHeight,
+        path: `assets/${request.id}.svg`,
+      })
       continue
     }
 

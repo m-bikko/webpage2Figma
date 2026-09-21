@@ -13,7 +13,8 @@ import {
 import {
   figmaRgba, gradientPaint, radialGradientPaint, solidPaint,
 } from './paint.js'
-import { imageNodeFor } from './image.js'
+import { emptyBase, imageNodeFor } from './image.js'
+import { resizeSvg } from './svg.js'
 import { autoLayoutVerdict } from '../layout/verdict.js'
 
 /** Режимы наложения CSS и Figma пишутся по-разному: `multiply` против
@@ -176,10 +177,46 @@ const imageChildrenFor = (
   const out: SceneNode[] = []
   for (const [index, fill] of node.style.fills.entries()) {
     if (fill.kind !== 'image') continue
-    /** Плитка уже стала краской на самом узле — см. `paintsFor`. */
-    if (fill.ref.placement.mode === 'tile') continue
     const asset = ctx.assets.get(fill.ref.assetId)
     if (asset === undefined) continue
+
+    const svg = ctx.svgTexts.get(fill.ref.assetId)
+    if (svg !== undefined) {
+      /** Векторный фон: узел строится ВЕКТОРНЫМ, с той же геометрией
+       *  размещения, что была бы у картинки. */
+      const place = fill.ref.placement
+      if (place.mode === 'tile') {
+        /** Повтор вектора выразить нечем: плитка в Figma — свойство
+         *  краски-изображения, а вектор краской не бывает. Рисуется
+         *  один экземпляр, и об этом обязана быть запись — иначе
+         *  повторяющийся узор молча станет одиночной иконкой. */
+        ctx.needsVerification.push({
+          code: DIAGNOSTIC_CODES.deferredRepeatMode,
+          nodeId: node.id,
+          message:
+            'Повторяющийся векторный фон перенесён одним экземпляром: ' +
+            'повтор в Figma есть только у краски-изображения, а вектор ' +
+            'краской не бывает.',
+        })
+      }
+      const drawn = {
+        x: place.offsetX, y: place.offsetY,
+        w: asset.width * place.scaleX, h: asset.height * place.scaleY,
+      }
+      out.push({
+        kind: 'vector',
+        /** Размер подставляется В САМ SVG: файл несёт свои
+         *  `width`/`height`, а `background-size` может задать любые
+         *  другие, и без подстановки иконка приедет исходного
+         *  размера. */
+        svg: resizeSvg(svg, drawn.w, drawn.h),
+        base: emptyBase(`${node.id}-bg${index}`, 'vector', drawn),
+      })
+      continue
+    }
+
+    /** Плитка уже стала краской на самом узле — см. `paintsFor`. */
+    if (fill.ref.placement.mode === 'tile') continue
     const built = imageNodeFor(
       /** Номер слоя входит в идентификатор: два прямоугольника с одним
        *  именем сделали бы круговой обход неоднозначным, а отчёт —
@@ -244,6 +281,11 @@ export const figmaFontStyle = (weight: number, italic: 'normal' | 'italic'): str
 
 type BuildCtx = {
   assets: Map<string, Asset>
+  /** Исходники SVG-ассетов, по идентификатору. Векторный фон едет
+   *  байтами, и строитель делает из него ВЕКТОРНЫЙ узел, а не
+   *  картинку: `figma.createImage` SVG не принимает вовсе, а растр
+   *  потерял бы то единственное, ради чего вектор и нужен. */
+  svgTexts: Map<string, string>
   needsVerification: Scene['needsVerification']
   report: Diagnostic[]
   screenId: string
@@ -527,20 +569,29 @@ export const buildScreen = (
   assets: Map<string, Asset>,
   report: Diagnostic[],
   needsVerification: Scene['needsVerification'],
+  svgTexts: Map<string, string> = new Map(),
 ): SceneScreen => ({
   id: screen.id,
   name: screen.name,
   width: screen.width,
   height: screen.height,
-  root: buildNode(screen.root, { assets, needsVerification, report, screenId: screen.id }),
+  root: buildNode(screen.root, {
+    assets, svgTexts, needsVerification, report, screenId: screen.id,
+  }),
 })
 
-export const buildScene = (bundle: Bundle): Scene & { report: Diagnostic[] } => {
+export const buildScene = (
+  bundle: Bundle,
+  /** Исходники векторных ассетов. Приходят отдельно, потому что байты
+   *  живут в файлах бандла, а не в его описании: строитель чист и сам
+   *  архив не распаковывает. */
+  svgTexts: Map<string, string> = new Map(),
+): Scene & { report: Diagnostic[] } => {
   const assets = new Map(bundle.assets.map((asset) => [asset.id, asset]))
   const needsVerification: Scene['needsVerification'] = []
   const report: Diagnostic[] = []
   const screens = bundle.screens.map(
-    (screen) => buildScreen(screen, assets, report, needsVerification),
+    (screen) => buildScreen(screen, assets, report, needsVerification, svgTexts),
   )
   return { screens, fonts: fontsOf(screens), needsVerification, report }
 }

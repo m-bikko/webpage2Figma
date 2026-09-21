@@ -9,7 +9,7 @@ import type { SceneBase, SceneNode } from '../scene.js'
  *  совершенно обычный случай. */
 const SCALE_TOLERANCE = 1e-9
 
-const emptyBase = (id: string, name: string, rect: Rect): SceneBase => ({
+export const emptyBase = (id: string, name: string, rect: Rect): SceneBase => ({
   id, name,
   x: rect.x, y: rect.y, width: rect.w, height: rect.h,
   rotation: 0, opacity: 1, blendMode: 'NORMAL',

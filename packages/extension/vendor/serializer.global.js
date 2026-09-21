@@ -717,10 +717,6 @@ var H2DSerializer = (() => {
     const raw = (match[1] ?? match[2] ?? match[3] ?? "").trim();
     return raw.length > 0 ? raw : null;
   };
-  var looksLikeSvg = (url) => {
-    const path = url.split("?")[0]?.split("#")[0] ?? "";
-    return path.toLowerCase().endsWith(".svg");
-  };
   var backgroundLayers = (value) => {
     const trimmed = value.trim();
     if (trimmed === "" || trimmed === "none") return [];
@@ -744,7 +740,7 @@ var H2DSerializer = (() => {
     const layer = layers[0] ?? "";
     const url = parseUrlToken(layer);
     if (url !== null) {
-      return looksLikeSvg(url) ? { kind: "vector", code: DIAGNOSTIC_CODES.deferredVector } : { kind: "raster", url };
+      return { kind: "raster", url };
     }
     if (layer.includes("gradient(")) return { kind: "gradient" };
     return { kind: "unknown", raw: layer };
@@ -2309,16 +2305,6 @@ var H2DSerializer = (() => {
           }
           continue;
         }
-        if (verdict.kind === "vector") {
-          sink.report(
-            "info",
-            verdict.code,
-            "\u0412\u0435\u043A\u0442\u043E\u0440\u043D\u044B\u0439 \u0444\u043E\u043D (SVG) \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u0440\u0430\u0441\u0442\u0440\u043E\u043C.",
-            id,
-            false
-          );
-          continue;
-        }
         if (verdict.kind === "unknown") {
           sink.report(
             "warning",
@@ -2966,13 +2952,17 @@ var H2DSerializer = (() => {
       }
       const mimeType = blob.type.split(";")[0]?.trim() ?? "";
       if (mimeType === "image/svg+xml") {
-        complain(
-          request,
-          DIAGNOSTIC_CODES.deferredVector,
-          `\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u043E\u0442\u0434\u0430\u043B SVG, \u0432\u0435\u043A\u0442\u043E\u0440 \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F \u0440\u0430\u0441\u0442\u0440\u043E\u043C: ${request.url}`,
-          "info",
-          true
-        );
+        base64[request.id] = toBase64(new Uint8Array(await blob.arrayBuffer()));
+        assets.push({
+          id: request.id,
+          mimeType,
+          /** Размеры из ЗАЯВКИ: их измерил обходчик на странице, где SVG
+           *  уже отрисован. Свой разбор `viewBox` был бы вторым
+           *  источником истины, а расходятся такие источники молча. */
+          width: request.naturalWidth,
+          height: request.naturalHeight,
+          path: `assets/${request.id}.svg`
+        });
         continue;
       }
       let bitmap;

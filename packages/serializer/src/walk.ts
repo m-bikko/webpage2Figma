@@ -458,11 +458,6 @@ const reportGaps = (
         }
         continue
       }
-      if (verdict.kind === 'vector') {
-        sink.report('info', verdict.code,
-          'Векторный фон (SVG) не переносится растром.', id, false)
-        continue
-      }
       if (verdict.kind === 'unknown') {
         sink.report('warning', DIAGNOSTIC_CODES.deferredGradient,
           `Слой фона "${verdict.raw.slice(0, 60)}" не распознан.`, id, false)

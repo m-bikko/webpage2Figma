@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>svg-background</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:16px}
+  div{height:90px;margin-bottom:12px;background-repeat:no-repeat}
+
+  /* SVG В ФОНЕ — самый обычный способ поставить иконку. На живых
+     страницах таких записей десятки: на Hacker News 30 из 31 всего
+     отчёта. Иконка не приезжала вовсе. */
+  .plain{background-image:url(icon.svg);background-position:12px 20px;
+    background-size:48px 48px;background-color:#f1f5f9}
+
+  /* Другой размер: SVG обязан масштабироваться, а не обрезаться. */
+  .big{background-image:url(icon.svg);background-position:20px 10px;
+    background-size:70px 70px;background-color:#e2e8f0}
+
+  /* SVG ПОВЕРХ градиента: проверяет, что слои и вектор уживаются. */
+  .layered{background-image:url(icon.svg),
+      linear-gradient(to right,#fde68a,#f59e0b);
+    background-position:24px 20px,center;
+    background-size:50px 50px,cover}
+</style></head>
+<body>
+  <div class="plain"></div><div class="big"></div><div class="layered"></div>
+</body></html>

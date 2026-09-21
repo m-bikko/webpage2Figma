@@ -5,7 +5,6 @@ export type BackgroundImageVerdict =
   | { kind: 'none' }
   | { kind: 'raster'; url: string }
   | { kind: 'gradient' }
-  | { kind: 'vector'; code: DiagnosticCode }
   | { kind: 'multi-layer'; code: DiagnosticCode }
   | { kind: 'unknown'; raw: string }
 
@@ -45,16 +44,6 @@ export const parseUrlToken = (layer: string): string | null => {
   return raw.length > 0 ? raw : null
 }
 
-/** SVG распознаётся по расширению пути, а не по типу содержимого: тип
- *  известен только после загрузки, а решение нужно на СИНХРОННОМ обходе.
- *  Ошибка возможна в обе стороны (`.svg`, отдающий PNG; путь без
- *  расширения, отдающий SVG), поэтому вторая проверка — по настоящему
- *  MIME — живёт в фазе разрешения ассетов, где содержимое уже в руках. */
-const looksLikeSvg = (url: string): boolean => {
-  const path = url.split('?')[0]?.split('#')[0] ?? ''
-  return path.toLowerCase().endsWith('.svg')
-}
-
 /** Слои фона, от ВЕРХНЕГО к нижнему — в том порядке, в каком они
  *  записаны в CSS.
  *
@@ -81,8 +70,15 @@ export const layerValue = (value: string, index: number): string => {
   return parts[index % parts.length] ?? ''
 }
 
-/** Разбирает ОДИН слой. Многослойность — забота вызывающего: он и
- *  только он знает, как сложить слои в заливки и в каком порядке. */
+/** Распознавание SVG по расширению пути УБРАНО вместе с отдельной
+ *  веткой для него.
+ *
+ *  Приём был ненадёжен по построению — путь без расширения или `.svg`,
+ *  отдающий PNG, обманывали его, — и, главное, нужды в нём не
+ *  осталось: SVG едет тем же путём ассета, что растр, только байтами
+ *  исходника. Тип узнаётся после загрузки, по заголовку ответа, и
+ *  только там на него и смотрят. */
+
 export const classifyBackgroundImage = (value: string): BackgroundImageVerdict => {
   const trimmed = value.trim()
   if (trimmed === '' || trimmed === 'none') return { kind: 'none' }
@@ -98,9 +94,20 @@ export const classifyBackgroundImage = (value: string): BackgroundImageVerdict =
   const layer = layers[0] ?? ''
   const url = parseUrlToken(layer)
   if (url !== null) {
-    return looksLikeSvg(url)
-      ? { kind: 'vector', code: DIAGNOSTIC_CODES.deferredVector }
-      : { kind: 'raster', url }
+    /** SVG в фоне — ТОТ ЖЕ растровый путь.
+     *
+     *  Различать их здесь больше незачем: браузер рисует фоновый SVG
+     *  через `<image>` так же, как PNG, и эталонный рендерер тоже —
+     *  он кодирует ассет в `data:`-URL, а `data:image/svg+xml` в
+     *  `<image>` работает. Векторность при этом не теряется: байты
+     *  едут исходником, и плагин строит из них настоящий векторный
+     *  узел через `createNodeFromSvg`, а не картинку.
+     *
+     *  Прежнее разделение стоило дорого: на Hacker News 30 записей из
+     *  31 были «векторный фон не переносится растром», то есть почти
+     *  весь отчёт страницы — про иконки, которых в макете не
+     *  появлялось. */
+    return { kind: 'raster', url }
   }
   if (layer.includes('gradient(')) return { kind: 'gradient' }
   return { kind: 'unknown', raw: layer }
