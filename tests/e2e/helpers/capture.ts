@@ -10,6 +10,18 @@ export type CaptureResult = {
   screen: Screen
   report: Diagnostic[]
   fonts: FontRequirement[]
+  assetRequests: AssetRequest[]
+}
+
+/** Повтор формы из сериализатора, а не импорт: тесты читают его бандл
+ *  как текст и не импортируют пакет. Та же причина, что у блока
+ *  `declare global` ниже. */
+export type AssetRequest = {
+  id: string
+  url: string
+  naturalWidth: number
+  naturalHeight: number
+  nodeId: string
 }
 
 /** Поверхность, которую бандл ставит на `window` внутри страницы.

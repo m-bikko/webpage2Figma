@@ -86,6 +86,21 @@ const serveTarget = async () => {
   }
   const { createFixtureServer, FIXTURE_PORT } =
     await import(pathToFileURL(resolve(root, 'scripts/fixture-server.mjs')).href)
+  const origin = `http://127.0.0.1:${FIXTURE_PORT}`
+  /** Уже поднятый сервер переиспользуется, а не приводит к падению.
+   *  Playwright держит свой на том же порту между прогонами
+   *  (`reuseExistingServer`), и захват рядом с идущими тестами — не
+   *  исключительная ситуация, а обычная. Падать на EADDRINUSE стеком
+   *  означало бы наказывать за нормальный сценарий. */
+  const alive = await fetch(origin, { method: 'HEAD' })
+    .then(() => true, () => false)
+  if (alive) {
+    return {
+      url: `${origin}${abs.slice(fixtures.length).split(sep).join('/')}`,
+      close: async () => {},
+    }
+  }
+
   const server = createFixtureServer()
   await new Promise((done) => server.listen(FIXTURE_PORT, '127.0.0.1', done))
   return {

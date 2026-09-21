@@ -5,12 +5,12 @@
 import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
 import type {
   Fill, FontRequirement, IrNode, LayoutAlign, NodeStyle,
-  SelfLayout, SelfPositioning, Transform,
+  ImageRef, SelfLayout, SelfPositioning, Transform,
 } from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { parseLinearGradient } from './css/gradient.js'
-import { classifyBackgroundImage } from './css/image.js'
+import { classifyBackgroundImage, placementFor } from './css/image.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
 import {
@@ -401,6 +401,54 @@ const placeholderFor = (
   return null
 }
 
+/** Что делать с элементом как с изображением.
+ *
+ *  Один вызов решает ОБА исхода намеренно. Развести «дай ссылку» и
+ *  «поставь заглушку» по двум функциям значило бы проверять условие
+ *  загруженности дважды, в двух местах, — и разъехаться им ничто не
+ *  мешает. А разъехавшись, они дали бы ровно тот дефект, из-за которого
+ *  писался план: диагностика «нужна заглушка» при узле-фрейме.
+ *
+ *  До плана 4 `<img>` приезжал пустым фреймом БЕЗ единой записи в
+ *  отчёте: 27628 расходящихся пикселей из 320000 на зонде, невидимых и
+ *  для валидатора, и для pixel-diff, потому что ни одна фикстура
+ *  изображений не содержала.
+ *
+ *  Читается `currentSrc`, а не `src`: при `srcset`/`<picture>` браузер
+ *  уже выбрал источник, и снимать надо выбранный, иначе в бандл уедет
+ *  не та картинка, которую видел пользователь. */
+type ImageVerdict =
+  | { kind: 'not-image' }
+  | { kind: 'ref'; ref: ImageRef }
+  | { kind: 'broken'; label: string }
+
+const readImage = (
+  el: Element,
+  cs: CSSStyleDeclaration,
+  box: { w: number; h: number },
+  ctx: WalkContext,
+  id: string,
+): ImageVerdict => {
+  if (el.tagName !== 'IMG') return { kind: 'not-image' }
+  const img = el as HTMLImageElement
+  if (img.currentSrc === '' || img.naturalWidth === 0 || img.naturalHeight === 0) {
+    ctx.sink.report(
+      'warning', DIAGNOSTIC_CODES.imageUnreadable,
+      `Источник <img> не загружен: "${img.getAttribute('src') ?? ''}".`,
+      id, true,
+    )
+    return { kind: 'broken', label: 'img' }
+  }
+  const natural = { w: img.naturalWidth, h: img.naturalHeight }
+  return {
+    kind: 'ref',
+    ref: {
+      assetId: ctx.requests.request(img.currentSrc, natural.w, natural.h, id),
+      placement: placementFor(cs.objectFit, cs.objectPosition, box, natural),
+    },
+  }
+}
+
 type Built = { node: IrNode; probe: LayoutProbe }
 
 const buildNode = (
@@ -549,8 +597,20 @@ const buildNode = (
   }
 
   const placeholder = placeholderFor(el, ctx.sink, id)
+  const image = readImage(el, cs, box, ctx, id)
   let node: IrNode
-  if (placeholder !== null) {
+  if (image.kind === 'ref') {
+    node = { ...base, kind: 'image', image: image.ref }
+  } else if (image.kind === 'broken') {
+    /** Незагруженный `<img>` обязан стать ЗАГЛУШКОЙ, а не фреймом:
+     *  `readImage` уже сообщил с `needsPlaceholder: true`, и инвариант
+     *  требует, чтобы узел это подтвердил. Пустой фрейм он отвергнет —
+     *  и правильно сделает: именно так дыра и выглядела молча. */
+    node = {
+      ...base, kind: 'placeholder',
+      placeholder: { code: DIAGNOSTIC_CODES.imageUnreadable, label: image.label },
+    }
+  } else if (placeholder !== null) {
     node = { ...base, kind: 'placeholder', placeholder }
   } else {
     const text = readText(el, cs, screenOrigin)

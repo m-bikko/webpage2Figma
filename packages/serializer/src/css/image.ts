@@ -1,4 +1,5 @@
 import { DIAGNOSTIC_CODES, type DiagnosticCode } from '@h2d/ir/codes'
+import type { ImagePlacement } from '@h2d/ir'
 
 export type BackgroundImageVerdict =
   | { kind: 'none' }
@@ -75,4 +76,103 @@ export const classifyBackgroundImage = (value: string): BackgroundImageVerdict =
   }
   if (layer.includes('gradient(')) return { kind: 'gradient' }
   return { kind: 'unknown', raw: layer }
+}
+
+type Size = { w: number; h: number }
+
+/** Одна компонента `object-position` / `background-position`.
+ *
+ *  `null` — не разобрана: вызывающий обязан подставить НАЧАЛЬНОЕ
+ *  значение CSS (центр), а не ноль. Ноль сдвинул бы картинку влево и
+ *  вверх и выглядел бы при этом как настоящая раскладка.
+ *
+ *  Разбирается только то, что реально приходит из вычисленного стиля.
+ *  Замерено в Chromium: ключевые слова приведены к процентам
+ *  (`left top` → `0% 0%`), пара всегда полная. */
+const parsePositionPart = (part: string, free: number): number | null => {
+  const percent = /^(-?[\d.]+)%$/.exec(part)
+  if (percent !== null) {
+    const value = Number.parseFloat(percent[1] ?? '')
+    return Number.isNaN(value) ? null : (free * value) / 100
+  }
+  const px = /^(-?[\d.]+)px$/.exec(part)
+  if (px !== null) {
+    const value = Number.parseFloat(px[1] ?? '')
+    return Number.isNaN(value) ? null : value
+  }
+  return null
+}
+
+/** Масштабы по осям для заданного `object-fit`.
+ *
+ *  Возвращается ПАРА, а не одно число: при `fill` масштабы различаются,
+ *  и единственное число молча растеряло бы растяжение. */
+const scaleFor = (fit: string, box: Size, natural: Size): { x: number; y: number } => {
+  const byWidth = box.w / natural.w
+  const byHeight = box.h / natural.h
+  switch (fit) {
+    case 'contain': {
+      const s = Math.min(byWidth, byHeight)
+      return { x: s, y: s }
+    }
+    case 'cover': {
+      const s = Math.max(byWidth, byHeight)
+      return { x: s, y: s }
+    }
+    case 'none':
+      return { x: 1, y: 1 }
+    case 'scale-down': {
+      const s = Math.min(1, Math.min(byWidth, byHeight))
+      return { x: s, y: s }
+    }
+    /** `fill` — начальное значение CSS, сюда же попадает нераспознанное:
+     *  это совпадает с тем, как повёл бы себя браузер с неизвестным
+     *  ключевым словом. */
+    default:
+      return { x: byWidth, y: byHeight }
+  }
+}
+
+/** Режим для Figma.
+ *
+ *  ВНИМАНИЕ НА ИМЕНА. CSS `object-fit: fill` означает «растянуть,
+ *  пропорции не сохранять». Режим `fill` контракта означает то же, что
+ *  `FILL` в Figma: «заполнить бокс, сохранив пропорции, лишнее
+ *  обрезать» — то есть CSS `cover`. Слово одно, смысл разный, и
+ *  перепутать их значит получить растянутую картинку там, где нужна
+ *  обрезанная.
+ *
+ *  Поле НЕ проверяется pixel-diff: рендерер рисует по `scale`/`offset`,
+ *  а режим нужен только плагину. Единственная его проверка — таблица в
+ *  юнит-тесте; настоящая сверка приходит в плане 5, на живом плагине.
+ *  Записано здесь, чтобы поле не считалось проверенным гейтом. */
+const modeFor = (fit: string): ImagePlacement['mode'] => {
+  switch (fit) {
+    case 'cover': return 'fill'
+    case 'contain': return 'fit'
+    default: return 'crop'
+  }
+}
+
+export const placementFor = (
+  fit: string,
+  position: string,
+  box: Size,
+  natural: Size,
+): ImagePlacement => {
+  const scale = scaleFor(fit, box, natural)
+  const freeX = box.w - natural.w * scale.x
+  const freeY = box.h - natural.h * scale.y
+
+  const parts = position.trim().split(/\s+/)
+  const rawX = parts[0] ?? ''
+  const rawY = parts[1] ?? parts[0] ?? ''
+
+  return {
+    mode: modeFor(fit),
+    offsetX: parsePositionPart(rawX, freeX) ?? freeX / 2,
+    offsetY: parsePositionPart(rawY, freeY) ?? freeY / 2,
+    scaleX: scale.x,
+    scaleY: scale.y,
+  }
 }
