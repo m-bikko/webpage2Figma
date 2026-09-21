@@ -161,23 +161,37 @@ const paintsFor = (
  *  расходящихся пикселей на фикстуре `image-bg`. Комментарий при этом
  *  утверждал, что случай обработан в `buildNode`; утверждение было
  *  неверным, и поймал его не он, а измерение. */
-const imageChildFor = (
+/** Вложенные прямоугольники для ВСЕХ заливок-изображений.
+ *
+ *  Их может быть несколько: многослойный фон — фотография под
+ *  градиентом, две текстуры друг на друге — обычное дело. Прежняя
+ *  редакция брала `find`, то есть ровно первую, и остальные слои
+ *  молча пропадали.
+ *
+ *  Порядок сохраняется тот же, что в заливках: снизу вверх. */
+const imageChildrenFor = (
   node: IrNode,
   ctx: BuildCtx,
-): SceneNode | null => {
-  const fill = node.style.fills.find((candidate) => candidate.kind === 'image')
-  if (fill === undefined || fill.kind !== 'image') return null
-  /** Плитка уже стала краской на самом узле — см. `paintsFor`. */
-  if (fill.ref.placement.mode === 'tile') return null
-  const asset = ctx.assets.get(fill.ref.assetId)
-  if (asset === undefined) return null
-  const built = imageNodeFor(
-    node.id, { x: 0, y: 0, w: node.rect.w, h: node.rect.h },
-    fill.ref.placement, fill.ref.assetId,
-    { width: asset.width, height: asset.height },
-  )
-  ctx.needsVerification.push(...built.needsVerification)
-  return built
+): SceneNode[] => {
+  const out: SceneNode[] = []
+  for (const [index, fill] of node.style.fills.entries()) {
+    if (fill.kind !== 'image') continue
+    /** Плитка уже стала краской на самом узле — см. `paintsFor`. */
+    if (fill.ref.placement.mode === 'tile') continue
+    const asset = ctx.assets.get(fill.ref.assetId)
+    if (asset === undefined) continue
+    const built = imageNodeFor(
+      /** Номер слоя входит в идентификатор: два прямоугольника с одним
+       *  именем сделали бы круговой обход неоднозначным, а отчёт —
+       *  указывающим не на тот узел. */
+      `${node.id}-bg${index}`, { x: 0, y: 0, w: node.rect.w, h: node.rect.h },
+      fill.ref.placement, fill.ref.assetId,
+      { width: asset.width, height: asset.height },
+    )
+    ctx.needsVerification.push(...built.needsVerification)
+    out.push(built)
+  }
+  return out
 }
 
 const textFor = (node: Extract<IrNode, { kind: 'text' }>): SceneText => {
@@ -236,9 +250,9 @@ type BuildCtx = {
 }
 
 const backgroundFirst = (
-  background: SceneNode | null,
+  background: SceneNode[],
   rest: SceneNode[],
-): SceneNode[] => (background === null ? rest : [background, ...rest])
+): SceneNode[] => [...background, ...rest]
 
 /** Отображение ПОЛНОЕ, хотя вердикт и не пропускает сюда
  *  `space-around`/`space-evenly`: неполное дало бы `undefined` в
@@ -317,7 +331,7 @@ const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
     autoLayout: autoLayoutFor(node, ctx),
     /** Картинка-фон идёт ПЕРВЫМ ребёнком: в CSS `background-image`
      *  ложится над `background-color`, но под содержимым. */
-    children: backgroundFirst(imageChildFor(node, ctx), childrenOf(node, ctx)),
+    children: backgroundFirst(imageChildrenFor(node, ctx), childrenOf(node, ctx)),
   }
 }
 

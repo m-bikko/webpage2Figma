@@ -721,6 +721,16 @@ var H2DSerializer = (() => {
     const path = url.split("?")[0]?.split("#")[0] ?? "";
     return path.toLowerCase().endsWith(".svg");
   };
+  var backgroundLayers = (value) => {
+    const trimmed = value.trim();
+    if (trimmed === "" || trimmed === "none") return [];
+    return splitLayers(trimmed);
+  };
+  var layerValue = (value, index2) => {
+    const parts = splitLayers(value);
+    if (parts.length === 0) return "";
+    return parts[index2 % parts.length] ?? "";
+  };
   var classifyBackgroundImage = (value) => {
     const trimmed = value.trim();
     if (trimmed === "" || trimmed === "none") return { kind: "none" };
@@ -2151,48 +2161,55 @@ var H2DSerializer = (() => {
     } else if (!isInvisible(background)) {
       fills.push({ kind: "solid", color: background });
     }
-    if (cs.backgroundImage !== "none") {
-      const verdict = classifyBackgroundImage(cs.backgroundImage);
+    const layers = backgroundLayers(cs.backgroundImage);
+    for (let i = layers.length - 1; i >= 0; i -= 1) {
+      const layer = layers[i];
+      if (layer === void 0) continue;
+      const verdict = classifyBackgroundImage(layer);
       if (verdict.kind === "gradient") {
-        const gradient = parseLinearGradient(cs.backgroundImage, box) ?? parseRadialGradient(cs.backgroundImage, box);
+        const gradient = parseLinearGradient(layer, box) ?? parseRadialGradient(layer, box);
         if (gradient !== null) fills.push({ kind: "gradient", gradient });
-      } else if (verdict.kind === "raster") {
-        const resolved = new URL(verdict.url, document.baseURI).href;
-        const natural = naturalSizeOf(resolved);
-        if (natural === null) {
-          sink.report(
-            "warning",
-            DIAGNOSTIC_CODES.imageUnreadable,
-            `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u043E\u043D\u043E\u0432\u043E\u0433\u043E \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D: ${resolved}`,
-            id,
-            false
-          );
-        } else {
-          const origin = originBoxOf(cs, box);
-          if (repeatVerdict(cs.backgroundRepeat).partial) {
-            sink.report(
-              "info",
-              DIAGNOSTIC_CODES.deferredRepeatMode,
-              `background-repeat: ${cs.backgroundRepeat} \u043D\u0435 \u0432\u044B\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044F \u043E\u0434\u043D\u0438\u043C \u0440\u0435\u0436\u0438\u043C\u043E\u043C \u043D\u0430 \u043E\u0431\u0435 \u043E\u0441\u0438 \u0438 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u0431\u0435\u0437 \u043F\u043E\u0432\u0442\u043E\u0440\u0430.`,
-              id,
-              false
-            );
-          }
-          fills.push({
-            kind: "image",
-            ref: {
-              assetId: requests2.request(resolved, natural.w, natural.h, id, screenId),
-              placement: backgroundPlacementFor(
-                cs.backgroundSize,
-                cs.backgroundPosition,
-                cs.backgroundRepeat,
-                origin,
-                natural
-              )
-            }
-          });
-        }
+        continue;
       }
+      if (verdict.kind !== "raster") continue;
+      const resolved = new URL(verdict.url, document.baseURI).href;
+      const natural = naturalSizeOf(resolved);
+      if (natural === null) {
+        sink.report(
+          "warning",
+          DIAGNOSTIC_CODES.imageUnreadable,
+          `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u043E\u043D\u043E\u0432\u043E\u0433\u043E \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D: ${resolved}`,
+          id,
+          false
+        );
+        continue;
+      }
+      const sizeOfLayer = layerValue(cs.backgroundSize, i);
+      const positionOfLayer = layerValue(cs.backgroundPosition, i);
+      const repeatOfLayer = layerValue(cs.backgroundRepeat, i);
+      const origin = originBoxOf(cs, box);
+      if (repeatVerdict(repeatOfLayer).partial) {
+        sink.report(
+          "info",
+          DIAGNOSTIC_CODES.deferredRepeatMode,
+          `background-repeat: ${repeatOfLayer} \u043D\u0435 \u0432\u044B\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044F \u043E\u0434\u043D\u0438\u043C \u0440\u0435\u0436\u0438\u043C\u043E\u043C \u043D\u0430 \u043E\u0431\u0435 \u043E\u0441\u0438 \u0438 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u0431\u0435\u0437 \u043F\u043E\u0432\u0442\u043E\u0440\u0430.`,
+          id,
+          false
+        );
+      }
+      fills.push({
+        kind: "image",
+        ref: {
+          assetId: requests2.request(resolved, natural.w, natural.h, id, screenId),
+          placement: backgroundPlacementFor(
+            sizeOfLayer,
+            positionOfLayer,
+            repeatOfLayer,
+            origin,
+            natural
+          )
+        }
+      });
     }
     return fills;
   };
@@ -2275,24 +2292,24 @@ var H2DSerializer = (() => {
   var reportGaps = (el, cs, sink, id) => {
     if (cs.backgroundImage !== "none") {
       const rect = el.getBoundingClientRect();
-      const verdict = classifyBackgroundImage(cs.backgroundImage);
-      switch (verdict.kind) {
-        case "gradient": {
-          const box = { w: rect.width, h: rect.height };
-          const parsed = parseLinearGradient(cs.backgroundImage, box) ?? parseRadialGradient(cs.backgroundImage, box);
+      const box = { w: rect.width, h: rect.height };
+      for (const layer of backgroundLayers(cs.backgroundImage)) {
+        const verdict = classifyBackgroundImage(layer);
+        if (verdict.kind === "gradient") {
+          const parsed = parseLinearGradient(layer, box) ?? parseRadialGradient(layer, box);
           if (parsed === null) {
-            const repeating = cs.backgroundImage.includes("repeating-");
+            const repeating = layer.includes("repeating-");
             sink.report(
               repeating ? "warning" : "info",
               repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient : DIAGNOSTIC_CODES.deferredGradient,
-              `background-image "${cs.backgroundImage.slice(0, 60)}" \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0430\u043D\u044B linear-gradient \u0438 radial-gradient, \u043A\u043E\u043D\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u2014 \u043D\u0435\u0442, \u0435\u0433\u043E \u043D\u0435\u0447\u0435\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (\u0432 SVG \u0442\u0430\u043A\u043E\u0433\u043E \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u0430 \u043D\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442).`,
+              `\u0421\u043B\u043E\u0439 \u0444\u043E\u043D\u0430 "${layer.slice(0, 60)}" \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0430\u043D\u044B linear-gradient \u0438 radial-gradient, \u043A\u043E\u043D\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u2014 \u043D\u0435\u0442, \u0435\u0433\u043E \u043D\u0435\u0447\u0435\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (\u0432 SVG \u0442\u0430\u043A\u043E\u0433\u043E \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u0430 \u043D\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442).`,
               id,
               false
             );
           }
-          break;
+          continue;
         }
-        case "vector":
+        if (verdict.kind === "vector") {
           sink.report(
             "info",
             verdict.code,
@@ -2300,29 +2317,18 @@ var H2DSerializer = (() => {
             id,
             false
           );
-          break;
-        case "multi-layer":
-          sink.report(
-            "info",
-            verdict.code,
-            "\u041D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u043B\u043E\u0451\u0432 \u0444\u043E\u043D\u0430: \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0441\u043B\u0443\u0447\u0430\u0439 \u043E\u0434\u043D\u043E\u0433\u043E \u0441\u043B\u043E\u044F.",
-            id,
-            false
-          );
-          break;
-        case "unknown":
+          continue;
+        }
+        if (verdict.kind === "unknown") {
           sink.report(
             "warning",
             DIAGNOSTIC_CODES.deferredGradient,
-            `\u0424\u043E\u043D\u043E\u0432\u043E\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 "${verdict.raw.slice(0, 60)}" \u043D\u0435 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D\u043E.`,
+            `\u0421\u043B\u043E\u0439 \u0444\u043E\u043D\u0430 "${verdict.raw.slice(0, 60)}" \u043D\u0435 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043D.`,
             id,
             false
           );
-          break;
-        case "raster":
-          break;
-        case "none":
-          break;
+          continue;
+        }
       }
     }
     if (cs.transform !== "none") {

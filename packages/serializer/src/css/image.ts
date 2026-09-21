@@ -55,6 +55,34 @@ const looksLikeSvg = (url: string): boolean => {
   return path.toLowerCase().endsWith('.svg')
 }
 
+/** Слои фона, от ВЕРХНЕГО к нижнему — в том порядке, в каком они
+ *  записаны в CSS.
+ *
+ *  Порядок важно помнить именно таким, потому что в наших заливках он
+ *  ОБРАТНЫЙ: там они идут снизу вверх, как их красит браузер.
+ *  Перепутать легко, а выглядит перепутанное правдоподобно: тот же
+ *  набор цветов, только поверх оказывается не тот. */
+export const backgroundLayers = (value: string): string[] => {
+  const trimmed = value.trim()
+  if (trimmed === '' || trimmed === 'none') return []
+  return splitLayers(trimmed)
+}
+
+/** Значения послойных свойств (`background-size`, `-position`,
+ *  `-repeat`) с ЦИКЛИЧЕСКИМ повтором.
+ *
+ *  По CSS список короче списка изображений повторяется: два слоя и
+ *  один `background-size` означают, что размер применяется к обоим.
+ *  Взять вместо этого пустое значение значило бы разместить второй
+ *  слой по умолчанию, то есть не так, как на странице, — и молча. */
+export const layerValue = (value: string, index: number): string => {
+  const parts = splitLayers(value)
+  if (parts.length === 0) return ''
+  return parts[index % parts.length] ?? ''
+}
+
+/** Разбирает ОДИН слой. Многослойность — забота вызывающего: он и
+ *  только он знает, как сложить слои в заливки и в каком порядке. */
 export const classifyBackgroundImage = (value: string): BackgroundImageVerdict => {
   const trimmed = value.trim()
   if (trimmed === '' || trimmed === 'none') return { kind: 'none' }

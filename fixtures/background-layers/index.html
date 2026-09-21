@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>background-layers</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:16px}
+  div{height:110px;margin-bottom:12px}
+
+  /* ДВА ГРАДИЕНТА. Первый в списке рисуется СВЕРХУ — правило, которое
+     легко перепутать, потому что в нашем массиве заливок порядок
+     обратный: там он снизу вверх, как красит браузер. Перепутанный
+     порядок выглядит правдоподобно и виден только по цвету. */
+  .two{background-image:
+    linear-gradient(to right,rgba(220,38,38,.85),rgba(220,38,38,0)),
+    linear-gradient(to bottom,#0ea5e9,#1e3a8a)}
+
+  /* Три слоя, причём верхний — полупрозрачный радиальный: смешение
+     слоёв проверяется вместе с порядком. */
+  .three{background-image:
+    radial-gradient(circle at 30% 40%,rgba(255,255,255,.7),rgba(255,255,255,0)),
+    linear-gradient(to right,rgba(22,163,74,.6),rgba(22,163,74,0)),
+    linear-gradient(to bottom right,#7c3aed,#1e1b4b)}
+
+  /* Слои ПЛЮС цвет фона: цвет всегда в самом низу, под всеми
+     изображениями. */
+  .over-color{background-color:#f59e0b;
+    background-image:
+      linear-gradient(to right,rgba(30,41,59,.9),rgba(30,41,59,0))}
+
+  /* Растр НАД градиентом, со своими размером и положением. Списки
+     background-size и background-position тоже послойные, и взять не
+     тот элемент значило бы разместить картинку по чужим правилам. */
+  .mixed{background-image:url(/image-fit/asset.png),
+      linear-gradient(to bottom,#fde68a,#b45309);
+    background-repeat:no-repeat,no-repeat;
+    background-size:80px 60px,cover;
+    background-position:24px 20px,center}
+
+  /* Меньше значений, чем слоёв: по CSS они повторяются циклически.
+     Ошибка здесь тиха — второй слой просто разместится не так. */
+  .cyclic{background-image:url(/image-fit/asset.png),url(/image-fit/asset.png);
+    background-repeat:no-repeat;
+    background-size:60px 45px;
+    background-position:10px 10px,200px 50px}
+</style></head>
+<body>
+  <div class="two"></div>
+  <div class="three"></div>
+  <div class="over-color"></div>
+  <div class="mixed"></div>
+  <div class="cyclic"></div>
+</body></html>

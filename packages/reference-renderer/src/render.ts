@@ -372,17 +372,11 @@ const imageTag = (
 
 const renderBox = (node: IrNode, ctx: RenderCtx): string => {
   const { style } = node
-  const solid = style.fills.find((fill) => fill.kind === 'solid')
-  const gradientFill = style.fills.find((fill) => fill.kind === 'gradient')
-  const imageFill = style.fills.find((fill) => fill.kind === 'image')
   const hasShadow = style.shadows.length > 0
   /** Фильтр нужен и ради теней, и ради размытия слоя — оба живут в одном
    *  `<filter>`, потому что SVG допускает только один на элемент. */
   const needsFilter = hasShadow || style.blur !== null
-  if (
-    solid === undefined && gradientFill === undefined && imageFill === undefined
-    && style.stroke === null && !hasShadow
-  ) return ''
+  if (style.fills.length === 0 && style.stroke === null && !hasShadow) return ''
 
   /** Неравные стороны рисуются кольцом, а не обводкой; тогда заливка
    *  занимает ВЕСЬ border box, как в CSS с `background-clip: border-box`,
@@ -392,31 +386,59 @@ const renderBox = (node: IrNode, ctx: RenderCtx): string => {
     && style.stroke.style === 'solid'
 
   const rect = insetRect(node.rect, ringed ? null : style.stroke)
-  const attrs: string[] = []
 
-  /** Когда есть и цвет, и градиент, рисуются ОБА — стопкой, как красит
-   *  браузер: `background-image` ложится поверх `background-color`.
+  /** ВСЕ заливки рисуются стопкой, в порядке массива — снизу вверх,
+   *  как их красит браузер.
    *
-   *  Раньше цвет отбрасывался, и это было измерено как расхождение 30%
-   *  (36409 из 120000 пикселей) на полупрозрачном градиенте поверх цвета:
-   *  браузер смешивает, рендерер рисовал только градиент. Ни одна фикстура
-   *  этот случай не видела, то есть у гейта было слепое пятно. */
-  const underlay = (gradientFill !== undefined || imageFill !== undefined)
-      && solid !== undefined && solid.kind === 'solid'
-    ? shapeFor(node, rect, style.corner,
-        [`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`],
-        '')
-    : ''
+   *  Прежняя редакция брала ПЕРВЫЙ градиент и ПЕРВОЕ изображение через
+   *  `find`, то есть умела ровно по одному каждого вида. Многослойный
+   *  фон — градиент поверх фотографии, два градиента друг на друге —
+   *  рисовался одним слоем, и расхождение доходило до 596913 пикселей
+   *  на фикстуре `background-layers`.
+   *
+   *  Первая заливка достаётся САМОЙ фигуре, потому что на ней же
+   *  висят обводка и эффекты; остальные ложатся поверх отдельными
+   *  фигурами той же геометрии. У одного элемента SVG заливка может
+   *  быть только одна. */
+  const over: string[] = []
+  let fillAttrs: string[] | null = null
 
-  if (gradientFill !== undefined && gradientFill.kind === 'gradient') {
-    const gradientId = `grad-${node.id}`
-    ctx.defs.push(gradientDef(gradientId, gradientFill.gradient, rect))
-    attrs.push(`fill="url(#${gradientId})"`)
-  } else if (solid !== undefined && solid.kind === 'solid') {
-    attrs.push(`fill="${rgb(solid.color)}"`, `fill-opacity="${solid.color.a}"`)
-  } else {
-    attrs.push('fill="none"')
+  for (const [index, fill] of style.fills.entries()) {
+    if (fill.kind === 'image') {
+      /** Картинка — не заливка фигуры, а отдельный элемент со своей
+       *  геометрией размещения.
+       *
+       *  `node.rect`, а НЕ `rect`: последний ужат на половину обводки,
+       *  чтобы SVG рисовал её по центру пути, как CSS рисует внутрь.
+       *  Смещения в `placement` посчитаны от border box — сложить их с
+       *  ужатым прямоугольником значит прибавить половину рамки
+       *  дважды. Измерено на фикстуре `image-bg`: 1365 расходящихся
+       *  пикселей, ВСЕ в единственной ячейке с рамкой.
+       *
+       *  Border box верен и для обрезки: `background-clip` по
+       *  умолчанию `border-box`, то есть фон заходит ПОД рамку. */
+      over.push(imageTag(fill.ref, node.rect, node.id, ctx))
+      continue
+    }
+
+    const own: string[] = []
+    if (fill.kind === 'solid') {
+      own.push(`fill="${rgb(fill.color)}"`, `fill-opacity="${fill.color.a}"`)
+    } else {
+      /** Идентификатор несёт номер слоя: без него два градиента на
+       *  одном узле получили бы одно имя, и второй молча покрасился
+       *  бы первым. */
+      const gradientId = `grad-${node.id}-${index}`
+      ctx.defs.push(gradientDef(gradientId, fill.gradient, rect))
+      own.push(`fill="url(#${gradientId})"`)
+    }
+
+    if (fillAttrs === null) fillAttrs = own
+    else over.push(shapeFor(node, rect, style.corner, own, ''))
   }
+
+  const attrs: string[] = [...(fillAttrs ?? ['fill="none"'])]
+
   if (style.stroke !== null && !ringed) {
     attrs.push(
       `stroke="${rgb(style.stroke.color)}"`,
@@ -446,26 +468,9 @@ const renderBox = (node: IrNode, ctx: RenderCtx): string => {
 
   const ring = ringed && style.stroke !== null ? borderRing(node, style.stroke) : ''
   const dash = style.stroke === null || ringed ? '' : dashArray(style.stroke)
-  /** Картинка ложится ПОВЕРХ цвета и градиента, но ПОД рамкой — так же,
-   *  как красит браузер: `background-image` над `background-color`,
-   *  а граница поверх обоих. */
-  const overlay = imageFill !== undefined && imageFill.kind === 'image'
-    /** `node.rect`, а НЕ `rect`: последний ужат на половину обводки,
-     *  чтобы SVG рисовал её по центру пути, как CSS рисует внутрь. Но
-     *  смещения в `placement` посчитаны от border box — сложить их с
-     *  ужатым прямоугольником значит прибавить половину рамки дважды.
-     *
-     *  Измерено на фикстуре `image-bg`: 1365 расходящихся пикселей,
-     *  ВСЕ в единственной ячейке с рамкой. Остальные пять ячеек давали
-     *  ноль, потому что рамки у них нет и `rect` совпадает с
-     *  `node.rect`. Ячейку с рамкой пришлось добавить специально —
-     *  без неё ветка `background-origin` ничего не проверяла.
-     *
-     *  Border box верен и для обрезки: `background-clip` по умолчанию
-     *  `border-box`, то есть фон заходит ПОД рамку. */
-    ? imageTag(imageFill.ref, node.rect, node.id, ctx)
-    : ''
-  return underlay + shapeFor(node, rect, style.corner, attrs, dash) + overlay + ring
+  /** Рамка идёт ПОСЛЕДНЕЙ: в CSS граница рисуется поверх всех слоёв
+   *  фона. */
+  return shapeFor(node, rect, style.corner, attrs, dash) + over.join('') + ring
 }
 
 /** Базовая линия ставится из бокса строки: `y + (h + fontSize * R) / 2`.

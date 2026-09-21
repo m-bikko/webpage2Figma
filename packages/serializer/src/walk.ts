@@ -13,8 +13,8 @@ import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { sizeFromDataUrl } from './css/data-url.js'
 import { parseLinearGradient, parseRadialGradient } from './css/gradient.js'
 import {
-  backgroundPlacementFor, classifyBackgroundImage, placementFor, repeatVerdict,
-  type OriginBox,
+  backgroundLayers, backgroundPlacementFor, classifyBackgroundImage,
+  layerValue, placementFor, repeatVerdict, type OriginBox,
 } from './css/image.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
@@ -257,47 +257,73 @@ const readFills = (
     fills.push({ kind: 'solid', color: background })
   }
 
-  /** Градиент кладётся ПОВЕРХ цвета фона — так же, как красит браузер:
-   *  `background-image` рисуется над `background-color`. Порядок в массиве
-   *  `fills` и есть порядок отрисовки. */
-  if (cs.backgroundImage !== 'none') {
-    const verdict = classifyBackgroundImage(cs.backgroundImage)
+  /** Изображения кладутся ПОВЕРХ цвета фона — так же, как красит
+   *  браузер: `background-image` рисуется над `background-color`.
+   *  Порядок в массиве `fills` и есть порядок отрисовки.
+   *
+   *  Слои перебираются С КОНЦА, и это не мелочь: в CSS первый слой
+   *  списка рисуется САМЫМ ВЕРХНИМ, а в наших заливках порядок
+   *  обратный — снизу вверх. Перепутать легко, а перепутанное
+   *  выглядит правдоподобно: цвета те же, поверх оказывается не тот.
+   *
+   *  До этого места многослойный фон не переносился вовсе: слоёв
+   *  больше одного — и весь `background-image` отбрасывался с
+   *  диагностикой. На восьми живых страницах это 65 записей и,
+   *  главное, потерянные заливки там, где градиент лежит поверх
+   *  картинки, — обычный приём затемнения фото под текстом. */
+  const layers = backgroundLayers(cs.backgroundImage)
+  for (let i = layers.length - 1; i >= 0; i -= 1) {
+    const layer = layers[i]
+    if (layer === undefined) continue
+    const verdict = classifyBackgroundImage(layer)
+
     if (verdict.kind === 'gradient') {
-      const gradient = parseLinearGradient(cs.backgroundImage, box)
-        ?? parseRadialGradient(cs.backgroundImage, box)
+      const gradient = parseLinearGradient(layer, box)
+        ?? parseRadialGradient(layer, box)
       if (gradient !== null) fills.push({ kind: 'gradient', gradient })
-    } else if (verdict.kind === 'raster') {
-      /** URL из вычисленного стиля уже абсолютен, но `new URL` с базой
-       *  документа делает это утверждение независимым от браузера:
-       *  полагаться на относительность мы не хотим, а идентификатор
-       *  ассета выдаётся по URL и обязан быть стабильным. */
-      const resolved = new URL(verdict.url, document.baseURI).href
-      const natural = naturalSizeOf(resolved)
-      if (natural === null) {
-        /** Размер источника неизвестен синхронно. Подставить размер
-         *  бокса значило бы выдать догадку за факт и молча исказить
-         *  масштаб — поэтому заливки не будет, а будет запись в отчёт. */
-        sink.report('warning', DIAGNOSTIC_CODES.imageUnreadable,
-          `Размер фонового изображения недоступен: ${resolved}`, id, false)
-      } else {
-        const origin = originBoxOf(cs, box)
-        if (repeatVerdict(cs.backgroundRepeat).partial) {
-          sink.report('info', DIAGNOSTIC_CODES.deferredRepeatMode,
-            `background-repeat: ${cs.backgroundRepeat} не выражается одним ` +
-            `режимом на обе оси и перенесён без повтора.`, id, false)
-        }
-        fills.push({
-          kind: 'image',
-          ref: {
-            assetId: requests.request(resolved, natural.w, natural.h, id, screenId),
-            placement: backgroundPlacementFor(
-              cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat,
-              origin, natural,
-            ),
-          },
-        })
-      }
+      continue
     }
+
+    if (verdict.kind !== 'raster') continue
+
+    /** URL из вычисленного стиля уже абсолютен, но `new URL` с базой
+     *  документа делает это утверждение независимым от браузера:
+     *  полагаться на относительность мы не хотим, а идентификатор
+     *  ассета выдаётся по URL и обязан быть стабильным. */
+    const resolved = new URL(verdict.url, document.baseURI).href
+    const natural = naturalSizeOf(resolved)
+    if (natural === null) {
+      /** Размер источника неизвестен синхронно. Подставить размер
+       *  бокса значило бы выдать догадку за факт и молча исказить
+       *  масштаб — поэтому заливки не будет, а будет запись в отчёт. */
+      sink.report('warning', DIAGNOSTIC_CODES.imageUnreadable,
+        `Размер фонового изображения недоступен: ${resolved}`, id, false)
+      continue
+    }
+
+    /** Послойные свойства берутся ПО НОМЕРУ СЛОЯ, с циклическим
+     *  повтором короткого списка — так их читает CSS. Взять первый
+     *  для всех слоёв значило бы разместить остальные по чужим
+     *  правилам, и снова молча. */
+    const sizeOfLayer = layerValue(cs.backgroundSize, i)
+    const positionOfLayer = layerValue(cs.backgroundPosition, i)
+    const repeatOfLayer = layerValue(cs.backgroundRepeat, i)
+
+    const origin = originBoxOf(cs, box)
+    if (repeatVerdict(repeatOfLayer).partial) {
+      sink.report('info', DIAGNOSTIC_CODES.deferredRepeatMode,
+        `background-repeat: ${repeatOfLayer} не выражается одним ` +
+        `режимом на обе оси и перенесён без повтора.`, id, false)
+    }
+    fills.push({
+      kind: 'image',
+      ref: {
+        assetId: requests.request(resolved, natural.w, natural.h, id, screenId),
+        placement: backgroundPlacementFor(
+          sizeOfLayer, positionOfLayer, repeatOfLayer, origin, natural,
+        ),
+      },
+    })
   }
 
   return fills
@@ -396,57 +422,58 @@ const reportGaps = (
 ): void => {
   if (cs.backgroundImage !== 'none') {
     const rect = el.getBoundingClientRect()
-    const verdict = classifyBackgroundImage(cs.backgroundImage)
-    /** Диагностика только на то, что НЕ разобрали. Линейные градиенты
-     *  переносятся, и сообщать о них было бы шумом, а шум учит
-     *  игнорировать отчёт целиком.
+    const box = { w: rect.width, h: rect.height }
+
+    /** Разбор ПОСЛОЙНЫЙ, как и перенос.
      *
-     *  Вердикт нужен потому, что прежняя ветка сообщала обо ВСЁМ
-     *  неразобранном кодом `deferred.gradient` — включая `url(...)`.
-     *  Растр градиентом не является, и такое сообщение уводило
-     *  читателя отчёта не туда. */
-    switch (verdict.kind) {
-      case 'gradient': {
-        const box = { w: rect.width, h: rect.height }
-        const parsed = parseLinearGradient(cs.backgroundImage, box)
-          ?? parseRadialGradient(cs.backgroundImage, box)
+     *  Прежняя редакция классифицировала весь `background-image`
+     *  целиком и на нескольких слоях отвечала «перенесён только случай
+     *  одного слоя» — сообщение, которое теперь было бы ложью: слои
+     *  переносятся все. Диагностика осталась только на то, что
+     *  действительно не разобрано, и выдаётся за КОНКРЕТНЫЙ слой. */
+    for (const layer of backgroundLayers(cs.backgroundImage)) {
+      const verdict = classifyBackgroundImage(layer)
+      /** Диагностика только на то, что НЕ разобрали. Градиенты
+       *  переносятся, и сообщать о них было бы шумом, а шум учит
+       *  игнорировать отчёт целиком.
+       *
+       *  Вердикт нужен потому, что прежняя ветка сообщала обо ВСЁМ
+       *  неразобранном кодом `deferred.gradient` — включая `url(...)`.
+       *  Растр градиентом не является, и такое сообщение уводило
+       *  читателя отчёта не туда. */
+      if (verdict.kind === 'gradient') {
+        const parsed = parseLinearGradient(layer, box)
+          ?? parseRadialGradient(layer, box)
         if (parsed === null) {
-          const repeating = cs.backgroundImage.includes('repeating-')
+          const repeating = layer.includes('repeating-')
           sink.report(
             repeating ? 'warning' : 'info',
             repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
                       : DIAGNOSTIC_CODES.deferredGradient,
-            `background-image "${cs.backgroundImage.slice(0, 60)}" не ` +
-            `переносится: поддержаны linear-gradient и radial-gradient, ` +
-            `конический — нет, его нечем проверить (в SVG такого ` +
-            `градиента не существует).`,
+            `Слой фона "${layer.slice(0, 60)}" не переносится: поддержаны ` +
+            `linear-gradient и radial-gradient, конический — нет, его ` +
+            `нечем проверить (в SVG такого градиента не существует).`,
             id, false,
           )
         }
-        break
+        continue
       }
-      case 'vector':
+      if (verdict.kind === 'vector') {
         sink.report('info', verdict.code,
           'Векторный фон (SVG) не переносится растром.', id, false)
-        break
-      case 'multi-layer':
-        sink.report('info', verdict.code,
-          'Несколько слоёв фона: перенесён только случай одного слоя.', id, false)
-        break
-      case 'unknown':
+        continue
+      }
+      if (verdict.kind === 'unknown') {
         sink.report('warning', DIAGNOSTIC_CODES.deferredGradient,
-          `Фоновое изображение "${verdict.raw.slice(0, 60)}" не распознано.`,
-          id, false)
-        break
-      case 'raster':
-        /** Растровым фоном занимается `readFills`: там есть накопитель
-         *  заявок. Он же и сообщит, если байты недоступны. Дублировать
-         *  диагностику здесь значило бы ругаться на то, что работает. */
-        break
-      case 'none':
-        break
+          `Слой фона "${verdict.raw.slice(0, 60)}" не распознан.`, id, false)
+        continue
+      }
+      /** Растром занимается `readFills`: там есть накопитель заявок, и
+       *  он же сообщит, если байты недоступны. Дублировать диагностику
+       *  здесь значило бы ругаться на то, что работает. */
     }
   }
+
   if (cs.transform !== 'none') {
     const matrix = parseMatrix(cs.transform)
     if (matrix === null) {
