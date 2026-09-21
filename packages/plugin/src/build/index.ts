@@ -252,14 +252,16 @@ const autoLayoutFor = (node: IrNode, ctx: BuildCtx): SceneAutoLayout | null => {
   }
 
   return {
-    mode: node.layout.mode === 'row' ? 'HORIZONTAL' : 'VERTICAL',
-    itemSpacing: node.layout.gap,
-    paddingTop: node.layout.padding.top,
-    paddingRight: node.layout.padding.right,
-    paddingBottom: node.layout.padding.bottom,
-    paddingLeft: node.layout.padding.left,
+    mode: verdict.mode === 'row' ? 'HORIZONTAL' : 'VERTICAL',
+    /** Параметры берутся СВЁРНУТЫЕ: внешние отступы детей уже учтены
+     *  в них, потому что у auto-layout отступов на ребёнке нет. */
+    itemSpacing: verdict.gap,
+    paddingTop: verdict.padding.top,
+    paddingRight: verdict.padding.right,
+    paddingBottom: verdict.padding.bottom,
+    paddingLeft: verdict.padding.left,
     primaryAxisAlignItems: PRIMARY_ALIGN[node.layout.justify],
-    counterAxisAlignItems: COUNTER_ALIGN[node.layout.align],
+    counterAxisAlignItems: COUNTER_ALIGN[verdict.align],
     expected: verdict.expected.map((place) => ({ x: place.x, y: place.y })),
   }
 }

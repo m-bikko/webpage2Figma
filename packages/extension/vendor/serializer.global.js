@@ -1,7 +1,7 @@
 "use strict";
 var H2DSerializer = (() => {
   // ../ir/src/version.ts
-  var IR_VERSION = 2;
+  var IR_VERSION = 3;
 
   // src/diagnostics.ts
   var DiagnosticSink = class {
@@ -894,7 +894,7 @@ var H2DSerializer = (() => {
   };
   var modeOf = (cs) => {
     const display = cs.display;
-    if (display === "grid" || display === "inline-grid") return "column";
+    if (display === "grid" || display === "inline-grid") return "grid";
     if (display !== "flex" && display !== "inline-flex") return "none";
     return cs.flexDirection.startsWith("column") ? "column" : "row";
   };
@@ -1301,11 +1301,23 @@ var H2DSerializer = (() => {
   var readSelfLayout = (cs) => {
     const positioning = cs.position === "absolute" ? "absolute" : cs.position === "fixed" ? "fixed" : cs.position === "sticky" ? "sticky" : cs.float !== "none" ? "float" : "flow";
     const rawAlign = cs.alignSelf;
+    const px = (value) => Number.parseFloat(value) || 0;
+    const margin = {
+      top: px(cs.marginTop),
+      right: px(cs.marginRight),
+      bottom: px(cs.marginBottom),
+      left: px(cs.marginLeft)
+    };
     return {
       positioning,
       align: rawAlign === "auto" ? null : ALIGN_SELF[rawAlign] ?? null,
       grow: Number.parseFloat(cs.flexGrow) || 0,
-      shrink: Number.isNaN(Number.parseFloat(cs.flexShrink)) ? 1 : Number.parseFloat(cs.flexShrink)
+      shrink: Number.isNaN(Number.parseFloat(cs.flexShrink)) ? 1 : Number.parseFloat(cs.flexShrink),
+      margin,
+      marginAuto: {
+        horizontal: margin.left > 0 && Math.abs(margin.left - margin.right) < 0.5,
+        vertical: margin.top > 0 && Math.abs(margin.top - margin.bottom) < 0.5
+      }
     };
   };
   var naturalSizeOf = (url) => {
@@ -1590,15 +1602,6 @@ var H2DSerializer = (() => {
         "info",
         DIAGNOSTIC_CODES.stickyFlattened,
         `position: ${cs.position} \u0441\u043D\u044F\u0442 \u0432 \u0442\u0435\u043A\u0443\u0449\u0435\u043C \u0441\u043A\u0440\u043E\u043B\u043B-\u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u0438.`,
-        id,
-        false
-      );
-    }
-    if (cs.display === "grid" || cs.display === "inline-grid") {
-      sink.report(
-        "info",
-        DIAGNOSTIC_CODES.gridFlattened,
-        "CSS grid \u0441\u0432\u0435\u0434\u0451\u043D \u043A \u043A\u043E\u043B\u043E\u043D\u043A\u0435: \u0432 Figma \u043D\u0435\u0442 \u0434\u0432\u0443\u043C\u0435\u0440\u043D\u043E\u0433\u043E auto-layout.",
         id,
         false
       );

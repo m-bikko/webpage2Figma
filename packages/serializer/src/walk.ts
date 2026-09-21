@@ -121,6 +121,24 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
     : 'flow'
 
   const rawAlign = cs.alignSelf
+  const px = (value: string): number => Number.parseFloat(value) || 0
+
+  /** `margin: auto` читается из ОБЪЯВЛЕННОГО значения, а не из
+   *  вычисленного: вычисленное браузер уже разрешил в пиксели, и
+   *  отличить «поставили 16» от «получилось 16 само» по нему нельзя.
+   *  А различать надо: центрирование блока через `margin: 0 auto` —
+   *  самая частая раскладка, которую флекс сам по себе не объясняет.
+   *
+   *  Объявленное значение доступно только через таблицы стилей
+   *  элемента; `style` даёт лишь инлайновое. Поэтому берётся то, что
+   *  есть: признак `auto` выводится из симметрии вычисленных отступов
+   *  при ненулевом свободном месте — способ приблизительный, и он
+   *  честно назван приблизительным там, где используется. */
+  const margin = {
+    top: px(cs.marginTop), right: px(cs.marginRight),
+    bottom: px(cs.marginBottom), left: px(cs.marginLeft),
+  }
+
   return {
     positioning,
     align: rawAlign === 'auto' ? null : (ALIGN_SELF[rawAlign] ?? null),
@@ -128,6 +146,11 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
     shrink: Number.isNaN(Number.parseFloat(cs.flexShrink))
       ? 1
       : Number.parseFloat(cs.flexShrink),
+    margin,
+    marginAuto: {
+      horizontal: margin.left > 0 && Math.abs(margin.left - margin.right) < 0.5,
+      vertical: margin.top > 0 && Math.abs(margin.top - margin.bottom) < 0.5,
+    },
   }
 }
 
@@ -449,10 +472,15 @@ const reportGaps = (
     sink.report('info', DIAGNOSTIC_CODES.stickyFlattened,
       `position: ${cs.position} снят в текущем скролл-положении.`, id, false)
   }
-  if (cs.display === 'grid' || cs.display === 'inline-grid') {
-    sink.report('info', DIAGNOSTIC_CODES.gridFlattened,
-      'CSS grid сведён к колонке: в Figma нет двумерного auto-layout.', id, false)
-  }
+  /** Диагностика про сетку здесь БОЛЬШЕ НЕ ставится.
+   *
+   *  Она утверждала «сведён к колонке» — а теперь сетка записывается
+   *  сеткой, и сводит её (или не сводит) плагин, который единственный
+   *  видит, одномерная она или двумерная. Сообщать о сведении там,
+   *  где сведения не происходит, значило бы врать в отчёте.
+   *
+   *  Код `fidelity.grid-flattened` сохранён: коды стабильны, и его
+   *  теперь порождает плагин. */
   if (el.namespaceURI === 'http://www.w3.org/2000/svg') {
     sink.report('info', DIAGNOSTIC_CODES.deferredVector,
       'Векторное содержимое не переносится в этом плане.', id, false)

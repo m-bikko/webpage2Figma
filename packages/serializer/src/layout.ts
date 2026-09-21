@@ -30,11 +30,15 @@ const JUSTIFY_MAP: Record<string, LayoutJustify> = {
   'space-evenly': 'space-evenly',
 }
 
-/** Figma не имеет двумерного auto-layout, поэтому grid сводится к колонке.
- *  Расхождение фиксирует вызывающий через Diagnostic. */
+/** Сетка записывается СЕТКОЙ, а не сводится к колонке.
+ *
+ *  IR описывает страницу, а не то, во что её удобно превратить.
+ *  Сведение здесь означало бы, что плагин уже не узнает, была ли это
+ *  сетка, и станет предсказывать раскладку по неверной оси — измерено
+ *  на живой странице как главная причина отказов от auto-layout. */
 const modeOf = (cs: CSSStyleDeclaration): LayoutMode => {
   const display = cs.display
-  if (display === 'grid' || display === 'inline-grid') return 'column'
+  if (display === 'grid' || display === 'inline-grid') return 'grid'
   if (display !== 'flex' && display !== 'inline-flex') return 'none'
   return cs.flexDirection.startsWith('column') ? 'column' : 'row'
 }

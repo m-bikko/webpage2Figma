@@ -1,4 +1,4 @@
-import type { NodeLayout } from '@w2f/ir'
+import type { NodeLayout, Sides } from '@w2f/ir'
 
 export type Size = { width: number; height: number }
 export type Placement = { x: number; y: number }
@@ -21,11 +21,27 @@ export const solveLayout = (
   layout: NodeLayout,
   container: Size,
   children: readonly Size[],
+  /** Толщина рамки контейнера по сторонам.
+   *
+   *  Нужна потому, что флекс раскладывает детей в CONTENT BOX — то
+   *  есть после рамки И отступов, — а `rect` узла это border box.
+   *  Забыть рамку значит промахнуться ровно на её толщину: на живой
+   *  странице это давало расхождение в один пиксель и отказ от
+   *  auto-layout там, где он верен.
+   *
+   *  Тот же класс ошибки, что и с `background-origin` в плане 4:
+   *  координаты считаются не от того бокса. */
+  border: Sides = { top: 0, right: 0, bottom: 0, left: 0 },
 ): Placement[] => {
   if (children.length === 0) return []
 
   const horizontal = layout.mode === 'row'
-  const { padding } = layout
+  const padding = {
+    top: layout.padding.top + border.top,
+    right: layout.padding.right + border.right,
+    bottom: layout.padding.bottom + border.bottom,
+    left: layout.padding.left + border.left,
+  }
 
   /** Продольная ось — та, вдоль которой складываются дети.
    *  Разведение на «главную» и «поперечную» вместо x/y нужно ровно

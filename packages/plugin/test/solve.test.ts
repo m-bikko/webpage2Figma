@@ -121,3 +121,33 @@ describe('solveLayout: растяжение', () => {
     expect(out.map((p) => p.y)).toEqual([6, 6])
   })
 })
+
+describe('solveLayout: рамка контейнера', () => {
+  /** Флекс раскладывает детей в CONTENT BOX — после рамки и отступов.
+   *  `rect` узла это border box, поэтому рамку надо прибавлять к
+   *  отступам. Забыть её значит промахнуться ровно на её толщину: на
+   *  живой странице это давало расхождение в один пиксель и отказ от
+   *  auto-layout там, где он верен. */
+  it('рамка сдвигает содержимое так же, как отступ', () => {
+    const out = solveLayout(
+      layout({ mode: 'row', gap: 10 }),
+      { width: 300, height: 100 },
+      [kid(50, 20), kid(40, 20)],
+      { top: 2, right: 3, bottom: 2, left: 4 },
+    )
+    expect(out.map((p) => p.x)).toEqual([4, 64])
+    expect(out.map((p) => p.y)).toEqual([2, 2])
+  })
+
+  /** Рамка уменьшает и доступное место: иначе центрирование уедет. */
+  it('рамка уменьшает доступное место', () => {
+    const out = solveLayout(
+      layout({ mode: 'row', justify: 'center' }),
+      { width: 300, height: 100 },
+      [kid(100, 20)],
+      { top: 0, right: 50, bottom: 0, left: 0 },
+    )
+    /** Доступно 250, ребёнок 100, свободно 150 → 75 от левого края. */
+    expect(out[0]?.x).toBeCloseTo(75, 6)
+  })
+})

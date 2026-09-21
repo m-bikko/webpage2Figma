@@ -211,7 +211,11 @@ const nodeFrom = (
     layout: { mode: 'none' as const, gap: 0,
               padding: { top: 0, right: 0, bottom: 0, left: 0 },
               align: 'start' as const, justify: 'start' as const, wrap: false },
-    selfLayout: { positioning: 'flow' as const, align: null, grow: 0, shrink: 1 },
+    selfLayout: {
+      positioning: 'flow' as const, align: null, grow: 0, shrink: 1,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      marginAuto: { horizontal: false, vertical: false },
+    },
     children,
   }
 

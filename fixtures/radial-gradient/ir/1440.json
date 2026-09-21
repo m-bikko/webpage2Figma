@@ -39,7 +39,17 @@
         "positioning": "flow",
         "align": null,
         "grow": 0,
-        "shrink": 1
+        "shrink": 1,
+        "margin": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        },
+        "marginAuto": {
+          "horizontal": false,
+          "vertical": false
+        }
       },
       "style": {
         "fills": [
@@ -97,7 +107,17 @@
             "positioning": "flow",
             "align": null,
             "grow": 0,
-            "shrink": 1
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
           },
           "style": {
             "fills": [],

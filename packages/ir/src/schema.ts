@@ -106,7 +106,7 @@ const nodeStyle = z.object({
 const layoutAlign = z.enum(['start', 'center', 'end', 'stretch', 'baseline'])
 
 const nodeLayout = z.object({
-  mode: z.enum(['row', 'column', 'none']),
+  mode: z.enum(['row', 'column', 'grid', 'none']),
   gap: z.number(),
   padding: sides,
   align: layoutAlign,
@@ -121,6 +121,8 @@ const selfLayout = z.object({
   align: layoutAlign.nullable(),
   grow: z.number(),
   shrink: z.number(),
+  margin: sides,
+  marginAuto: z.object({ horizontal: z.boolean(), vertical: z.boolean() }),
 })
 
 const textRun = z.object({

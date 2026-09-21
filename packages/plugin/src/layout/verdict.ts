@@ -1,5 +1,8 @@
 import type { IrNode } from '@w2f/ir'
 import { solveLayout, type Placement } from './solve.js'
+import { foldMargins } from './fold.js'
+import { gridAxis } from './grid.js'
+import type { NodeLayout, Sides } from '@w2f/ir'
 
 /** Допуск на совпадение, в пикселях.
  *
@@ -13,7 +16,19 @@ import { solveLayout, type Placement } from './solve.js'
 const TOLERANCE = 0.5
 
 export type AutoLayoutVerdict =
-  | { safe: true; expected: Placement[] }
+  | {
+      safe: true
+      expected: Placement[]
+      /** Ось, по которой раскладывать. Для сетки выведена из
+       *  измеренного и может не совпадать с `layout.mode`. */
+      mode: 'row' | 'column'
+      /** Параметры, СВЁРНУТЫЕ из внешних отступов детей. Отдаются
+       *  наружу потому, что в Figma поедут именно они, а не исходные:
+       *  у auto-layout нет отступов на ребёнке. */
+      gap: number
+      padding: Sides
+      align: NodeLayout['align']
+    }
   | { safe: false; reason: string }
 
 /** Безопасно ли навязывать узлу auto-layout.
@@ -26,11 +41,27 @@ export type AutoLayoutVerdict =
  *  фикстуре. */
 export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
   if (node.layout.mode === 'none') {
-    return { safe: false, reason: 'узел не является флекс-контейнером' }
+    return { safe: false, reason: 'узел не является контейнером раскладки' }
   }
   if (node.children.length === 0) {
     return { safe: false, reason: 'детей нет — раскладывать нечего' }
   }
+
+  /** Сетка выражается auto-layout, если она ОДНОМЕРНАЯ. Ось берётся
+   *  из измеренного: браузер уже разложил детей. Двумерную отвергаем
+   *  с понятной причиной — «в Figma нет двумерного auto-layout», а не
+   *  «положение не объясняется флексом». */
+  const axis = node.layout.mode === 'grid' ? gridAxis(node) : node.layout.mode
+  if (axis === null) {
+    return {
+      safe: false,
+      reason: 'двумерная сетка: в Figma нет двумерного auto-layout',
+    }
+  }
+  if (axis !== 'row' && axis !== 'column') {
+    return { safe: false, reason: 'узел не является контейнером раскладки' }
+  }
+  const mode: 'row' | 'column' = axis
   if (node.layout.wrap) {
     return {
       safe: false,
@@ -72,26 +103,50 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
           + 'в auto-layout он встал бы в очередь и сдвинул остальных',
       }
     }
-    if (child.selfLayout.grow > 0) {
-      return {
-        safe: false,
-        reason: 'ребёнок растягивается (flex-grow): распределение свободного '
-          + 'места повторить нельзя',
-      }
-    }
-    if (child.selfLayout.align !== null) {
-      return {
-        safe: false,
-        reason: 'у ребёнка своё align-self: Figma задаёт выравнивание на '
-          + 'контейнере, а не поштучно',
-      }
-    }
+    /** `flex-grow` и свой `align-self` БОЛЬШЕ НЕ отвергаются.
+     *
+     *  Оба влияют на РАЗМЕР и на положение внутри поперечной оси — а
+     *  размеры в IR уже измерены браузером, и положение проверяется
+     *  сравнением ниже. Если положение сошлось, значит auto-layout с
+     *  фиксированными размерами даёт ту же картину, и отвергать её
+     *  незачем.
+     *
+     *  Измерено на живой странице: `flex-grow` давал 39 отказов из
+     *  125 — вторая причина по частоте, и вся она была
+     *  перестраховкой.
+     *
+     *  Цена та же, что у `stretch`: рамка не отзывчива, дети не
+     *  перетянутся при изменении размера. Импорт — снимок.
+     *
+     *  Предварительные проверки остаются только там, где сравнение
+     *  положений бессильно или где отдельное сообщение полезнее
+     *  общего «положение не сошлось». */
+  }
+
+  /** Рамка контейнера сдвигает содержимое: флекс раскладывает детей
+   *  в content box, а `rect` — это border box. */
+  const border = node.style.stroke?.weight
+    ?? { top: 0, right: 0, bottom: 0, left: 0 }
+
+  /** Внешние отступы детей сворачиваются в отступы контейнера и
+   *  зазор: у auto-layout нет отступов на ребёнке. Не свернулось —
+   *  честный отказ с причиной. */
+  const folded = foldMargins(node, mode)
+  if ('reason' in folded) return { safe: false, reason: folded.reason }
+
+  const effective: NodeLayout = {
+    ...node.layout,
+    mode,
+    gap: folded.gap,
+    padding: folded.padding,
+    align: folded.align,
   }
 
   const expected = solveLayout(
-    node.layout,
+    effective,
     { width: node.rect.w, height: node.rect.h },
     node.children.map((child) => ({ width: child.rect.w, height: child.rect.h })),
+    border,
   )
 
   for (const [index, child] of node.children.entries()) {
@@ -110,5 +165,8 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
     }
   }
 
-  return { safe: true, expected }
+  return {
+    safe: true, expected, mode,
+    gap: folded.gap, padding: folded.padding, align: folded.align,
+  }
 }
