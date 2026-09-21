@@ -10,7 +10,6 @@ import { captureScreen, fixtureUrl } from './helpers/capture.js'
  *  дала бы вечно «отсутствующую» диагностику, то есть тест, который
  *  падает не по той причине, по которой обещает. */
 const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
-  transformed: ['deferred.transform'],
   'missing-font': ['fidelity.font-fallback'],
   'dashed-border': ['fidelity.stroke-style-flattened'],
   /** Признанное упрощение резолвера: позиционированный узел с
@@ -74,16 +73,74 @@ test('фон <body> не подменяется фоном <html>', async ({ pag
   expect(report.some((i) => i.code === 'fidelity.page-background-moved')).toBe(false)
 })
 
-test('transformed: диагностика уровня error на каждом трансформированном узле', async ({ page }) => {
+test('transformed: трансформа переносится, rect — НЕтрансформированный бокс', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('transformed'))
-  const { report } = await captureScreen(page, 's0', 'Desktop')
-  const transforms = report.filter((item) => item.code === 'deferred.transform')
-  expect(transforms.length).toBe(3)
-  for (const item of transforms) {
-    expect(item.level).toBe('error')
-    expect(item.nodeId).not.toBeNull()
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const row = screen.root.children[0]
+  const kids = row?.children ?? []
+  expect(kids).toHaveLength(4)
+
+  for (const kid of kids) {
+    expect(kid.transform, `у ${kid.id} обязана быть трансформа`).not.toBeNull()
   }
+
+  // Повёрнутый блок: rect обязан остаться 120×60, а не раздуться до габарита
+  // повёрнутого (131.44×89.01 — именно это раздутие было симптомом в плане 1).
+  const rotated = kids[0]
+  expect(rotated?.rect.w).toBeCloseTo(120, 1)
+  expect(rotated?.rect.h).toBeCloseTo(60, 1)
+  expect(rotated?.transform?.angle).toBeGreaterThan(0)
+
+  /** Поворот с НЕравномерным масштабом. Разложение обязано вернуть
+   *  РАЗНЫЕ scaleX и scaleY: свёрнутые в один множитель, они дали бы
+   *  правдоподобную, но неверную фигуру, а `hasSkew` не должен принять
+   *  такую матрицу за сдвинутую — ровно тот случай, ради которого допуск
+   *  в нём нормирован. */
+  const scaled = kids[3]
+  expect(scaled?.rect.w).toBeCloseTo(120, 1)
+  expect(scaled?.rect.h).toBeCloseTo(60, 1)
+  expect(scaled?.transform?.scaleX).toBeCloseTo(1.6, 3)
+  expect(scaled?.transform?.scaleY).toBeCloseTo(0.7, 3)
+
+  expect(report.some((i) => i.code === 'deferred.transform')).toBe(false)
+})
+
+/** Строчный элемент — единственный, к которому CSS трансформу НЕ применяет,
+ *  хотя Chrome всё равно отдаёт матрицу в computed style. Без проверки
+ *  `appliesTransform` такой узел приехал бы с трансформой, которой браузер
+ *  не делал, и с боксом 0×0 (computed `width` у строчного равен `auto`), то
+ *  есть исчез бы из рендера молча. Фикстуры для этого нет намеренно: текст
+ *  в фикстуре `transformed` добавил бы в pixel-diff шум сглаживания глифов
+ *  и замутил бы измерение самой трансформы. */
+test('строчный элемент: матрица есть, трансформы нет — узел приезжает без неё', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.setContent(
+    '<!doctype html><body style="margin:0">' +
+    '<span id="s" style="transform:rotate(30deg);background:#f00">inline</span>' +
+    '<span id="b" style="display:inline-block;width:60px;height:20px;' +
+    'transform:rotate(30deg);background:#0f0"></span>' +
+    '</body>',
+  )
+  const expected = await page.evaluate(() => {
+    const el = document.getElementById('s')
+    if (el === null) throw new Error('нет #s')
+    const r = el.getBoundingClientRect()
+    return { w: r.width, h: r.height }
+  })
+
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+  const [inline, inlineBlock] = screen.root.children
+
+  expect(inline?.transform, 'строчному элементу трансформа не применяется').toBeNull()
+  expect(inline?.rect.w).toBeCloseTo(expected.w, 1)
+  expect(inline?.rect.h).toBeCloseTo(expected.h, 1)
+
+  // Контроль: inline-block трансформируем, и у него трансформа обязана быть.
+  expect(inlineBlock?.transform, 'inline-block трансформируем').not.toBeNull()
+  expect(inlineBlock?.rect.w).toBeCloseTo(60, 1)
+  expect(inlineBlock?.rect.h).toBeCloseTo(20, 1)
 })
 
 test('gradient: линейный градиент переносится и НЕ диагностируется', async ({ page }) => {

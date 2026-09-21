@@ -5,13 +5,17 @@
 import { DIAGNOSTIC_CODES } from '@h2d/ir/codes'
 import type {
   Fill, FontRequirement, IrNode, LayoutAlign, NodeStyle,
-  SelfLayout, SelfPositioning,
+  SelfLayout, SelfPositioning, Transform,
 } from '@h2d/ir'
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { parseLinearGradient } from './css/gradient.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
+import {
+  appliesTransform, decomposeMatrix, hasSkew, parseMatrix, readOrigin,
+  untransformedOrigin, untransformedSize,
+} from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
@@ -85,9 +89,16 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
   }
 }
 
+/** `box` — размер того прямоугольника, который поедет в `rect`, а НЕ
+ *  габарит из `getBoundingClientRect()`. Разница появляется ровно на
+ *  трансформированном элементе: ручки градиента нормализованы по боксу, и
+ *  рендерер разворачивает их в пиксели по `rect`. Считать их по габариту
+ *  повёрнутого элемента, а рисовать в НЕповёрнутом боксе — значит задать
+ *  угол градиента от чужого соотношения сторон, потому что угол в CSS
+ *  зависит от пропорций бокса (см. `cornerAngle` в `gradient.ts`). */
 const readFills = (
-  el: Element,
   cs: CSSStyleDeclaration,
+  box: { w: number; h: number },
   sink: DiagnosticSink,
   id: string,
 ): Fill[] => {
@@ -107,10 +118,7 @@ const readFills = (
    *  `background-image` рисуется над `background-color`. Порядок в массиве
    *  `fills` и есть порядок отрисовки. */
   if (cs.backgroundImage !== 'none') {
-    const rect = el.getBoundingClientRect()
-    const gradient = parseLinearGradient(cs.backgroundImage, {
-      w: rect.width, h: rect.height,
-    })
+    const gradient = parseLinearGradient(cs.backgroundImage, box)
     if (gradient !== null) {
       fills.push({ kind: 'gradient', gradient })
     }
@@ -126,8 +134,8 @@ const BLEND_MODES = new Set([
 ])
 
 const readStyle = (
-  el: Element,
   cs: CSSStyleDeclaration,
+  box: { w: number; h: number },
   sink: DiagnosticSink,
   id: string,
 ): NodeStyle => {
@@ -159,7 +167,7 @@ const readStyle = (
     : 'normal'
 
   return {
-    fills: readFills(el, cs, sink, id),
+    fills: readFills(cs, box, sink, id),
     stroke: readStroke(cs),
     corner: readCorner(cs),
     shadows: parseBoxShadow(cs.boxShadow),
@@ -182,10 +190,15 @@ const blurRadius = (value: string): number => {
 /** Диагностирует всё, что этот план не переносит.
  *
  *  Разделение обязательное: `unsupported.*` — то, что невозможно в Figma
- *  в принципе, `deferred.*` — то, что реализуется в плане 2. Второе
- *  проверяется инвариантом в `@h2d/ir`: узел с непустым `transform` без
- *  парной диагностики `deferred.transform` отвергается на входе плагина.
- *  Именно так правило «молчаливый fallback — это баг» стало машинным. */
+ *  в принципе, `deferred.*` — то, что ещё не реализовано. Второе
+ *  проверяется инвариантом в `@h2d/ir`: узел с непустым `blend` или `blur`
+ *  без парной диагностики отвергается на входе плагина. Именно так правило
+ *  «молчаливый fallback — это баг» стало машинным.
+ *
+ *  Трансформа из этого списка ВЫШЛА: она переносится, поэтому
+ *  диагностируется только то, что перенести нельзя — трёхмерная матрица и
+ *  сдвиг. Сообщать о переносимом повороте было бы шумом, а шум учит
+ *  игнорировать отчёт целиком. */
 const reportGaps = (
   el: Element,
   cs: CSSStyleDeclaration,
@@ -214,15 +227,19 @@ const reportGaps = (
     }
   }
   if (cs.transform !== 'none') {
-    sink.report(
-      'error',
-      cs.transform.startsWith('matrix3d')
-        ? DIAGNOSTIC_CODES.unsupportedTransform3d
-        : DIAGNOSTIC_CODES.deferredTransform,
-      `transform "${cs.transform}" не переносится: прямоугольник снят как ` +
-      `осепараллельный габарит повёрнутого элемента и потому больше исходного.`,
-      id, false,
-    )
+    const matrix = parseMatrix(cs.transform)
+    if (matrix === null) {
+      sink.report('error', DIAGNOSTIC_CODES.unsupportedTransform3d,
+        `transform "${cs.transform}" не переносится: трёхмерных трансформ в ` +
+        `Figma нет физически.`, id, false)
+    } else if (hasSkew(matrix)) {
+      /** Сдвиг в Figma отсутствует. Узел при этом приезжает без трансформы
+       *  вообще, а не со сдвигом, приведённым к повороту: приближение
+       *  выглядело бы правдоподобно и потому хуже честного отказа. */
+      sink.report('error', DIAGNOSTIC_CODES.unsupportedTransform3d,
+        `transform "${cs.transform}" содержит сдвиг, которого в Figma нет.`,
+        id, false)
+    }
   }
   const layerBlur = blurRadius(cs.filter)
   const bgBlur = blurRadius(cs.backdropFilter)
@@ -320,7 +337,24 @@ const buildNode = (
   const id = ctx.allocId()
   reportGaps(el, cs, ctx.sink, id)
 
-  const rect = el.getBoundingClientRect()
+  const matrix = parseMatrix(cs.transform)
+  const rawRect = el.getBoundingClientRect()
+
+  let transform: Transform | null = null
+  let box = { x: rawRect.left, y: rawRect.top, w: rawRect.width, h: rawRect.height }
+
+  if (matrix !== null && !hasSkew(matrix) && appliesTransform(cs)) {
+    const origin = readOrigin(cs)
+    const size = untransformedSize(cs)
+    const corner = untransformedOrigin(el, matrix, size, origin)
+    transform = { ...decomposeMatrix(matrix), originX: origin.x, originY: origin.y }
+    /** rect становится НЕтрансформированным боксом — так требует контракт.
+     *  Иначе поля противоречат друг другу: рендерер применил бы трансформу
+     *  к габариту уже трансформированного элемента и получил двойное
+     *  преобразование. */
+    box = { x: corner.x, y: corner.y, w: size.w, h: size.h }
+  }
+
   const children: IrNode[] = []
   const childProbes: LayoutProbe[] = []
 
@@ -337,18 +371,18 @@ const buildNode = (
     sourceTag: el.tagName.toLowerCase(),
     name: el.tagName.toLowerCase(),
     rect: {
-      x: rect.left + ctx.scrollX,
-      y: rect.top + ctx.scrollY,
-      w: rect.width,
-      h: rect.height,
+      x: box.x + ctx.scrollX,
+      y: box.y + ctx.scrollY,
+      w: box.w,
+      h: box.h,
     },
     // Заполняется вторым проходом: требует готового дерева.
     paintOrder: -1,
     isStackingContext: false,
-    transform: null,
+    transform,
     layout: readLayout(cs),
     selfLayout: readSelfLayout(cs),
-    style: readStyle(el, cs, ctx.sink, id),
+    style: readStyle(cs, box, ctx.sink, id),
     children,
   }
 

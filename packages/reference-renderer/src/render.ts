@@ -352,7 +352,7 @@ const renderPlaceholder = (node: IrNode & { kind: 'placeholder' }): string => {
 
 /** Исчерпывающий по `kind`: отсутствующая ветка — ошибка компиляции,
  *  а не тихо не нарисованный узел. */
-const renderNode = (node: IrNode, defs: string[]): string => {
+const renderNodeBody = (node: IrNode, defs: string[]): string => {
   switch (node.kind) {
     case 'frame':
       return renderBox(node, defs)
@@ -372,6 +372,34 @@ const renderNode = (node: IrNode, defs: string[]): string => {
     case 'placeholder':
       return renderPlaceholder(node)
   }
+}
+
+/** Трансформа применяется ВОКРУГ точки отсчёта, а не вокруг начала
+ *  координат: CSS вращает вокруг `transform-origin`, по умолчанию центра.
+ *  Отсюда классическая тройка — перенос в точку отсчёта, преобразование,
+ *  перенос назад. Угол в градусах, потому что SVG принимает градусы.
+ *
+ *  Порядок множителей повторяет разложение из сериализатора:
+ *  `p' = origin + (tx,ty) + R·S·(p − origin)`. Перестановка `rotate` и
+ *  `scale` при НЕравномерном масштабе даёт другую матрицу, поэтому
+ *  порядок здесь не косметика. */
+const transformAttr = (node: IrNode): string => {
+  if (node.transform === null) return ''
+  const t = node.transform
+  const ox = node.rect.x + t.originX
+  const oy = node.rect.y + t.originY
+  const deg = (t.angle * 180) / Math.PI
+  return (
+    ` transform="translate(${ox} ${oy}) translate(${t.translateX} ${t.translateY})` +
+    ` rotate(${deg}) scale(${t.scaleX} ${t.scaleY}) translate(${-ox} ${-oy})"`
+  )
+}
+
+const renderNode = (node: IrNode, defs: string[]): string => {
+  const body = renderNodeBody(node, defs)
+  if (body === '') return ''
+  const transform = transformAttr(node)
+  return transform === '' ? body : `<g${transform}>${body}</g>`
 }
 
 /** Узел вместе с предками, которые его ОБРЕЗАЮТ.

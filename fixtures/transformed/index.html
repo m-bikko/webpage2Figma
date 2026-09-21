@@ -9,7 +9,11 @@
   .rot{transform:rotate(15deg)}
   .scl{transform:scale(1.5)}
   .tr{transform:translate(20px,10px)}
+  /* НЕравномерный масштаб вместе с поворотом. Единственный блок, на
+     котором виден ПОРЯДОК множителей в рендерере: при равномерном
+     масштабе rotate и scale коммутируют, и перестановка невидима. */
+  .rs{transform:rotate(20deg) scale(1.6,0.7)}
 </style></head>
 <body><div class="row">
-  <div class="b rot"></div><div class="b scl"></div><div class="b tr"></div>
+  <div class="b rot"></div><div class="b scl"></div><div class="b tr"></div><div class="b rs"></div>
 </div></body></html>

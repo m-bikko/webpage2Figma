@@ -273,7 +273,12 @@ describe('checkInvariants: связь заглушки и диагностики
 })
 
 describe('checkInvariants: отложенные фичи обязаны диагностироваться', () => {
-  it('ловит transform без diagnostic', () => {
+  /** Тесты `ловит transform без diagnostic` и `принимает transform с парной
+   *  диагностикой` удалены вместе с самой проверкой: трансформы переносятся,
+   *  и требовать для них диагностику значило бы отвергать корректные бандлы.
+   *  Ниже — утверждение на снятое требование, чтобы удаление не выглядело
+   *  потерей теста: узел с трансформой и ПУСТЫМ отчётом теперь валиден. */
+  it('принимает transform без диагностики: фича больше не отложена', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,
       transform: {
@@ -281,26 +286,7 @@ describe('checkInvariants: отложенные фичи обязаны диаг
         translateX: 0, translateY: 0, originX: 50, originY: 25,
       },
     })
-    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
-      .toContain('deferred.undiagnosed')
-  })
-
-  it('принимает transform с парной диагностикой deferred.transform', () => {
-    const root = frameNode({
-      id: 'a', paintOrder: 0,
-      transform: {
-        angle: 0.26, scaleX: 1, scaleY: 1,
-        translateX: 0, translateY: 0, originX: 50, originY: 25,
-      },
-    })
-    const b = bundle({
-      screens: [screen({ root })],
-      report: [{
-        level: 'error', code: 'deferred.transform', message: 'x',
-        nodeId: 'a', screenId: 's0', needsPlaceholder: false,
-      }],
-    })
-    expect(checkInvariants(b)).toEqual([])
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 
   it('ловит blend без diagnostic', () => {

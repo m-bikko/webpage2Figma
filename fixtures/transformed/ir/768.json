@@ -120,14 +120,22 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 34.27988052368164,
-                "y": 25.49308204650879,
-                "w": 131.44024658203125,
-                "h": 89.01383972167969
+                "x": 40.00001052368164,
+                "y": 40.00000204650879,
+                "w": 120,
+                "h": 60
               },
               "paintOrder": 2,
               "isStackingContext": true,
-              "transform": null,
+              "transform": {
+                "angle": 0.2617992992737762,
+                "scaleX": 1.0000001561184877,
+                "scaleY": 1.000000156118488,
+                "translateX": 0,
+                "translateY": 0,
+                "originX": 60,
+                "originY": 30
+              },
               "layout": {
                 "mode": "none",
                 "gap": 0,
@@ -180,14 +188,22 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 170,
-                "y": 25,
-                "w": 180,
-                "h": 90
+                "x": 200,
+                "y": 40,
+                "w": 120,
+                "h": 60
               },
               "paintOrder": 3,
               "isStackingContext": true,
-              "transform": null,
+              "transform": {
+                "angle": 0,
+                "scaleX": 1.5,
+                "scaleY": 1.5,
+                "translateX": 0,
+                "translateY": 0,
+                "originX": 60,
+                "originY": 30
+              },
               "layout": {
                 "mode": "none",
                 "gap": 0,
@@ -240,14 +256,90 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 380,
-                "y": 50,
+                "x": 360,
+                "y": 40,
                 "w": 120,
                 "h": 60
               },
               "paintOrder": 4,
               "isStackingContext": true,
-              "transform": null,
+              "transform": {
+                "angle": 0,
+                "scaleX": 1,
+                "scaleY": 1,
+                "translateX": 20,
+                "translateY": 10,
+                "originX": 60,
+                "originY": 30
+              },
+              "layout": {
+                "mode": "none",
+                "gap": 0,
+                "padding": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "align": "start",
+                "justify": "start",
+                "wrap": false
+              },
+              "selfLayout": {
+                "positioning": "flow",
+                "align": null,
+                "grow": 0,
+                "shrink": 1
+              },
+              "style": {
+                "fills": [
+                  {
+                    "kind": "solid",
+                    "color": {
+                      "r": 59,
+                      "g": 130,
+                      "b": 246,
+                      "a": 1
+                    }
+                  }
+                ],
+                "stroke": null,
+                "corner": {
+                  "tl": 0,
+                  "tr": 0,
+                  "br": 0,
+                  "bl": 0
+                },
+                "shadows": [],
+                "opacity": 1,
+                "blend": "normal",
+                "blur": null,
+                "clip": false
+              },
+              "children": [],
+              "kind": "frame"
+            },
+            {
+              "id": "n5",
+              "sourceTag": "div",
+              "name": "div",
+              "rect": {
+                "x": 520.0001061816406,
+                "y": 39.99999182006836,
+                "w": 120,
+                "h": 60
+              },
+              "paintOrder": 5,
+              "isStackingContext": true,
+              "transform": {
+                "angle": 0.34906532950335445,
+                "scaleX": 1.6000016193504305,
+                "scaleY": 0.700000121157814,
+                "translateX": 0,
+                "translateY": 0,
+                "originX": 60,
+                "originY": 30
+              },
               "layout": {
                 "mode": "none",
                 "gap": 0,
@@ -303,30 +395,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "error",
-      "code": "deferred.transform",
-      "message": "transform \"matrix(0.965926, 0.258819, -0.258819, 0.965926, 0, 0)\" не переносится: прямоугольник снят как осепараллельный габарит повёрнутого элемента и потому больше исходного.",
-      "nodeId": "n2",
-      "screenId": "s-768",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "error",
-      "code": "deferred.transform",
-      "message": "transform \"matrix(1.5, 0, 0, 1.5, 0, 0)\" не переносится: прямоугольник снят как осепараллельный габарит повёрнутого элемента и потому больше исходного.",
-      "nodeId": "n3",
-      "screenId": "s-768",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "error",
-      "code": "deferred.transform",
-      "message": "transform \"matrix(1, 0, 0, 1, 20, 10)\" не переносится: прямоугольник снят как осепараллельный габарит повёрнутого элемента и потому больше исходного.",
-      "nodeId": "n4",
-      "screenId": "s-768",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

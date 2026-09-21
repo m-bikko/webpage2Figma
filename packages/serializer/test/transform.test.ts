@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  decomposeMatrix, hasSkew, parseMatrix, type Matrix,
+  appliesTransform, decomposeMatrix, hasSkew, parseMatrix, type Matrix,
 } from '../src/css/transform.js'
 
 const round = (value: number): number => Math.round(value * 10000) / 10000
@@ -126,5 +126,31 @@ describe('hasSkew', () => {
 
   it('false для единичной матрицы', () => {
     expect(hasSkew({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })).toBe(false)
+  })
+})
+
+/** Признак, отделяющий «матрица объявлена» от «матрица применена».
+ *
+ *  Измерено в Chrome: у `<span style="transform:rotate(30deg)">`
+ *  `cs.transform` равен `matrix(0.866, 0.5, -0.5, 0.866, 0, 0)`, а
+ *  `getBoundingClientRect()` отдаёт НЕповёрнутый строчный бокс — CSS
+ *  трансформу к незамещаемым строчным элементам не применяет. У таких
+ *  элементов computed `width` равен `auto`, поэтому один и тот же признак
+ *  ловит и неприменённую трансформу, и невосстановимый бокс. */
+describe('appliesTransform', () => {
+  it('true, когда бокс читается из computed style', () => {
+    expect(appliesTransform({ width: '120px', height: '60px' })).toBe(true)
+  })
+
+  it('false на строчном элементе: computed width равен auto', () => {
+    expect(appliesTransform({ width: 'auto', height: 'auto' })).toBe(false)
+  })
+
+  it('false, если auto хотя бы в одном измерении', () => {
+    expect(appliesTransform({ width: '120px', height: 'auto' })).toBe(false)
+  })
+
+  it('true на дробной ширине — округления быть не должно', () => {
+    expect(appliesTransform({ width: '12.4531px', height: '18px' })).toBe(true)
   })
 })
