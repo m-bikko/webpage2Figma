@@ -1100,7 +1100,15 @@ var H2DSerializer = (() => {
     const hasPaint = isPaintedColor(background) || borderWidth > 0 && isPaintedColor(parseColor(cs.borderTopColor)) || cs.backgroundImage !== "none" || cs.boxShadow !== "none";
     const literal = literalOf(content);
     const visibleText = literal !== null && hasVisibleText(literal);
-    if (!hasPaint && !visibleText) return { kind: "empty" };
+    const generated = literal === null && content.trim() !== '""';
+    if (!hasPaint && !visibleText && !generated) return { kind: "empty" };
+    if (generated && !hasPaint) {
+      return {
+        kind: "refused",
+        refusal: { reason: "generated", content: content.trim() },
+        hasPaint
+      };
+    }
     const positioned = cs.position === "absolute" || cs.position === "fixed";
     if (!positioned) {
       return { kind: "refused", refusal: { reason: "flow" }, hasPaint };
@@ -1125,12 +1133,28 @@ var H2DSerializer = (() => {
       w: width + padX + borderX,
       h: height + padY + borderY
     };
+    if (generated) {
+      return {
+        kind: "node",
+        box,
+        text: null,
+        lostText: { reason: "generated", content: content.trim() }
+      };
+    }
     if (!visibleText || literal === null) return { kind: "node", box, text: null };
     const lineHeight = px(cs.lineHeight) ?? (px(cs.fontSize) ?? 16) * 1.2;
     if (height > lineHeight * 1.5) {
+      if (hasPaint) {
+        return {
+          kind: "node",
+          box,
+          text: null,
+          lostText: { reason: "multiline", content: literal }
+        };
+      }
       return {
         kind: "refused",
-        refusal: { reason: "generated-content", content: literal },
+        refusal: { reason: "multiline", content: literal },
         hasPaint
       };
     }
@@ -2109,6 +2133,14 @@ var H2DSerializer = (() => {
       style: readStyle(cs, rect, ctx.sink, id, ctx.requests, ctx.screenId),
       children: []
     };
+    if (read.lostText !== void 0) {
+      reportPseudoRefusal(
+        { refusal: read.lostText, hasPaint: true },
+        which,
+        ctx.sink,
+        hostId
+      );
+    }
     const node = read.text === null ? { ...base, kind: "frame" } : {
       ...base,
       kind: "text",
@@ -2139,11 +2171,21 @@ var H2DSerializer = (() => {
   };
   var reportPseudoRefusal = (read, which, sink, hostId) => {
     const { refusal } = read;
-    if (refusal.reason === "generated-content") {
+    if (refusal.reason === "multiline") {
       sink.report(
         "warning",
         DIAGNOSTIC_CODES.deferredPseudoElement,
         `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${which} \u043D\u0435\u0441\u0451\u0442 \u0442\u0435\u043A\u0441\u0442 "${refusal.content.slice(0, 40)}" \u0432 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u0442\u0440\u043E\u043A. \u0411\u043E\u043A\u0441\u043E\u0432 \u0441\u0442\u0440\u043E\u043A \u0443 \u043F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430 \u043D\u0435\u0442, \u0438 \u043C\u0435\u0441\u0442\u043E \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u043E\u0432 \u0432\u0437\u044F\u0442\u044C \u043D\u0435\u043E\u0442\u043A\u0443\u0434\u0430 \u2014 \u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0443\u0433\u0430\u0434 \u0442\u0435\u043A\u0441\u0442 \u0432\u044B\u0433\u043B\u044F\u0434\u0435\u043B \u0431\u044B \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D\u043D\u044B\u043C.`,
+        hostId,
+        false
+      );
+      return;
+    }
+    if (refusal.reason === "generated") {
+      sink.report(
+        "warning",
+        DIAGNOSTIC_CODES.deferredPseudoElement,
+        `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${which} \u043D\u0435\u0441\u0451\u0442 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u043E\u0435 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 ${refusal.content.slice(0, 40)}. \u0412\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u043D\u044B\u0439 \u0441\u0442\u0438\u043B\u044C \u043E\u0442\u0434\u0430\u0451\u0442 \u0435\u0433\u043E \u043A\u0430\u043A \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u043E, \u0431\u0435\u0437 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F: \u043D\u043E\u043C\u0435\u0440 \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430 \u0438\u043B\u0438 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u0435 \u0430\u0442\u0440\u0438\u0431\u0443\u0442\u0430 \u0432\u0437\u044F\u0442\u044C \u043D\u0435\u043E\u0442\u043A\u0443\u0434\u0430, \u0430 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u0434\u043E\u0433\u0430\u0434\u043A\u0430 \u043D\u0430\u043F\u0438\u0441\u0430\u043B\u0430 \u0431\u044B \u0432 \u043C\u0430\u043A\u0435\u0442\u0435 \u043D\u0435\u0432\u0435\u0440\u043D\u043E\u0435 \u0447\u0438\u0441\u043B\u043E.`,
         hostId,
         false
       );

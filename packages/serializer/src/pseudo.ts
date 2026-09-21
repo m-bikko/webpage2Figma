@@ -33,7 +33,12 @@ export type PseudoKind = '::before' | '::after'
 export type PseudoRefusal =
   | { reason: 'flow' }
   | { reason: 'containing-block' }
-  | { reason: 'generated-content'; content: string }
+  /** Текст есть, но его ЗНАЧЕНИЕ неизвестно: `counter()`, `attr()`,
+   *  `open-quote`. Вычисленный стиль отдаёт их как записано. */
+  | { reason: 'generated'; content: string }
+  /** Текст известен, но не помещается в одну строку, а мест переносов
+   *  у псевдоэлемента взять неоткуда. */
+  | { reason: 'multiline'; content: string }
 
 export type PseudoBox = {
   /** Локально относительно padding box хозяина. */
@@ -52,7 +57,13 @@ export type PseudoRead =
    *  склейки вроде U+2060 и одиночные пробелы. */
   | { kind: 'empty' }
   | { kind: 'refused'; refusal: PseudoRefusal; hasPaint: boolean }
-  | { kind: 'node'; box: PseudoBox; text: PseudoText | null }
+  /** `lostText` — текст, который у узла ЕСТЬ на странице, но не
+   *  переносится. Узел при этом строится: его подложка видна, и
+   *  выбрасывать её было бы потерей вдобавок к потере. */
+  | {
+      kind: 'node'; box: PseudoBox; text: PseudoText | null
+      lostText?: PseudoRefusal
+    }
 
 export type PseudoText = {
   characters: string
@@ -145,8 +156,31 @@ export const readPseudo = (
   const literal = literalOf(content)
   const visibleText = literal !== null && hasVisibleText(literal)
 
-  /** Ни краски, ни видимого текста — переносить нечего. */
-  if (!hasPaint && !visibleText) return { kind: 'empty' }
+  /** Содержимое ЕСТЬ, но его значение неизвестно: `counter(n)`,
+   *  `attr(data-x)`, `open-quote`. Вычисленный стиль отдаёт такие
+   *  строки как записано, без подстановки.
+   *
+   *  Отличать это от пустоты критично. Первая редакция валила оба
+   *  случая в «переносить нечего», и номера строк в блоках кода —
+   *  `counter(line)`, самая частая форма сгенерированного содержимого
+   *  на живых страницах — исчезали МОЛЧА, без записи в отчёте.
+   *  Тихая потеря содержимого есть ровно то, против чего заведена вся
+   *  диагностика проекта. */
+  const generated = literal === null && content.trim() !== '""'
+
+  /** Ни краски, ни видимого текста, ни сгенерированного — переносить
+   *  действительно нечего, и запись была бы шумом. */
+  if (!hasPaint && !visibleText && !generated) return { kind: 'empty' }
+
+  /** Значение неизвестно и краски нет: переносить нечего, но потеря
+   *  РЕАЛЬНА, и о ней надо сказать. */
+  if (generated && !hasPaint) {
+    return {
+      kind: 'refused',
+      refusal: { reason: 'generated', content: content.trim() },
+      hasPaint,
+    }
+  }
 
   const positioned = cs.position === 'absolute' || cs.position === 'fixed'
   if (!positioned) {
@@ -182,6 +216,18 @@ export const readPseudo = (
     h: height + padY + borderY,
   }
 
+  /** Краска есть, а текст сгенерирован: подложка переносится, текст —
+   *  нет. Узел при этом СТРОИТСЯ, поэтому отказать нельзя, а промолчать
+   *  тем более: в макете появится пустая плашка там, где на странице
+   *  стоял номер. Возвращается узел И причина — вызывающий обязан
+   *  сообщить о потерянном тексте, сохранив подложку. */
+  if (generated) {
+    return {
+      kind: 'node', box, text: null,
+      lostText: { reason: 'generated', content: content.trim() },
+    }
+  }
+
   if (!visibleText || literal === null) return { kind: 'node', box, text: null }
 
   /** Текст переносится ТОЛЬКО в одну строку.
@@ -193,9 +239,17 @@ export const readPseudo = (
    *  где именно — неизвестно. */
   const lineHeight = px(cs.lineHeight) ?? (px(cs.fontSize) ?? 16) * 1.2
   if (height > lineHeight * 1.5) {
+    /** Подложка у многострочного тоже может быть, и терять её незачем:
+     *  узел строится, а о потерянном тексте сообщает вызывающий. */
+    if (hasPaint) {
+      return {
+        kind: 'node', box, text: null,
+        lostText: { reason: 'multiline', content: literal },
+      }
+    }
     return {
       kind: 'refused',
-      refusal: { reason: 'generated-content', content: literal },
+      refusal: { reason: 'multiline', content: literal },
       hasPaint,
     }
   }

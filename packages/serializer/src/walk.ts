@@ -667,6 +667,15 @@ const buildPseudo = (
     children: [],
   }
 
+  /** Узел построен, но часть содержимого в него не попала. Молчать
+   *  нельзя: в макете окажется пустая плашка там, где на странице
+   *  стоял номер или многострочная подпись. */
+  if (read.lostText !== undefined) {
+    reportPseudoRefusal(
+      { refusal: read.lostText, hasPaint: true }, which, ctx.sink, hostId,
+    )
+  }
+
   const node: IrNode = read.text === null
     ? { ...base, kind: 'frame' }
     : {
@@ -710,12 +719,21 @@ const reportPseudoRefusal = (
   hostId: string,
 ): void => {
   const { refusal } = read
-  if (refusal.reason === 'generated-content') {
+  if (refusal.reason === 'multiline') {
     sink.report('warning', DIAGNOSTIC_CODES.deferredPseudoElement,
       `Псевдоэлемент ${which} несёт текст "${refusal.content.slice(0, 40)}" ` +
       `в несколько строк. Боксов строк у псевдоэлемента нет, и место ` +
       `переносов взять неоткуда — поставленный наугад текст выглядел бы ` +
       `перенесённым.`, hostId, false)
+    return
+  }
+  if (refusal.reason === 'generated') {
+    sink.report('warning', DIAGNOSTIC_CODES.deferredPseudoElement,
+      `Псевдоэлемент ${which} несёт сгенерированное содержимое ` +
+      `${refusal.content.slice(0, 40)}. Вычисленный стиль отдаёт его как ` +
+      `записано, без значения: номер счётчика или значение атрибута взять ` +
+      `неоткуда, а подставленная догадка написала бы в макете неверное ` +
+      `число.`, hostId, false)
     return
   }
   if (refusal.reason === 'containing-block') {
