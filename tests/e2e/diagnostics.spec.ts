@@ -36,6 +36,11 @@ const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
    *  бага страницы. Утверждается поэтому единственное, что здесь
    *  действительно проверяемо: захват такое НАЗЫВАЕТ. */
   'vector-id-collision': ['fidelity.vector-id-collision'],
+  /** Псевдоэлементы, чью геометрию взять неоткуда: в потоке
+   *  вычисленный стиль отдаёт размер и положение как `auto`, а у
+   *  счётчика не отдаёт и значения. Пиксельно это не сверить —
+   *  проверяется, что захват молчанием не отделывается. */
+  'pseudo-element-flow': ['deferred.pseudo-element'],
 }
 
 for (const [fixture, codes] of Object.entries(EXPECTED)) {

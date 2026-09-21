@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hasNonSolidStroke, readStroke } from '../src/css/stroke.js'
-import { readCorner } from '../src/css/corner.js'
+import { isEllipticalCorner, readCorner } from '../src/css/corner.js'
 
 type FakeStyle = Record<string, string>
 const style = (overrides: FakeStyle): CSSStyleDeclaration => {
@@ -133,18 +133,61 @@ describe('hasNonSolidStroke', () => {
 })
 
 describe('readCorner', () => {
+  /** Бокс нужен для процентов: они считаются от его сторон. */
+  const box = { w: 200, h: 100 }
+
   it('читает нулевые радиусы', () => {
-    expect(readCorner(style({}))).toEqual({ tl: 0, tr: 0, br: 0, bl: 0 })
+    expect(readCorner(style({}), box)).toEqual({ tl: 0, tr: 0, br: 0, bl: 0 })
   })
 
   it('читает разные радиусы по углам', () => {
     const result = readCorner(style({
       borderTopLeftRadius: '8px', borderBottomRightRadius: '16px',
-    }))
+    }), box)
     expect(result).toEqual({ tl: 8, tr: 0, br: 16, bl: 0 })
   })
 
   it('берёт горизонтальный радиус у эллиптического угла', () => {
-    expect(readCorner(style({ borderTopLeftRadius: '10px 20px' })).tl).toBe(10)
+    expect(readCorner(style({ borderTopLeftRadius: '10px 20px' }), box).tl)
+      .toBe(10)
+  })
+
+  /** Главный случай: `border-radius: 50%` — самый обычный способ
+   *  сделать круг. Прежний разборщик знал только `px` и возвращал для
+   *  процента НОЛЬ, то есть каждая круглая аватарка приезжала
+   *  квадратом, причём молча: эллиптическим такой угол не считался,
+   *  потому что значение одно. */
+  it('разрешает проценты от сторон бокса', () => {
+    const result = readCorner(style({
+      borderTopLeftRadius: '50%', borderTopRightRadius: '25%',
+    }), { w: 200, h: 100 })
+    expect(result.tl).toBe(100)
+    expect(result.tr).toBe(50)
+  })
+
+  it('круг на квадратном боксе даёт половину стороны', () => {
+    expect(readCorner(style({ borderTopLeftRadius: '50%' }), { w: 64, h: 64 }).tl)
+      .toBe(32)
+  })
+})
+
+describe('isEllipticalCorner', () => {
+  /** Процент на НЕквадратном боксе — настоящий эллипс, хотя записан
+   *  одним значением. Прежняя проверка считала слова в строке и такой
+   *  случай пропускала. */
+  it('видит эллипс за одиночным процентом на неквадратном боксе', () => {
+    expect(isEllipticalCorner(style({ borderTopLeftRadius: '50%' }),
+      { w: 200, h: 40 })).toBe(true)
+  })
+
+  it('на квадратном боксе тот же процент эллипсом не считает', () => {
+    expect(isEllipticalCorner(style({ borderTopLeftRadius: '50%' }),
+      { w: 64, h: 64 })).toBe(false)
+  })
+
+  /** И наоборот: два слова — ещё не эллипс. */
+  it('равные радиусы в двух словах эллипсом не считает', () => {
+    expect(isEllipticalCorner(style({ borderTopLeftRadius: '10px 10px' }),
+      { w: 100, h: 100 })).toBe(false)
   })
 })

@@ -24,6 +24,9 @@ import {
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
 import { hoistEscaped } from './hoist.js'
+import {
+  readPseudo, type PseudoKind, type PseudoRead, type PseudoRefusal,
+} from './pseudo.js'
 import { readVector } from './vector.js'
 import type { AssetRequests } from './assets.js'
 import { isReversed, readLayout } from './layout.js'
@@ -296,7 +299,7 @@ const readStyle = (
   requests: AssetRequests,
   screenId: string,
 ): NodeStyle => {
-  if (isEllipticalCorner(cs)) {
+  if (isEllipticalCorner(cs, box)) {
     sink.report(
       'info', DIAGNOSTIC_CODES.ellipticalCorner,
       'Эллиптический радиус угла сведён к горизонтальному: в Figma эллиптических углов нет.',
@@ -326,7 +329,7 @@ const readStyle = (
   return {
     fills: readFills(cs, box, sink, id, requests, screenId),
     stroke: readStroke(cs),
-    corner: readCorner(cs),
+    corner: readCorner(cs, box),
     shadows: parseBoxShadow(cs.boxShadow),
     // СОБСТВЕННАЯ непрозрачность, не композитная: плагин вкладывает узлы,
     // и Figma перемножает так же, как браузер. Запекать вниз запрещено.
@@ -491,13 +494,10 @@ const reportGaps = (
    *  Код `deferred.vector` сохранён: коды стабильны, и его всё ещё
    *  порождает `classifyBackgroundImage` для SVG в `background-image`,
    *  который растром не переносится. */
-  for (const pseudo of ['::before', '::after']) {
-    const content = window.getComputedStyle(el, pseudo).content
-    if (content !== 'none' && content !== 'normal' && content !== '') {
-      sink.report('info', DIAGNOSTIC_CODES.deferredPseudoElement,
-        `Псевдоэлемент ${pseudo} с содержимым ${content} не переносится.`, id, false)
-    }
-  }
+  /** Диагностика про псевдоэлементы выдаётся ТАМ, где они строятся:
+   *  причина отказа известна только после разбора, а общее «не
+   *  переносится» её скрывало. Переносимые не диагностируются вовсе —
+   *  переносить их и есть ответ. */
 }
 
 /** Содержимое, которое невозможно перенести в принципе, становится
@@ -587,6 +587,141 @@ const readImage = (
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** Строит узел псевдоэлемента или сообщает, почему не строит.
+ *
+ *  Отдельной функцией, потому что у псевдоэлемента нет Element: всё,
+ *  что о нём известно, приходит из вычисленного стиля, и путь
+ *  обычного `buildNode` для него не годится ни в одной точке — ни
+ *  измерение бокса, ни чтение текста, ни рекурсия внутрь.
+ *
+ *  `hostBox` нужен ради толщин рамки: абсолютный потомок
+ *  отсчитывается от PADDING box хозяина, а `rect` узла — его border
+ *  box. Без поправки декоративная полоска внутри карточки с рамкой
+ *  уехала бы на толщину этой рамки — на пиксель-два, то есть ровно
+ *  настолько, чтобы выглядеть правильно.
+ */
+const buildPseudo = (
+  el: Element,
+  hostCs: CSSStyleDeclaration,
+  which: PseudoKind,
+  hostBox: { x: number; y: number; w: number; h: number },
+  ctx: WalkContext,
+  hostId: string,
+): Built | null => {
+  const read: PseudoRead = readPseudo(el, hostCs, which)
+  if (read.kind === 'absent' || read.kind === 'empty') return null
+
+  if (read.kind === 'refused') {
+    reportPseudoRefusal(read, which, ctx.sink, hostId)
+    return null
+  }
+
+  const id = ctx.allocId()
+  const cs = window.getComputedStyle(el, which)
+
+  /** Поправка на рамку хозяина: содержащий блок абсолютного потомка —
+   *  padding box, то есть border box минус толщины рамок. */
+  const borderLeft = Number.parseFloat(hostCs.borderLeftWidth) || 0
+  const borderTop = Number.parseFloat(hostCs.borderTopWidth) || 0
+  const rect = {
+    x: borderLeft + read.box.x,
+    y: borderTop + read.box.y,
+    w: read.box.w,
+    h: read.box.h,
+  }
+
+  /** Отступы содержимого: паддинги плюс рамки самого псевдоэлемента. */
+  const inset = (side: string): number =>
+    (Number.parseFloat(cs.getPropertyValue(`padding-${side}`)) || 0) +
+    (Number.parseFloat(cs.getPropertyValue(`border-${side}-width`)) || 0)
+  const contentInset = {
+    top: inset('top'), right: inset('right'),
+    bottom: inset('bottom'), left: inset('left'),
+  }
+
+  const base = {
+    id,
+    /** Имя говорит, откуда узел взялся: в панели слоёв Figma иначе
+     *  появится безымянная коробка, которой нет в разметке. */
+    sourceTag: which === '::before' ? 'before' : 'after',
+    name: which,
+    rect,
+    paintOrder: -1,
+    isStackingContext: false,
+    transform: null,
+    layout: readLayout(cs),
+    selfLayout: readSelfLayout(cs),
+    style: readStyle(cs, rect, ctx.sink, id, ctx.requests, ctx.screenId),
+    children: [],
+  }
+
+  const node: IrNode = read.text === null
+    ? { ...base, kind: 'frame' }
+    : {
+        ...base, kind: 'text',
+        text: {
+          runs: [read.text.run],
+          /** Строка одна — это проверено при разборе, а не
+           *  предположено: многострочный псевдоэлемент сюда не
+           *  доходит. Но лежит она в CONTENT box, а не в боксе узла:
+           *  у бейджа с `padding: 2px 6px` текст иначе уехал бы в
+           *  левый верхний угол своей же подложки. */
+          lines: [{
+            x: contentInset.left, y: contentInset.top,
+            w: rect.w - contentInset.left - contentInset.right,
+            h: rect.h - contentInset.top - contentInset.bottom,
+            text: read.text.characters,
+          }],
+          lineHeight: read.text.lineHeight,
+          align: read.text.align,
+        },
+      }
+
+  const probe: LayoutProbe = {
+    ...readProbe(el, cs, hostCs),
+    id,
+    children: [],
+  }
+
+  return { node, probe }
+}
+
+/** Отказ объясняется РАЗНЫМИ словами по разным причинам: пользователю
+ *  нужно знать, потерян ли текст или оформление, и можно ли с этим
+ *  что-то сделать. Общее «не переносится» не давало ни того, ни
+ *  другого — а таких записей на живых страницах было больше всех
+ *  прочих вместе. */
+const reportPseudoRefusal = (
+  read: { refusal: PseudoRefusal; hasPaint: boolean },
+  which: PseudoKind,
+  sink: DiagnosticSink,
+  hostId: string,
+): void => {
+  const { refusal } = read
+  if (refusal.reason === 'generated-content') {
+    sink.report('warning', DIAGNOSTIC_CODES.deferredPseudoElement,
+      `Псевдоэлемент ${which} несёт текст "${refusal.content.slice(0, 40)}" ` +
+      `в несколько строк. Боксов строк у псевдоэлемента нет, и место ` +
+      `переносов взять неоткуда — поставленный наугад текст выглядел бы ` +
+      `перенесённым.`, hostId, false)
+    return
+  }
+  if (refusal.reason === 'containing-block') {
+    sink.report('info', DIAGNOSTIC_CODES.deferredPseudoElement,
+      `Псевдоэлемент ${which} позиционирован не от своего хозяина ` +
+      `(position: fixed или хозяин не позиционирован), поэтому его ` +
+      `координаты отсчитаны от другого элемента и сложить их не с чем.`,
+      hostId, false)
+    return
+  }
+  sink.report(
+    read.hasPaint ? 'warning' : 'info', DIAGNOSTIC_CODES.deferredPseudoElement,
+    `Псевдоэлемент ${which} стоит в потоке, а не позиционирован. ` +
+    `У псевдоэлемента нет узла в DOM, поэтому его размер и положение в ` +
+    `потоке измерить нечем: вычисленный стиль отдаёт их как auto.`,
+    hostId, false)
+}
 
 type Built = { node: IrNode; probe: LayoutProbe }
 
@@ -697,11 +832,30 @@ const buildNode = (
     insideBrokenTransform: ctx.insideBrokenTransform || brokenTransform,
   }
 
+  /** Псевдоэлемент — ребёнок хозяина, и по CSS `::before` идёт перед
+   *  его содержимым, а `::after` после. Порядок детей здесь
+   *  логический, а порядок отрисовки посчитает резолвер по пробам —
+   *  поэтому псевдоузлы обязаны попасть и в дерево узлов, и в дерево
+   *  проб. Забыть второе нельзя: карта порядка тогда не содержала бы
+   *  узла, а это не «данные не пришли», а рассинхрон, и `applyPaintOrder`
+   *  убивает захват намеренно. */
+  const pseudoBefore = buildPseudo(el, cs, '::before', box, ctx, id)
+  if (pseudoBefore !== null) {
+    children.push(pseudoBefore.node)
+    childProbes.push(pseudoBefore.probe)
+  }
+
   for (const child of ordered) {
     const built = buildNode(child, cs, childCtx)
     if (built === null) continue
     children.push(built.node)
     childProbes.push(built.probe)
+  }
+
+  const pseudoAfter = buildPseudo(el, cs, '::after', box, ctx, id)
+  if (pseudoAfter !== null) {
+    children.push(pseudoAfter.node)
+    childProbes.push(pseudoAfter.probe)
   }
 
   const base = {

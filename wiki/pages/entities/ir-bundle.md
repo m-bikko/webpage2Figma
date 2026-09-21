@@ -3,7 +3,7 @@ title: IR Bundle
 type: entity
 tags: [ir, format, contract]
 created: 2026-09-19
-updated: 2026-09-20
+updated: 2026-09-21
 sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 ---
 
@@ -11,7 +11,7 @@ sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 
 Контракт между двумя половинами системы и единственное, что действительно надо спроектировать правильно. Версионированный JSON, не знающий ни о DOM, ни о Figma.
 
-Физически — файл `.w2f`: ZIP с `ir.json`, папкой `assets/` и папкой `screenshots/`.
+Физически — файл `.w2f`: ZIP с `ir.json`, папкой `assets/` и папкой `screenshots/`. Тот же архив умеет ехать текстом через буфер обмена — см. [[delivery]].
 
 ## Структура
 

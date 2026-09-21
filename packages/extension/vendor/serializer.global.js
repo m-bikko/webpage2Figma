@@ -267,22 +267,35 @@ var H2DSerializer = (() => {
   };
 
   // src/css/corner.ts
-  var firstRadius = (value) => {
-    const first = value.trim().split(/\s+/)[0];
-    return first === void 0 ? 0 : parsePx(first);
+  var parsePercent = (value) => {
+    const match = /^(-?\d*\.?\d+)%$/.exec(value.trim());
+    return match?.[1] === void 0 ? null : Number.parseFloat(match[1]) / 100;
   };
-  var readCorner = (cs) => ({
-    tl: firstRadius(cs.borderTopLeftRadius),
-    tr: firstRadius(cs.borderTopRightRadius),
-    br: firstRadius(cs.borderBottomRightRadius),
-    bl: firstRadius(cs.borderBottomLeftRadius)
+  var radiiOf = (value, box) => {
+    const parts = value.trim().split(/\s+/);
+    const first = parts[0] ?? "0px";
+    const second = parts[1] ?? first;
+    const resolve = (raw, basis) => {
+      const percent = parsePercent(raw);
+      return percent === null ? parsePx(raw) : percent * basis;
+    };
+    return { x: resolve(first, box.w), y: resolve(second, box.h) };
+  };
+  var readCorner = (cs, box) => ({
+    tl: radiiOf(cs.borderTopLeftRadius, box).x,
+    tr: radiiOf(cs.borderTopRightRadius, box).x,
+    br: radiiOf(cs.borderBottomRightRadius, box).x,
+    bl: radiiOf(cs.borderBottomLeftRadius, box).x
   });
-  var isEllipticalCorner = (cs) => [
+  var isEllipticalCorner = (cs, box) => [
     cs.borderTopLeftRadius,
     cs.borderTopRightRadius,
     cs.borderBottomRightRadius,
     cs.borderBottomLeftRadius
-  ].some((value) => value.trim().split(/\s+/).length > 1);
+  ].some((value) => {
+    const { x, y } = radiiOf(value, box);
+    return Math.abs(x - y) > 0.5;
+  });
 
   // src/css/data-url.ts
   var decodeBase64Prefix = (payload, bytesNeeded) => {
@@ -430,8 +443,8 @@ var H2DSerializer = (() => {
     if (text === "") return null;
     const pct = /^(-?[\d.]+)%$/.exec(text);
     if (pct?.[1] !== void 0) return Number.parseFloat(pct[1]) / 100;
-    const px = /^(-?[\d.]+)px$/.exec(text);
-    if (px?.[1] !== void 0) return Number.parseFloat(px[1]) / length;
+    const px2 = /^(-?[\d.]+)px$/.exec(text);
+    if (px2?.[1] !== void 0) return Number.parseFloat(px2[1]) / length;
     return null;
   };
   var resolveOffsets = (raws) => {
@@ -559,9 +572,9 @@ var H2DSerializer = (() => {
       const value = Number.parseFloat(percent[1] ?? "");
       return Number.isNaN(value) ? null : free * value / 100;
     }
-    const px = /^(-?[\d.]+)px$/.exec(part);
-    if (px !== null) {
-      const value = Number.parseFloat(px[1] ?? "");
+    const px2 = /^(-?[\d.]+)px$/.exec(part);
+    if (px2 !== null) {
+      const value = Number.parseFloat(px2[1] ?? "");
       return Number.isNaN(value) ? null : value;
     }
     return null;
@@ -623,9 +636,9 @@ var H2DSerializer = (() => {
       const value = Number.parseFloat(percent[1] ?? "");
       return Number.isNaN(value) ? "auto" : side * value / 100;
     }
-    const px = /^(-?[\d.]+)px$/.exec(part);
-    if (px !== null) {
-      const value = Number.parseFloat(px[1] ?? "");
+    const px2 = /^(-?[\d.]+)px$/.exec(part);
+    if (px2 !== null) {
+      const value = Number.parseFloat(px2[1] ?? "");
       return Number.isNaN(value) ? "auto" : value;
     }
     return "auto";
@@ -1011,6 +1024,107 @@ var H2DSerializer = (() => {
     return { root, hoisted, blockedByTransform: [...blocked], stillWrong };
   };
 
+  // src/pseudo.ts
+  var px = (value) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  var literalOf = (content) => {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) return null;
+    if (trimmed.length < 2) return null;
+    return trimmed.slice(1, -1).replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16))).replace(/\\(.)/g, "$1");
+  };
+  var hasVisibleText = (value) => (
+    // eslint-disable-next-line no-control-regex
+    value.replace(/[\s ​-‍⁠﻿\u0000-\u001f]/g, "") !== ""
+  );
+  var isPaintedColor = (color) => color !== null && color.a > 0;
+  var DECORATION = {
+    underline: "underline",
+    "line-through": "strikethrough"
+  };
+  var decorationOf = (cs) => {
+    const line = cs.textDecorationLine;
+    for (const [key, value] of Object.entries(DECORATION)) {
+      if (line.includes(key)) return value;
+    }
+    return "none";
+  };
+  var readPseudo = (host, hostCs, which) => {
+    const cs = window.getComputedStyle(host, which);
+    const content = cs.content;
+    if (content === "none" || content === "normal" || content === "") {
+      return { kind: "absent" };
+    }
+    if (cs.display === "none" || Number.parseFloat(cs.opacity) === 0) {
+      return { kind: "absent" };
+    }
+    const background = parseColor(cs.backgroundColor);
+    const borderWidth = Math.max(
+      px(cs.borderTopWidth) ?? 0,
+      px(cs.borderRightWidth) ?? 0,
+      px(cs.borderBottomWidth) ?? 0,
+      px(cs.borderLeftWidth) ?? 0
+    );
+    const hasPaint = isPaintedColor(background) || borderWidth > 0 && isPaintedColor(parseColor(cs.borderTopColor)) || cs.backgroundImage !== "none" || cs.boxShadow !== "none";
+    const literal = literalOf(content);
+    const visibleText = literal !== null && hasVisibleText(literal);
+    if (!hasPaint && !visibleText) return { kind: "empty" };
+    const positioned = cs.position === "absolute" || cs.position === "fixed";
+    if (!positioned) {
+      return { kind: "refused", refusal: { reason: "flow" }, hasPaint };
+    }
+    if (cs.position === "fixed" || hostCs.position === "static") {
+      return { kind: "refused", refusal: { reason: "containing-block" }, hasPaint };
+    }
+    const left = px(cs.left);
+    const top = px(cs.top);
+    const width = px(cs.width);
+    const height = px(cs.height);
+    if (left === null || top === null || width === null || height === null) {
+      return { kind: "refused", refusal: { reason: "flow" }, hasPaint };
+    }
+    const padX = (px(cs.paddingLeft) ?? 0) + (px(cs.paddingRight) ?? 0);
+    const padY = (px(cs.paddingTop) ?? 0) + (px(cs.paddingBottom) ?? 0);
+    const borderX = (px(cs.borderLeftWidth) ?? 0) + (px(cs.borderRightWidth) ?? 0);
+    const borderY = (px(cs.borderTopWidth) ?? 0) + (px(cs.borderBottomWidth) ?? 0);
+    const box = {
+      x: left,
+      y: top,
+      w: width + padX + borderX,
+      h: height + padY + borderY
+    };
+    if (!visibleText || literal === null) return { kind: "node", box, text: null };
+    const lineHeight = px(cs.lineHeight) ?? (px(cs.fontSize) ?? 16) * 1.2;
+    if (height > lineHeight * 1.5) {
+      return {
+        kind: "refused",
+        refusal: { reason: "generated-content", content: literal },
+        hasPaint
+      };
+    }
+    const color = parseColor(cs.color) ?? { r: 0, g: 0, b: 0, a: 1 };
+    const run = {
+      text: literal,
+      fontStack: cs.fontFamily.split(",").map((name) => name.trim().replace(/^["']|["']$/g, "")),
+      usedFamily: cs.fontFamily.split(",")[0]?.trim().replace(/^["']|["']$/g, "") ?? "sans-serif",
+      fontWeight: Number.parseInt(cs.fontWeight, 10) || 400,
+      fontStyle: cs.fontStyle === "italic" ? "italic" : "normal",
+      fontSize: px(cs.fontSize) ?? 16,
+      letterSpacing: px(cs.letterSpacing) ?? 0,
+      color,
+      decoration: decorationOf(cs),
+      shadows: []
+    };
+    const align = ["left", "right", "center", "justify"].find((value) => cs.textAlign === value) ?? "left";
+    return {
+      kind: "node",
+      box,
+      text: { characters: literal, run, lineHeight, align }
+    };
+  };
+
   // src/vector.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
   var PRESENTATION = [
@@ -1329,7 +1443,7 @@ var H2DSerializer = (() => {
     end: "right",
     justify: "justify"
   };
-  var decorationOf = (cs) => {
+  var decorationOf2 = (cs) => {
     const line = cs.textDecorationLine;
     if (line.includes("underline")) return "underline";
     if (line.includes("line-through")) return "strikethrough";
@@ -1494,7 +1608,7 @@ var H2DSerializer = (() => {
       fontSize,
       letterSpacing: cs.letterSpacing === "normal" ? 0 : parsePx(cs.letterSpacing),
       color: color ?? { r: 0, g: 0, b: 0, a: 1 },
-      decoration: decorationOf(cs),
+      decoration: decorationOf2(cs),
       shadows: parseBoxShadow(cs.textShadow)
     };
     const lines = readLines(el, cs, origin);
@@ -1554,12 +1668,12 @@ var H2DSerializer = (() => {
   var readSelfLayout = (cs) => {
     const positioning = cs.position === "absolute" ? "absolute" : cs.position === "fixed" ? "fixed" : cs.position === "sticky" ? "sticky" : cs.float !== "none" ? "float" : "flow";
     const rawAlign = cs.alignSelf;
-    const px = (value) => Number.parseFloat(value) || 0;
+    const px2 = (value) => Number.parseFloat(value) || 0;
     const margin = {
-      top: px(cs.marginTop),
-      right: px(cs.marginRight),
-      bottom: px(cs.marginBottom),
-      left: px(cs.marginLeft)
+      top: px2(cs.marginTop),
+      right: px2(cs.marginRight),
+      bottom: px2(cs.marginBottom),
+      left: px2(cs.marginLeft)
     };
     return {
       positioning,
@@ -1584,16 +1698,16 @@ var H2DSerializer = (() => {
   var originBoxOf = (cs, box) => {
     const origin = cs.backgroundOrigin;
     if (origin === "border-box") return { x: 0, y: 0, w: box.w, h: box.h };
-    const px = (value) => Number.parseFloat(value) || 0;
-    let left = px(cs.borderLeftWidth);
-    let top = px(cs.borderTopWidth);
-    let right = px(cs.borderRightWidth);
-    let bottom = px(cs.borderBottomWidth);
+    const px2 = (value) => Number.parseFloat(value) || 0;
+    let left = px2(cs.borderLeftWidth);
+    let top = px2(cs.borderTopWidth);
+    let right = px2(cs.borderRightWidth);
+    let bottom = px2(cs.borderBottomWidth);
     if (origin === "content-box") {
-      left += px(cs.paddingLeft);
-      top += px(cs.paddingTop);
-      right += px(cs.paddingRight);
-      bottom += px(cs.paddingBottom);
+      left += px2(cs.paddingLeft);
+      top += px2(cs.paddingTop);
+      right += px2(cs.paddingRight);
+      bottom += px2(cs.paddingBottom);
     }
     return {
       x: left,
@@ -1680,7 +1794,7 @@ var H2DSerializer = (() => {
     "luminosity"
   ]);
   var readStyle = (cs, box, sink, id, requests2, screenId) => {
-    if (isEllipticalCorner(cs)) {
+    if (isEllipticalCorner(cs, box)) {
       sink.report(
         "info",
         DIAGNOSTIC_CODES.ellipticalCorner,
@@ -1712,7 +1826,7 @@ var H2DSerializer = (() => {
     return {
       fills: readFills(cs, box, sink, id, requests2, screenId),
       stroke: readStroke(cs),
-      corner: readCorner(cs),
+      corner: readCorner(cs, box),
       shadows: parseBoxShadow(cs.boxShadow),
       // СОБСТВЕННАЯ непрозрачность, не композитная: плагин вкладывает узлы,
       // и Figma перемножает так же, как браузер. Запекать вниз запрещено.
@@ -1859,18 +1973,6 @@ var H2DSerializer = (() => {
         false
       );
     }
-    for (const pseudo of ["::before", "::after"]) {
-      const content = window.getComputedStyle(el, pseudo).content;
-      if (content !== "none" && content !== "normal" && content !== "") {
-        sink.report(
-          "info",
-          DIAGNOSTIC_CODES.deferredPseudoElement,
-          `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${pseudo} \u0441 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u044B\u043C ${content} \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F.`,
-          id,
-          false
-        );
-      }
-    }
   };
   var placeholderFor = (el, sink, id) => {
     if (el.tagName === "CANVAS") {
@@ -1937,6 +2039,103 @@ var H2DSerializer = (() => {
     };
   };
   var SVG_NS2 = "http://www.w3.org/2000/svg";
+  var buildPseudo = (el, hostCs, which, hostBox, ctx, hostId) => {
+    const read = readPseudo(el, hostCs, which);
+    if (read.kind === "absent" || read.kind === "empty") return null;
+    if (read.kind === "refused") {
+      reportPseudoRefusal(read, which, ctx.sink, hostId);
+      return null;
+    }
+    const id = ctx.allocId();
+    const cs = window.getComputedStyle(el, which);
+    const borderLeft = Number.parseFloat(hostCs.borderLeftWidth) || 0;
+    const borderTop = Number.parseFloat(hostCs.borderTopWidth) || 0;
+    const rect = {
+      x: borderLeft + read.box.x,
+      y: borderTop + read.box.y,
+      w: read.box.w,
+      h: read.box.h
+    };
+    const inset = (side) => (Number.parseFloat(cs.getPropertyValue(`padding-${side}`)) || 0) + (Number.parseFloat(cs.getPropertyValue(`border-${side}-width`)) || 0);
+    const contentInset = {
+      top: inset("top"),
+      right: inset("right"),
+      bottom: inset("bottom"),
+      left: inset("left")
+    };
+    const base = {
+      id,
+      /** Имя говорит, откуда узел взялся: в панели слоёв Figma иначе
+       *  появится безымянная коробка, которой нет в разметке. */
+      sourceTag: which === "::before" ? "before" : "after",
+      name: which,
+      rect,
+      paintOrder: -1,
+      isStackingContext: false,
+      transform: null,
+      layout: readLayout(cs),
+      selfLayout: readSelfLayout(cs),
+      style: readStyle(cs, rect, ctx.sink, id, ctx.requests, ctx.screenId),
+      children: []
+    };
+    const node = read.text === null ? { ...base, kind: "frame" } : {
+      ...base,
+      kind: "text",
+      text: {
+        runs: [read.text.run],
+        /** Строка одна — это проверено при разборе, а не
+         *  предположено: многострочный псевдоэлемент сюда не
+         *  доходит. Но лежит она в CONTENT box, а не в боксе узла:
+         *  у бейджа с `padding: 2px 6px` текст иначе уехал бы в
+         *  левый верхний угол своей же подложки. */
+        lines: [{
+          x: contentInset.left,
+          y: contentInset.top,
+          w: rect.w - contentInset.left - contentInset.right,
+          h: rect.h - contentInset.top - contentInset.bottom,
+          text: read.text.characters
+        }],
+        lineHeight: read.text.lineHeight,
+        align: read.text.align
+      }
+    };
+    const probe = {
+      ...readProbe(el, cs, hostCs),
+      id,
+      children: []
+    };
+    return { node, probe };
+  };
+  var reportPseudoRefusal = (read, which, sink, hostId) => {
+    const { refusal } = read;
+    if (refusal.reason === "generated-content") {
+      sink.report(
+        "warning",
+        DIAGNOSTIC_CODES.deferredPseudoElement,
+        `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${which} \u043D\u0435\u0441\u0451\u0442 \u0442\u0435\u043A\u0441\u0442 "${refusal.content.slice(0, 40)}" \u0432 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u0442\u0440\u043E\u043A. \u0411\u043E\u043A\u0441\u043E\u0432 \u0441\u0442\u0440\u043E\u043A \u0443 \u043F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430 \u043D\u0435\u0442, \u0438 \u043C\u0435\u0441\u0442\u043E \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u043E\u0432 \u0432\u0437\u044F\u0442\u044C \u043D\u0435\u043E\u0442\u043A\u0443\u0434\u0430 \u2014 \u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0443\u0433\u0430\u0434 \u0442\u0435\u043A\u0441\u0442 \u0432\u044B\u0433\u043B\u044F\u0434\u0435\u043B \u0431\u044B \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D\u043D\u044B\u043C.`,
+        hostId,
+        false
+      );
+      return;
+    }
+    if (refusal.reason === "containing-block") {
+      sink.report(
+        "info",
+        DIAGNOSTIC_CODES.deferredPseudoElement,
+        `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${which} \u043F\u043E\u0437\u0438\u0446\u0438\u043E\u043D\u0438\u0440\u043E\u0432\u0430\u043D \u043D\u0435 \u043E\u0442 \u0441\u0432\u043E\u0435\u0433\u043E \u0445\u043E\u0437\u044F\u0438\u043D\u0430 (position: fixed \u0438\u043B\u0438 \u0445\u043E\u0437\u044F\u0438\u043D \u043D\u0435 \u043F\u043E\u0437\u0438\u0446\u0438\u043E\u043D\u0438\u0440\u043E\u0432\u0430\u043D), \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u0435\u0433\u043E \u043A\u043E\u043E\u0440\u0434\u0438\u043D\u0430\u0442\u044B \u043E\u0442\u0441\u0447\u0438\u0442\u0430\u043D\u044B \u043E\u0442 \u0434\u0440\u0443\u0433\u043E\u0433\u043E \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430 \u0438 \u0441\u043B\u043E\u0436\u0438\u0442\u044C \u0438\u0445 \u043D\u0435 \u0441 \u0447\u0435\u043C.`,
+        hostId,
+        false
+      );
+      return;
+    }
+    sink.report(
+      read.hasPaint ? "warning" : "info",
+      DIAGNOSTIC_CODES.deferredPseudoElement,
+      `\u041F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442 ${which} \u0441\u0442\u043E\u0438\u0442 \u0432 \u043F\u043E\u0442\u043E\u043A\u0435, \u0430 \u043D\u0435 \u043F\u043E\u0437\u0438\u0446\u0438\u043E\u043D\u0438\u0440\u043E\u0432\u0430\u043D. \u0423 \u043F\u0441\u0435\u0432\u0434\u043E\u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430 \u043D\u0435\u0442 \u0443\u0437\u043B\u0430 \u0432 DOM, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u0435\u0433\u043E \u0440\u0430\u0437\u043C\u0435\u0440 \u0438 \u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u0432 \u043F\u043E\u0442\u043E\u043A\u0435 \u0438\u0437\u043C\u0435\u0440\u0438\u0442\u044C \u043D\u0435\u0447\u0435\u043C: \u0432\u044B\u0447\u0438\u0441\u043B\u0435\u043D\u043D\u044B\u0439 \u0441\u0442\u0438\u043B\u044C \u043E\u0442\u0434\u0430\u0451\u0442 \u0438\u0445 \u043A\u0430\u043A auto.`,
+      hostId,
+      false
+    );
+  };
   var buildNode = (el, parentCs, ctx) => {
     const cs = window.getComputedStyle(el);
     if (!isRendered(el, cs)) return null;
@@ -1974,11 +2173,21 @@ var H2DSerializer = (() => {
       parentOrigin: screenOrigin,
       insideBrokenTransform: ctx.insideBrokenTransform || brokenTransform
     };
+    const pseudoBefore = buildPseudo(el, cs, "::before", box, ctx, id);
+    if (pseudoBefore !== null) {
+      children.push(pseudoBefore.node);
+      childProbes.push(pseudoBefore.probe);
+    }
     for (const child of ordered) {
       const built = buildNode(child, cs, childCtx);
       if (built === null) continue;
       children.push(built.node);
       childProbes.push(built.probe);
+    }
+    const pseudoAfter = buildPseudo(el, cs, "::after", box, ctx, id);
+    if (pseudoAfter !== null) {
+      children.push(pseudoAfter.node);
+      childProbes.push(pseudoAfter.probe);
     }
     const base = {
       id,

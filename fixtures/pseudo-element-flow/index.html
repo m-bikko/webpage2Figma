@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>pseudo-element-flow</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:16px/1.5 monospace;padding:16px}
+
+  /* ПОТОКОВЫЙ ::before с текстом. Его геометрия недоступна в принципе:
+     ширина и положение приходят как auto, а текстовых боксов у
+     псевдоэлемента нет. Обязан остаться в отчёте. */
+  .prefix::before{content:"→ ";color:#b45309;font-weight:700}
+
+  /* Невидимое содержимое: ни фона, ни рамки, ни текста на экране.
+     Переносить нечего, и сообщать не о чем — такая запись только
+     засоряла бы отчёт. */
+  .invisible::after{content:"\2060"}
+
+  /* Многострочный текст в абсолютном псевдоэлементе: бокс известен, а
+     места переносов — нет, и поставленный наугад текст выглядел бы
+     перенесённым. */
+  .long{position:relative;width:200px;height:120px;background:#eee;margin-top:12px}
+  .long::after{content:"строка раз строка два строка три строка четыре";
+    position:absolute;left:8px;top:8px;width:120px;height:80px;color:#1e293b}
+
+  /* Сгенерированное содержимое: значения счётчика вычисленный стиль не
+     отдаёт, и подставить вместо него догадку значило бы написать в
+     макете неверный номер. */
+  .numbered{counter-reset:n;margin-top:12px}
+  .numbered li::before{counter-increment:n;content:counter(n) ") ";color:#0f766e}
+</style></head>
+<body>
+  <!-- ЗАВЕДОМО НЕПЕРЕНОСИМОЕ, и потому фикстура живёт в проверке
+       диагностик, а не в пиксельном гейте. У псевдоэлемента нет узла в
+       DOM: в потоке его размер и положение вычисленный стиль отдаёт
+       как auto, измерить их нечем. Поднять пиксельный порог под это
+       значило бы сделать гейт пустым. -->
+  <p class="prefix">потоковый псевдоэлемент с текстом</p>
+  <p class="invisible">невидимое содержимое</p>
+  <div class="long"></div>
+  <ul class="numbered" style="list-style:none"><li>раз</li><li>два</li></ul>
+</body></html>

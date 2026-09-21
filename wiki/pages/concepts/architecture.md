@@ -3,7 +3,7 @@ title: Архитектура
 type: concept
 tags: [architecture, extension, figma-plugin]
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-21
 sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 ---
 
@@ -32,7 +32,7 @@ sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 
 ## Транспорт
 
-Файл `.w2f` (ZIP: `ir.json` + `assets/` + `screenshots/`), см. [[ir-bundle]].
+Файл `.w2f` (ZIP: `ir.json` + `assets/` + `screenshots/`), см. [[ir-bundle]]. Позже к файлу добавился второй путь — тот же архив текстом через буфер обмена; файл при этом скачивается всё равно, см. [[delivery]].
 
 Localhost-relay отклонён: «один клик вместо двух» не окупает фоновый процесс на машине каждого коллеги, `allowedDomains` в манифесте плагина и класс сетевых сбоев. Файл детерминирован, воспроизводится, прикладывается к багрепорту и переживает перезапуск Figma.
 

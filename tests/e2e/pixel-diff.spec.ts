@@ -34,6 +34,7 @@ const FIXTURES = [
   'image-fit', 'image-bg', 'image-data',
   'vector',
   'pseudo-stacking',
+  'pseudo-element',
   /** `image-cors` и `image-broken` здесь НЕ значатся намеренно. Её узлы — заглушки, а
    *  заглушка нарочно громкая: красная пунктирная рамка с подписью,
    *  которую браузер не рисует никогда. Расхождение измерено — 21155
