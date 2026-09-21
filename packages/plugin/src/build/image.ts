@@ -104,16 +104,18 @@ export const imageNodeFor = (
   }
 
   const uniform = Math.abs(placement.scaleX - placement.scaleY) <= SCALE_TOLERANCE
-  if (!uniform) {
-    needsVerification.push({
-      code: DIAGNOSTIC_CODES.imageRecoded,
-      nodeId,
-      message:
-        `Неравномерное растяжение (${placement.scaleX} × ${placement.scaleY}) ` +
-        'выразимо только через CROP с imageTransform, семантика которого ' +
-        'документирована одной строкой — требует сверки в Figma.',
-    })
-  }
+  /** Отметка «требует сверки» здесь БОЛЬШЕ НЕ СТАВИТСЯ: вопрос закрыт
+   *  замером в настоящей Figma. `CROP` без заданного `imageTransform`
+   *  растягивает картинку по границам узла — ровно то, что нужно.
+   *
+   *  Различающий признак из замера: левый верхний угол блока у
+   *  `object-fit: fill` равен [3, 2, 64] (видна вся ширина исходника),
+   *  у `cover` — [45, 2, 64] (левые ~17% обрезаны). Браузер даёт [3, 3]
+   *  и [45, 3]. Подробности — в [[figma-semantics]].
+   *
+   *  Что эта отметка прикрывала, кроме самого `CROP`: ничего. Плитка
+   *  помечается отдельно и остаётся непроверенной, потеря смещения
+   *  плитки — тоже. */
 
   const inner: SceneNode = {
     kind: 'rect',
