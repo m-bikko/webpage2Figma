@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8">
+<style>
+  :root{color-scheme:light dark}
+  body{font:13px/1.5 Inter,system-ui,sans-serif;margin:0;padding:16px}
+  h1{font-size:14px;margin:0 0 4px}
+  p{margin:0 0 12px;opacity:.7}
+  input{display:block;margin-bottom:12px}
+  .row{display:flex;gap:6px;padding:4px 0;border-top:1px solid rgba(128,128,128,.25)}
+  .lvl{flex:0 0 64px;font-weight:600}
+  .error{color:#dc2626}.warning{color:#d97706}.info{opacity:.7}
+  #out{max-height:180px;overflow:auto}
+  .check{margin-top:12px;padding:8px;border:1px solid #d97706;border-radius:4px}
+</style></head>
+<body>
+  <h1>html2design</h1>
+  <p>Выбери файл <code>.h2d</code>, собранный расширением.</p>
+  <input type="file" id="file" accept=".h2d,application/zip">
+  <div id="out"></div>
+<script>
+  const out = document.getElementById('out')
+  document.getElementById('file').addEventListener('change', async (event) => {
+    const file = event.target.files && event.target.files[0]
+    if (!file) return
+    out.textContent = 'Читаю…'
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    // Массив, а не Uint8Array: границу плагина переживает только то,
+    // что сериализуется как JSON.
+    parent.postMessage({ pluginMessage: { kind: 'bundle', bytes: Array.from(bytes) } }, '*')
+  })
+
+  window.onmessage = (event) => {
+    const msg = event.data.pluginMessage
+    if (!msg) return
+    if (msg.kind === 'error') {
+      out.innerHTML = '<div class="row error">' + escapeHtml(msg.text) + '</div>'
+      return
+    }
+    const rows = msg.report.map((entry) =>
+      '<div class="row"><span class="lvl ' + entry.level + '">' + entry.level +
+      '</span><span>' + escapeHtml(entry.message) + '</span></div>').join('')
+    const check = msg.needsVerification.length === 0 ? '' :
+      '<div class="check"><b>Требует сверки глазами</b> — здесь наша модель ' +
+      'поведения Figma остаётся догадкой:<br>' +
+      msg.needsVerification.map((v) => escapeHtml(v.message)).join('<br>') + '</div>'
+    out.innerHTML =
+      '<div class="row"><b>Экранов создано: ' + msg.screens + '</b></div>' +
+      (rows || '<div class="row info">Расхождений не найдено.</div>') + check
+  }
+
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"]/g, (ch) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+  }
+</script>
+</body></html>

@@ -1,11 +1,17 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: { index: 'src/index.ts' },
+  entry: { bundled: 'src/index.ts' },
   format: ['esm'],
   target: 'node20',
   sourcemap: true,
-  clean: true,
+  /** `clean` выключен, а имя выхода отличается от `index`, потому что
+   *  в ту же папку пишет `tsc -b`: он выпускает `index.d.ts`, на
+   *  который ссылаются зависящие пакеты. Очистка стирала его, и сборка
+   *  плагина падала на «output file has not been built from source».
+   *  Теперь типы за компилятором, самодостаточная сборка — за tsup, и
+   *  они не наступают друг другу на ноги. */
+  clean: false,
   /** `@h2d/ir` вшивается, а не остаётся внешним. Причина не в размере:
    *  его `exports` указывают на `.ts`, который обычный Node прочитать
    *  не может, а `parseBundle` нужен здесь во ВРЕМЯ ВЫПОЛНЕНИЯ — в

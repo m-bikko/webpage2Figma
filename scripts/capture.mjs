@@ -41,7 +41,7 @@ const rendererDist = resolve(
   dirname(fileURLToPath(import.meta.url)), '../packages/reference-renderer/dist/index.js',
 )
 const bundleDist = resolve(
-  dirname(fileURLToPath(import.meta.url)), '../packages/bundle/dist/index.js',
+  dirname(fileURLToPath(import.meta.url)), '../packages/bundle/dist/bundled.js',
 )
 
 let parseBundle, IR_VERSION, reconcileAssets, renderScreenToSvg, wrapSvgInHtml
