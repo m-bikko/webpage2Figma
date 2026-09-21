@@ -12,7 +12,8 @@
     "test:e2e": "playwright test",
     "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
     "build:serializer": "pnpm --filter @h2d/serializer build",
-    "capture": "node scripts/capture.mjs"
+    "capture": "node scripts/capture.mjs",
+    "build:bundle": "pnpm --filter @h2d/bundle build"
   },
   "devDependencies": {
     "@h2d/ir": "workspace:*",

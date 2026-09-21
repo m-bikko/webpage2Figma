@@ -25,6 +25,8 @@ sources: []
 
 ## Entities
 
+- [[assets]] — изображения, двухфазный захват байтов, формат .h2d
+
 - [[ir-bundle]] — формат обмена между extension и плагином Figma
 - [[component-detection]] — слои B и C, как рождаются компоненты Figma
 - [[fixture-suite]] — 17 фикстур и 85 снапшотов IR в настоящем Chrome

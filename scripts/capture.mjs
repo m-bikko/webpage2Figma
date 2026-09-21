@@ -19,7 +19,7 @@
  *   render.svg    — тот же IR, отрендеренный обратно
  *   render.png    — скриншот рендера, для сравнения глазами
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -40,15 +40,20 @@ const irDist = resolve(dirname(fileURLToPath(import.meta.url)), '../packages/ir/
 const rendererDist = resolve(
   dirname(fileURLToPath(import.meta.url)), '../packages/reference-renderer/dist/index.js',
 )
+const bundleDist = resolve(
+  dirname(fileURLToPath(import.meta.url)), '../packages/bundle/dist/index.js',
+)
 
 let parseBundle, IR_VERSION, reconcileAssets, renderScreenToSvg, wrapSvgInHtml
+let packBundle
 try {
   ;({ parseBundle, IR_VERSION, reconcileAssets } = await import(pathToFileURL(irDist).href))
   ;({ renderScreenToSvg, wrapSvgInHtml } = await import(pathToFileURL(rendererDist).href))
+  ;({ packBundle } = await import(pathToFileURL(bundleDist).href))
 } catch (error) {
-  console.error('Не удалось загрузить собранные @h2d/ir или @h2d/reference-renderer.')
-  console.error(`Ожидались: ${irDist}\n           ${rendererDist}`)
-  console.error('Собери их: pnpm typecheck')
+  console.error('Не удалось загрузить собранные @h2d/ir, @h2d/reference-renderer или @h2d/bundle.')
+  console.error(`Ожидались: ${irDist}\n           ${rendererDist}\n           ${bundleDist}`)
+  console.error('Собери их: pnpm typecheck && pnpm build:bundle')
   console.error(
     'Если dist/ удаляли руками без удаления *.tsbuildinfo — tsc -b мог решить, ' +
     'что пересобирать нечего. Удали packages/*/tsconfig.tsbuildinfo и повтори pnpm typecheck.',
@@ -136,6 +141,7 @@ try {
   const captured = await page.evaluate(() => window.__h2d.captureScreen('s0', 'Capture'))
 
   const browserShot = await page.screenshot({ fullPage: true })
+  const shotId = `shot-${captured.screen.id}`
   writeFileSync(resolve(outDir, 'page.png'), browserShot)
 
   /** Байты забираются ПОСЛЕ снимка: обход синхронен, а получение
@@ -170,8 +176,18 @@ try {
     url,
     title: await page.title().catch(() => ''),
     userAgent: 'capture.mjs',
-    screens: [reconciledScreen],
-    assets: resolved.assets,
+    /** Скриншот экрана кладётся ОБЫЧНЫМ ассетом: инвариант уже
+     *  требует, чтобы `screenshotId` нашёлся среди `assets`, а
+     *  упаковка пишет ассет по его собственному `path`. Отдельного
+     *  механизма не нужно вовсе. */
+    screens: [{ ...reconciledScreen, screenshotId: shotId }],
+    assets: [...resolved.assets, {
+      id: shotId,
+      mimeType: 'image/png',
+      width: captured.screen.width,
+      height: captured.screen.height,
+      path: `screenshots/${captured.screen.id}.png`,
+    }],
     fonts: captured.fonts,
     tokens: { variables: [], textStyles: [], paintStyles: [] },
     /** Отчёт экрана И отчёт фазы разрешения: отказ по байтам
@@ -181,6 +197,15 @@ try {
     report: [...captured.report, ...resolved.report, ...reconcileReport],
   }
   const verdict = parseBundle(bundle)
+
+  /** Первый артефакт, который можно отдать плагину. Пишется даже при
+   *  отказе валидатора: багрепорт с непринятым бандлом полезнее, чем
+   *  багрепорт без него. */
+  const assetBytes = Object.fromEntries([
+    ...resolved.assets.map((a) => [a.id, Buffer.from(resolved.base64[a.id] ?? '', 'base64')]),
+    [shotId, browserShot],
+  ])
+  writeFileSync(resolve(outDir, 'bundle.h2d'), await packBundle(bundle, { assets: assetBytes }))
 
   const nodes = []
   const walk = (node) => { nodes.push(node); node.children.forEach(walk) }
@@ -211,7 +236,9 @@ try {
   )
   if (!verdict.ok) console.log(verdict.error.split('\n').slice(0, 12).join('\n'))
 
-  console.log('\nв out/: ir.json, page.png, render.svg, render.png')
+  const bundleSize = statSync(resolve(outDir, 'bundle.h2d')).size
+  console.log(`\nв out/: ir.json, page.png, render.svg, render.png, ` +
+              `bundle.h2d (${(bundleSize / 1024).toFixed(1)} КиБ)`)
   console.log('сравни page.png и render.png — это и есть проверка точности глазами\n')
 } finally {
   await browser.close()
