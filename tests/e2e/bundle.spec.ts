@@ -22,7 +22,7 @@ import { captureScreen, fixtureUrl, SIZES } from './helpers/capture.js'
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text',
   'transformed', 'transform-nested', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
-  'missing-font', 'dashed-border', 'text-transform',
+  'missing-font', 'dashed-border', 'text-transform', 'blend',
 ] as const
 
 for (const fixture of FIXTURES) {

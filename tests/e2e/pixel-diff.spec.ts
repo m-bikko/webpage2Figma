@@ -5,12 +5,13 @@ import { renderScreenToSvg, wrapSvgInHtml } from '@h2d/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 import { diffPng, shotOfScreen } from './helpers/diff.js'
 
-/** Участвуют ШЕСТЬ фикстур из двенадцати, и это не недосмотр.
+/** Участвуют СЕМЬ фикстур из четырнадцати, и это не недосмотр.
  *
  *  `gradient/` вошла в гейт вместе с реализацией линейных градиентов:
  *  раньше она обязана была расходиться (измерено 19–30%), теперь её
  *  рендер верен и проверяется наравне с остальными. `transformed/` вошла
- *  тем же путём вместе с реализацией 2D-трансформ.
+ *  тем же путём вместе с реализацией 2D-трансформ, `blend/` — вместе с
+ *  режимами наложения.
  *
  *  `radial-gradient/` обязана расходиться: радиальному градиенту в SVG нет
  *  соответствия вовсе, поэтому рендер заведомо неверен и подогнанный под
@@ -27,7 +28,7 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
  *  такой ветки рядом с `radial-gradient`, то есть в проверке диагностик,
  *  а не в гейте точности. */
 const FIXTURES = [
-  'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed',
+  'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed', 'blend',
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.

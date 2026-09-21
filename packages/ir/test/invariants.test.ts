@@ -289,13 +289,16 @@ describe('checkInvariants: отложенные фичи обязаны диаг
     expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 
-  it('ловит blend без diagnostic', () => {
+  /** Тест `ловит blend без diagnostic` удалён вместе с самой проверкой:
+   *  режимы наложения переносятся, и требовать для них диагностику значило
+   *  бы отвергать корректные бандлы — тот же переход, что уже проделан для
+   *  transform. */
+  it('принимает blend без диагностики: фича больше не отложена', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,
       style: { ...frameNode().style, blend: 'multiply' },
     })
-    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
-      .toContain('deferred.undiagnosed')
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 
   it('ловит blur без diagnostic', () => {

@@ -197,6 +197,16 @@ test('radial-gradient: радиальный диагностируется, а �
     .toBe(true)
 })
 
+test('blend: режим наложения доезжает и не диагностируется', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('blend'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const modes = screen.root.children.map((s) => s.children[0]?.style.blend)
+  expect(modes).toEqual(['multiply', 'screen', 'overlay'])
+  expect(report.some((i) => i.code === 'deferred.blend')).toBe(false)
+})
+
 test('inline-text: конкатенация ранов равна конкатенации строк', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('inline-text'))

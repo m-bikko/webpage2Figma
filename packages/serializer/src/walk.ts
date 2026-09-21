@@ -195,14 +195,14 @@ const blurRadius = (value: string): number => {
  *
  *  Разделение обязательное: `unsupported.*` — то, что невозможно в Figma
  *  в принципе, `deferred.*` — то, что ещё не реализовано. Второе
- *  проверяется инвариантом в `@h2d/ir`: узел с непустым `blend` или `blur`
+ *  проверяется инвариантом в `@h2d/ir`: узел с непустым `blur`
  *  без парной диагностики отвергается на входе плагина. Именно так правило
  *  «молчаливый fallback — это баг» стало машинным.
  *
- *  Трансформа из этого списка ВЫШЛА: она переносится, поэтому
- *  диагностируется только то, что перенести нельзя — трёхмерная матрица и
- *  сдвиг. Сообщать о переносимом повороте было бы шумом, а шум учит
- *  игнорировать отчёт целиком. */
+ *  Трансформа и режим наложения из этого списка ВЫШЛИ: оба переносятся,
+ *  поэтому диагностируется только то, что перенести нельзя — трёхмерная
+ *  матрица трансформы и сдвиг. Сообщать о переносимом повороте или
+ *  наложении было бы шумом, а шум учит игнорировать отчёт целиком. */
 const reportGaps = (
   el: Element,
   cs: CSSStyleDeclaration,
@@ -267,10 +267,6 @@ const reportGaps = (
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedFilter,
       `backdrop-filter "${cs.backdropFilter}" содержит функции кроме размытия.`,
       id, false)
-  }
-  if (cs.mixBlendMode !== 'normal') {
-    sink.report('info', DIAGNOSTIC_CODES.deferredBlend,
-      `mix-blend-mode "${cs.mixBlendMode}" не переносится в этом плане.`, id, false)
   }
   if (cs.clipPath !== 'none') {
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedClipPath,

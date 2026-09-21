@@ -268,6 +268,12 @@ const renderBox = (node: IrNode, defs: string[]): string => {
     )
   }
   if (style.opacity < 1) attrs.push(`opacity="${style.opacity}"`)
+  /** SVG принимает режим наложения как свойство стиля, не как атрибут
+   *  презентации, поэтому он идёт через `style=`. Значения CSS и SVG
+   *  совпадают по написанию, так что перевод не нужен. */
+  if (style.blend !== 'normal') {
+    attrs.push(`style="mix-blend-mode:${style.blend}"`)
+  }
   if (hasShadow) {
     const filterId = `shadow-${node.id}`
     defs.push(shadowFilter(filterId, style.shadows))
