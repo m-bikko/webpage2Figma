@@ -543,21 +543,23 @@ const reportGaps = (
    *  Измерено: на пяти живых страницах от нуля до одного хозяина с
    *  одним-двумя узлами внутри — потеря настоящая, но редкая, и
    *  диагностика здесь честнее поспешной реализации. */
+  /** ОТКРЫТЫЙ корень теперь обходится — диагностики для него больше
+   *  нет. Осталась только та, что сообщает о НЕДОСТУПНОМ содержимом:
+   *  закрытый корень снаружи не прочитать вовсе. */
   const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot
-  if (shadow !== null && shadow !== undefined) {
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
-      `Содержимое shadow DOM (${shadow.childElementCount} узлов) не ` +
-      `переносится: обход идёт по обычному дереву.`, id, false)
-  } else if (el.tagName.includes('-')) {
+  if (shadow === null || shadow === undefined) {
+    if (el.tagName.includes('-')) {
     /** Дефис в имени — пользовательский элемент. Корня не видно: он
      *  либо закрытый, либо его нет вовсе. Различить снаружи нельзя,
      *  поэтому сообщается ровно то, что известно. */
-    const inner = el.childElementCount
-    if (inner === 0 && el.getBoundingClientRect().width > 0) {
-      sink.report('info', DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
-        `Пользовательский элемент <${el.tagName.toLowerCase()}> занимает ` +
-        `место, но детей у него не видно: содержимое, скорее всего, в ` +
-        `закрытом shadow DOM и недоступно.`, id, false)
+      const inner = el.childElementCount
+      if (inner === 0 && el.getBoundingClientRect().width > 0) {
+        sink.report('warning', DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
+          `Пользовательский элемент <${el.tagName.toLowerCase()}> занимает ` +
+          `место, но детей у него не видно: содержимое, скорее всего, в ` +
+          `ЗАКРЫТОМ shadow DOM. Такой корень недоступен снаружи по ` +
+          `определению — ни обойти, ни прочитать его нельзя.`, id, false)
+      }
     }
   }
 
@@ -834,6 +836,49 @@ const reportPseudoRefusal = (
     hostId, false)
 }
 
+/** Дети узла с учётом ТЕНЕВОГО ДЕРЕВА.
+ *
+ *  Содержимое открытого shadow root видно на экране, но `el.children`
+ *  о нём не знает: это отдельный корень. Обход, идущий только по
+ *  обычным детям, теряет его целиком и молча — так и было, пока
+ *  проверка источников кодов не показала, что диагностики для этого
+ *  случая тоже нет.
+ *
+ *  СЛОТЫ — то, из-за чего нельзя просто сложить два списка. Обычные
+ *  дети хозяина рисуются НЕ на своём месте в разметке, а внутри
+ *  теневого дерева, там, где стоит `<slot>`. Взять и теневое дерево, и
+ *  обычных детей значило бы нарисовать их дважды, причём второй раз —
+ *  не там, где они на самом деле.
+ *
+ *  Поэтому: у хозяина с теневым деревом обходится ТОЛЬКО теневое
+ *  дерево, а встреченный `<slot>` подменяется назначенными ему
+ *  узлами. Закрытый корень недоступен по определению, и о нём
+ *  сообщает `reportGaps`. */
+const orderedChildren = (el: Element, cs: CSSStyleDeclaration): Element[] => {
+  const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot
+  const source = shadow === null || shadow === undefined
+    ? [...el.children]
+    : [...shadow.children]
+
+  /** `<slot>` сам по себе ничего не рисует: на его месте стоят
+   *  назначенные узлы. Пустой слот показывает своё запасное
+   *  содержимое — обычных детей самого слота. */
+  const expanded: Element[] = []
+  for (const child of source) {
+    if (child.tagName !== 'SLOT') {
+      expanded.push(child)
+      continue
+    }
+    const slot = child as HTMLSlotElement
+    const assigned = slot.assignedElements === undefined
+      ? []
+      : slot.assignedElements()
+    expanded.push(...(assigned.length > 0 ? assigned : [...slot.children]))
+  }
+
+  return isReversed(cs) ? expanded.reverse() : expanded
+}
+
 type Built = { node: IrNode; probe: LayoutProbe }
 
 const buildNode = (
@@ -931,9 +976,7 @@ const buildNode = (
 
   /** Порядок детей нормализуется по -reverse: сам порядок отрисовки
    *  живёт в paintOrder, а здесь он логический, раскладочный. */
-  const ordered = isVectorRoot
-    ? []
-    : isReversed(cs) ? [...el.children].reverse() : [...el.children]
+  const ordered = isVectorRoot ? [] : orderedChildren(el, cs)
 
   const childCtx: WalkContext = {
     ...ctx,

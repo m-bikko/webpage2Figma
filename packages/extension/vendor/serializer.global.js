@@ -1940,6 +1940,24 @@ var H2DSerializer = (() => {
     const head = lineBefore ? text.replace(/^ +/, "") : text;
     return lineAfter ? head.replace(/ +$/, "") : head;
   };
+  var hasVisiblePrecedingSibling = (node) => {
+    let previous = node.previousSibling;
+    while (previous !== null) {
+      if (previous.nodeType === Node.ELEMENT_NODE) return true;
+      if (previous.nodeType === Node.TEXT_NODE && (previous.textContent ?? "").trim() !== "") return true;
+      previous = previous.previousSibling;
+    }
+    return false;
+  };
+  var hasVisibleFollowingSibling = (node) => {
+    let next = node.nextSibling;
+    while (next !== null) {
+      if (next.nodeType === Node.ELEMENT_NODE) return true;
+      if (next.nodeType === Node.TEXT_NODE && (next.textContent ?? "").trim() !== "") return true;
+      next = next.nextSibling;
+    }
+    return false;
+  };
   var applyTextTransform = (text, cs) => {
     switch (cs.textTransform) {
       case "uppercase":
@@ -1999,8 +2017,8 @@ var H2DSerializer = (() => {
         const visible = trimAtLineBreaks(
           collapseWhiteSpace(raw, cs),
           cs,
-          index2 > 0,
-          index2 < rects.length - 1
+          index2 > 0 || !hasVisiblePrecedingSibling(node),
+          index2 < rects.length - 1 || !hasVisibleFollowingSibling(node)
         );
         lines.push({
           x: rect.left - origin.x,
@@ -2391,24 +2409,18 @@ var H2DSerializer = (() => {
       );
     }
     const shadow = el.shadowRoot;
-    if (shadow !== null && shadow !== void 0) {
-      sink.report(
-        "warning",
-        DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
-        `\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 shadow DOM (${shadow.childElementCount} \u0443\u0437\u043B\u043E\u0432) \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u043E\u0431\u0445\u043E\u0434 \u0438\u0434\u0451\u0442 \u043F\u043E \u043E\u0431\u044B\u0447\u043D\u043E\u043C\u0443 \u0434\u0435\u0440\u0435\u0432\u0443.`,
-        id,
-        false
-      );
-    } else if (el.tagName.includes("-")) {
-      const inner = el.childElementCount;
-      if (inner === 0 && el.getBoundingClientRect().width > 0) {
-        sink.report(
-          "info",
-          DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
-          `\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 <${el.tagName.toLowerCase()}> \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u043C\u0435\u0441\u0442\u043E, \u043D\u043E \u0434\u0435\u0442\u0435\u0439 \u0443 \u043D\u0435\u0433\u043E \u043D\u0435 \u0432\u0438\u0434\u043D\u043E: \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435, \u0441\u043A\u043E\u0440\u0435\u0435 \u0432\u0441\u0435\u0433\u043E, \u0432 \u0437\u0430\u043A\u0440\u044B\u0442\u043E\u043C shadow DOM \u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E.`,
-          id,
-          false
-        );
+    if (shadow === null || shadow === void 0) {
+      if (el.tagName.includes("-")) {
+        const inner = el.childElementCount;
+        if (inner === 0 && el.getBoundingClientRect().width > 0) {
+          sink.report(
+            "warning",
+            DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
+            `\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 <${el.tagName.toLowerCase()}> \u0437\u0430\u043D\u0438\u043C\u0430\u0435\u0442 \u043C\u0435\u0441\u0442\u043E, \u043D\u043E \u0434\u0435\u0442\u0435\u0439 \u0443 \u043D\u0435\u0433\u043E \u043D\u0435 \u0432\u0438\u0434\u043D\u043E: \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435, \u0441\u043A\u043E\u0440\u0435\u0435 \u0432\u0441\u0435\u0433\u043E, \u0432 \u0417\u0410\u041A\u0420\u042B\u0422\u041E\u041C shadow DOM. \u0422\u0430\u043A\u043E\u0439 \u043A\u043E\u0440\u0435\u043D\u044C \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0441\u043D\u0430\u0440\u0443\u0436\u0438 \u043F\u043E \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0435\u043D\u0438\u044E \u2014 \u043D\u0438 \u043E\u0431\u043E\u0439\u0442\u0438, \u043D\u0438 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0435\u0433\u043E \u043D\u0435\u043B\u044C\u0437\u044F.`,
+            id,
+            false
+          );
+        }
       }
     }
     if (cs.position === "sticky" || cs.position === "fixed") {
@@ -2607,6 +2619,21 @@ var H2DSerializer = (() => {
       false
     );
   };
+  var orderedChildren = (el, cs) => {
+    const shadow = el.shadowRoot;
+    const source = shadow === null || shadow === void 0 ? [...el.children] : [...shadow.children];
+    const expanded = [];
+    for (const child of source) {
+      if (child.tagName !== "SLOT") {
+        expanded.push(child);
+        continue;
+      }
+      const slot = child;
+      const assigned = slot.assignedElements === void 0 ? [] : slot.assignedElements();
+      expanded.push(...assigned.length > 0 ? assigned : [...slot.children]);
+    }
+    return isReversed(cs) ? expanded.reverse() : expanded;
+  };
   var buildNode = (el, parentCs, ctx) => {
     const cs = window.getComputedStyle(el);
     if (!isRendered(el, cs)) return null;
@@ -2636,7 +2663,7 @@ var H2DSerializer = (() => {
     const brokenTransform = ownMatrixRaw !== null && !usable;
     const isVectorRoot = el.namespaceURI === SVG_NS2 && el.tagName.toLowerCase() === "svg";
     const vector = isVectorRoot ? readVector(el, size, id) : null;
-    const ordered = isVectorRoot ? [] : isReversed(cs) ? [...el.children].reverse() : [...el.children];
+    const ordered = isVectorRoot ? [] : orderedChildren(el, cs);
     const childCtx = {
       ...ctx,
       ancestorMatrix: total,

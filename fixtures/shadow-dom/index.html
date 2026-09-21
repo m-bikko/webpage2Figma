@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>shadow-dom</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:16px/1.4 monospace;padding:16px}
+  .plain{background:#e2e8f0;padding:8px;margin-bottom:12px}
+  /* Крупный текст, записанный в разметке С НОВОЙ СТРОКИ: ведущий
+     пробел схлопывается браузером, и если его не обрезать, вся строка
+     уезжает вправо. На мелком кегле сдвиг тонет в кромках глифов,
+     поэтому здесь он крупный. */
+  .indent{background:#fef3c7;padding:8px;margin-bottom:12px;
+    font-size:26px;font-weight:700;color:#78350f}
+</style></head>
+<body>
+  <div class="plain">обычный узел до компонента</div>
+
+  <!-- ОТКРЫТЫЙ SHADOW ROOT. Его содержимое видно на экране, но
+       `el.children` о нём не знает: теневое дерево — отдельный
+       корень. Обход, идущий только по обычным детям, теряет всё, что
+       внутри, молча. -->
+  <my-card></my-card>
+
+  <!-- SLOT: обычные дети хозяина рисуются НА МЕСТЕ слота, внутри
+       теневого дерева. Обойти и теневое дерево, и обычных детей
+       значило бы нарисовать их дважды.
+
+       Слот стоит на СВОЕЙ строке нарочно. Текст, обтекающий inline-
+       элемент, — отдельный случай со своими сложностями, и он уже
+       проверяется фикстурой `inline-text`. Здесь он только мешал бы
+       видеть то, ради чего фикстура заведена: обход теневого дерева и
+       подстановку назначенных узлов. -->
+  <my-panel>
+    <span class="slotted">содержимое из обычного дерева</span>
+  </my-panel>
+
+  <div class="indent">
+    текст с новой строки
+  </div>
+  <div class="indent">
+    и ещё одна такая же строка
+  </div>
+
+  <div class="plain">обычный узел после компонента</div>
+
+<script>
+customElements.define('my-card', class extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({ mode: 'open' })
+    root.innerHTML = `
+      <style>
+        .box{background:#2563eb;color:#fff;padding:10px;margin-bottom:12px}
+        .tag{background:#f59e0b;color:#1e293b;padding:2px 8px;
+             display:inline-block;margin-top:6px}
+      </style>
+      <div class="box">
+        содержимое теневого дерева
+        <span class="tag">метка</span>
+      </div>`
+  }
+})
+customElements.define('my-panel', class extends HTMLElement {
+  connectedCallback() {
+    const root = this.attachShadow({ mode: 'open' })
+    root.innerHTML = `
+      <style>
+        .frame{border:3px solid #16a34a;padding:10px;margin-bottom:12px}
+        .label{display:block;color:#64748b}
+        /* Фон у назначенного узла нарочно: без него исчезновение
+           слотового содержимого стоит всего пары сотен пикселей —
+           глифы тонкие, — и гейт ловил бы подмену слота на грани.
+           С заливкой пропажа видна сразу. */
+        ::slotted(.slotted){color:#fff;font-weight:700;display:block;
+                            background:#7c3aed;padding:8px;font-size:20px}
+      </style>
+      <div class="frame">
+        <span class="label">строка теневого дерева</span>
+        <slot></slot>
+      </div>`
+  }
+})
+</script>
+</body></html>

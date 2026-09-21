@@ -165,6 +165,40 @@ const trimAtLineBreaks = (
   return lineAfter ? head.replace(/ +$/, '') : head
 }
 
+/** Есть ли перед текстовым узлом что-то, что рисуется на той же
+ *  строке.
+ *
+ *  Нужно ради правила CSS, которое легко упустить: ведущий пробел в
+ *  начале строки НЕ рисуется, он схлопывается в ничто. Разметка с
+ *  переносами даёт такой пробел почти всегда — `<div>` с содержимым на
+ *  следующей строке начинается именно с него.
+ *
+ *  Цена упущения — систематический сдвиг ВСЕГО текста вправо на ширину
+ *  пробела. Ошибка тихая: текст на месте, шрифт верный, просто чуть не
+ *  там, и глазами это принимается за нормальную неточность
+ *  растеризации. */
+const hasVisiblePrecedingSibling = (node: ChildNode): boolean => {
+  let previous = node.previousSibling
+  while (previous !== null) {
+    if (previous.nodeType === Node.ELEMENT_NODE) return true
+    if (previous.nodeType === Node.TEXT_NODE
+        && (previous.textContent ?? '').trim() !== '') return true
+    previous = previous.previousSibling
+  }
+  return false
+}
+
+const hasVisibleFollowingSibling = (node: ChildNode): boolean => {
+  let next = node.nextSibling
+  while (next !== null) {
+    if (next.nodeType === Node.ELEMENT_NODE) return true
+    if (next.nodeType === Node.TEXT_NODE
+        && (next.textContent ?? '').trim() !== '') return true
+    next = next.nextSibling
+  }
+  return false
+}
+
 /** Применяет `text-transform` к самой строке.
  *
  *  В Figma этого свойства нет, поэтому преобразование обязано произойти
@@ -244,9 +278,15 @@ const readLines = (
     for (const [index, rect] of rects.entries()) {
       const raw = sliceForRect(node, rect, cursor)
       cursor += raw.length
+      /** Обрезка нужна не только на переносах. Ведущий пробел
+       *  схлопывается и в начале БЛОКА — когда перед текстом на строке
+       *  ничего нет, — а хвостовой в конце. Прежняя редакция смотрела
+       *  только на переносы, и текст, записанный в разметке с новой
+       *  строки, ехал вправо на ширину пробела. */
       const visible = trimAtLineBreaks(
         collapseWhiteSpace(raw, cs), cs,
-        index > 0, index < rects.length - 1,
+        index > 0 || !hasVisiblePrecedingSibling(node),
+        index < rects.length - 1 || !hasVisibleFollowingSibling(node),
       )
       lines.push({
         x: rect.left - origin.x,
