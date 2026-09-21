@@ -98,6 +98,27 @@ export type SceneText = {
   align: 'left' | 'center' | 'right' | 'justify'
 }
 
+/** Auto-layout, который применитель обязан включить.
+ *
+ *  Несёт с собой ОЖИДАЕМЫЕ положения детей. Это не избыточность: после
+ *  включения auto-layout Figma раскладывает детей сама, и применитель
+ *  сверяет её ответ с этими числами. Разошлось — откатывает.
+ *
+ *  Так снимается последнее допущение: мы не верим, что модель флекса
+ *  у Figma совпадает с CSS, мы проверяем это на месте. */
+export type SceneAutoLayout = {
+  mode: 'HORIZONTAL' | 'VERTICAL'
+  itemSpacing: number
+  paddingTop: number
+  paddingRight: number
+  paddingBottom: number
+  paddingLeft: number
+  primaryAxisAlignItems: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN'
+  counterAxisAlignItems: 'MIN' | 'CENTER' | 'MAX'
+  /** Куда обязаны встать дети. Порядок тот же, что у `children`. */
+  expected: { x: number; y: number }[]
+}
+
 export type SceneBase = {
   /** Идентификатор исходного узла IR. Нужен, чтобы отчёт мог указать
    *  на конкретное место, а круговой обход — сопоставить деревья. */
@@ -123,6 +144,10 @@ export type SceneBase = {
   stroke: SceneStroke | null
   corner: Corner
   effects: SceneEffect[]
+  /** `null` означает, что auto-layout навязывать нельзя: либо узел не
+   *  флекс-контейнер, либо его раскладка не объясняется флексом.
+   *  Причина в таком случае уже в отчёте. */
+  autoLayout: SceneAutoLayout | null
   children: SceneNode[]
 }
 

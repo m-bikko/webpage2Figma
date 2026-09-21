@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { reconcileAssets, type Bundle } from '@w2f/ir'
+import { reconcileAssets, type Bundle, type IrNode } from '@w2f/ir'
 import { IR_VERSION } from '@w2f/ir/version'
-import { buildScene, sceneToIr } from '@w2f/plugin'
+import { autoLayoutVerdict, buildScene, sceneToIr } from '@w2f/plugin'
 import { renderScreenToSvg, wrapSvgInHtml } from '@w2f/reference-renderer'
 import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 import { imagesFor } from './helpers/images.js'
@@ -97,3 +97,35 @@ for (const fixture of FIXTURES) {
     })
   }
 }
+
+/** Вердикт на НАСТОЯЩЕЙ раскладке, снятой браузером.
+ *
+ *  Юнит-тесты решателя строят прямоугольники руками; здесь их кладёт
+ *  сам браузер, и совпадение означает, что модель флекса в решателе
+ *  описывает реальность, а не наши представления о ней. */
+test('auto-layout признаётся безопасным на настоящей флекс-раскладке', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('flex'))
+  const { screen } = await captureScreen(page, 's-1440', 'D')
+
+  /** Ищем узел, который браузер разложил флексом: у него есть режим и
+   *  есть дети. Первый такой и проверяется. */
+  const findFlex = (node: IrNode): IrNode | null => {
+    if (node.layout.mode !== 'none' && node.children.length > 1) return node
+    for (const child of node.children) {
+      const found = findFlex(child)
+      if (found !== null) return found
+    }
+    return null
+  }
+
+  const flex = findFlex(screen.root)
+  expect(flex).not.toBeNull()
+  if (flex === null) return
+
+  const verdict = autoLayoutVerdict(flex)
+  expect(
+    verdict.safe,
+    verdict.safe ? '' : `вердикт отказал: ${verdict.reason}`,
+  ).toBe(true)
+})

@@ -24,11 +24,30 @@ const makeFigma = (missing: string[] = []): FigmaSurface & { calls: Call[] } => 
   const calls: Call[] = []
   const node = (op: string): FigmaLikeNode => {
     calls.push({ op })
+    const kids: FigmaLikeNode[] = []
     const self: FigmaLikeNode = {
-      name: '', x: 0, y: 0, rotation: 0, opacity: 1, blendMode: 'NORMAL',
+      name: '', x: 0, y: 0, width: 0, height: 0,
+      rotation: 0, opacity: 1, blendMode: 'NORMAL',
       fills: [], strokes: [], effects: [],
-      resize: () => { calls.push({ op: 'resize' }) },
-      appendChild: () => { calls.push({ op: 'appendChild' }) },
+      /** `resize` ЗАПОМИНАЕТ размеры. Первая редакция только писала
+       *  в журнал, и двойник, раскладывая детей, считал их ширину
+       *  нулевой — из-за чего «послушная» Figma всё равно клала их не
+       *  туда, и проверка отката срабатывала всегда. То есть двойник
+       *  был недостаточно точен ровно в том, что проверяет. */
+      resize: (width: number, height: number) => {
+        calls.push({ op: 'resize' })
+        self.width = width
+        self.height = height
+      },
+      /** Дети запоминаются в ЗАМЫКАНИИ, а не через `this`: двойник
+       *  переприсваивают (`const append = frame.appendChild`), и метод
+       *  теряет получателя. Ошибка тихая — `this` становится
+       *  `undefined`, — и стоила отладки. */
+      appendedChildren: kids,
+      appendChild: (child: FigmaLikeNode) => {
+        calls.push({ op: 'appendChild' })
+        kids.push(child)
+      },
     }
     return self
   }
@@ -50,7 +69,8 @@ const makeFigma = (missing: string[] = []): FigmaSurface & { calls: Call[] } => 
 const base = (name: string) => ({
   id: name, name, x: 0, y: 0, width: 10, height: 10, rotation: 0,
   opacity: 1, blendMode: 'NORMAL', fills: [], stroke: null,
-  corner: { tl: 0, tr: 0, br: 0, bl: 0 }, effects: [], children: [],
+  corner: { tl: 0, tr: 0, br: 0, bl: 0 }, effects: [],
+  autoLayout: null, children: [],
 })
 
 const textNode: SceneNode = {
@@ -123,5 +143,92 @@ describe('loadFonts: лестница подстановки', () => {
     await loadFonts(figma, [{ family: 'Roboto', style: 'Black' }], 's')
     const tried = figma.calls.filter((c) => c.op === 'loadFontAsync').map((c) => c.detail)
     expect(tried).toEqual(['Roboto|Black', 'Roboto|Regular'])
+  })
+})
+
+/** Откат auto-layout при расхождении.
+ *
+ *  Проверка ПОВЕДЕНИЯ применителя, а не модели Figma, и потому на
+ *  двойнике она законна: двойник изображает две разные Figma —
+ *  послушную и своенравную, — и проверяется, что применитель на них
+ *  реагирует по-разному. Верность самой раскладки двойник не
+ *  подтверждает и подтвердить не может. */
+describe('auto-layout: включение и откат', () => {
+  const withLayout = (): SceneNode => ({
+    kind: 'frame', clipsContent: false,
+    base: {
+      ...base('p'),
+      autoLayout: {
+        mode: 'HORIZONTAL', itemSpacing: 10,
+        paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
+        primaryAxisAlignItems: 'MIN', counterAxisAlignItems: 'MIN',
+        expected: [{ x: 0, y: 0 }, { x: 20, y: 0 }],
+      },
+      children: [
+        { kind: 'rect', base: { ...base('a'), x: 0, y: 0, width: 10, height: 10 } },
+        { kind: 'rect', base: { ...base('b'), x: 20, y: 0, width: 10, height: 10 } },
+      ],
+    },
+  })
+
+  /** Двойник, у которого включение режима ДВИГАЕТ детей — как это
+   *  делает настоящая Figma. Без этого проверка была бы пустой:
+   *  координаты, выставленные применителем, так и остались бы на
+   *  месте, и откат никогда бы не понадобился.
+   *
+   *  `shift` задаёт, насколько «своенравна» эта Figma. Ноль — она
+   *  кладёт детей туда же, куда флекс браузера. */
+  const layingOut = (shift: number) => {
+    const figma = makeFigma()
+    const createFrame = figma.createFrame
+    figma.createFrame = () => {
+      const frame = createFrame()
+      const kids = (frame as unknown as { appendedChildren: FigmaLikeNode[] })
+        .appendedChildren
+      let mode = 'NONE'
+      Object.defineProperty(frame, 'layoutMode', {
+        get: () => mode,
+        set: (value: string) => {
+          mode = value
+          if (value === 'NONE') return
+          /** Раскладываем детей в ряд, как HORIZONTAL, и сдвигаем на
+           *  `shift` — так изображается несовпадение моделей. */
+          let x = 0
+          for (const kid of kids) {
+            kid.x = x + shift
+            kid.y = 0
+            x += (typeof kid.width === 'number' ? kid.width : 0) + 10
+          }
+        },
+      })
+      return frame
+    }
+    return figma
+  }
+
+  it('совпало — режим остаётся включённым', async () => {
+    const figma = layingOut(0)
+    const { report } = await applyScreen(figma, screen(withLayout()), [])
+    expect(report.map((entry) => entry.code))
+      .not.toContain('fidelity.auto-layout-rejected')
+  })
+
+  it('разошлось — применитель откатывает и отчитывается', async () => {
+    const figma = layingOut(7)
+    const { report } = await applyScreen(figma, screen(withLayout()), [])
+    expect(report.map((entry) => entry.code))
+      .toContain('fidelity.auto-layout-rejected')
+  })
+
+  /** Откат обязан ВЕРНУТЬ координаты, а не просто снять режим:
+   *  иначе узел останется с тем, что успела наставить Figma. */
+  it('после отката координаты возвращены', async () => {
+    const figma = layingOut(7)
+    const { root } = await applyScreen(figma, screen(withLayout()), [])
+    const kids = (root as unknown as { appendedChildren?: FigmaLikeNode[] })
+      .appendedChildren
+    expect(root['layoutMode']).toBe('NONE')
+    if (kids === undefined) return
+    expect(kids.map((kid) => kid.x)).toEqual([0, 20])
   })
 })

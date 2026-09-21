@@ -202,6 +202,7 @@ export const applyNode = (
   node: SceneNode,
   substitutions: Map<string, FontRequest>,
   images: ReadonlyMap<string, string> = new Map(),
+  report: Diagnostic[] = [],
 ): FigmaLikeNode => {
   let target: FigmaLikeNode
 
@@ -261,10 +262,87 @@ export const applyNode = (
    *  сортируются: порядок детей в Figma — это порядок отрисовки, и он
    *  уже расставлен строителем по `paintOrder`. Сортировка здесь была
    *  бы вторым местом, где решается один и тот же вопрос. */
+  const placed: FigmaLikeNode[] = []
   for (const child of node.base.children) {
-    target.appendChild(applyNode(figma, child, substitutions, images))
+    const built = applyNode(figma, child, substitutions, images, report)
+    target.appendChild(built)
+    placed.push(built)
   }
+
+  applyAutoLayout(target, node.base, placed, report)
   return target
+}
+
+/** Допуск тот же, что у вердикта: источник дробности один — браузер. */
+const LAYOUT_TOLERANCE = 0.5
+
+/** Включает auto-layout и ПРОВЕРЯЕТ, что Figma разложила так же.
+ *
+ *  Это единственное место, где применителю позволено сравнивать, и
+ *  позволено намеренно: только здесь доступен ответ настоящей Figma.
+ *  Логики тут всё равно нет — и ожидаемые положения, и параметры
+ *  раскладки пришли из сцены.
+ *
+ *  Зачем перечитывать. Вердикт доказал, что раскладку воспроизводит
+ *  ФЛЕКС CSS. Что её воспроизведёт флекс FIGMA — отдельное
+ *  утверждение, и проверить его иначе нельзя: её модель своя и
+ *  документацией не описана настолько, чтобы полагаться.
+ *
+ *  Разошлось — откат к абсолютным координатам. Это не деградация, а
+ *  возврат к тому, что было до этого плана и что доказанно верно. */
+const applyAutoLayout = (
+  target: FigmaLikeNode,
+  base: SceneBase,
+  children: readonly FigmaLikeNode[],
+  report: Diagnostic[],
+): void => {
+  const layout = base.autoLayout
+  if (layout === null || children.length === 0) return
+
+  /** Положения запоминаются ДО включения: auto-layout их перепишет, и
+   *  вернуть будет неоткуда. */
+  const before = children.map((child) => ({ x: child.x, y: child.y }))
+
+  target['layoutMode'] = layout.mode
+  target['itemSpacing'] = layout.itemSpacing
+  target['paddingTop'] = layout.paddingTop
+  target['paddingRight'] = layout.paddingRight
+  target['paddingBottom'] = layout.paddingBottom
+  target['paddingLeft'] = layout.paddingLeft
+  target['primaryAxisAlignItems'] = layout.primaryAxisAlignItems
+  target['counterAxisAlignItems'] = layout.counterAxisAlignItems
+  /** Размеры узла фиксируются: иначе auto-layout сожмёт рамку по
+   *  содержимому и сломает геометрию, которую мы измеряли. */
+  target['primaryAxisSizingMode'] = 'FIXED'
+  target['counterAxisSizingMode'] = 'FIXED'
+
+  const drifted = children.findIndex((child, index) => {
+    const want = layout.expected[index]
+    if (want === undefined) return true
+    return Math.abs(child.x - want.x) > LAYOUT_TOLERANCE
+      || Math.abs(child.y - want.y) > LAYOUT_TOLERANCE
+  })
+
+  if (drifted === -1) return
+
+  /** Откат. Порядок важен: сначала снимается режим, потом
+   *  возвращаются координаты — пока режим включён, Figma их
+   *  игнорирует. */
+  target['layoutMode'] = 'NONE'
+  children.forEach((child, index) => {
+    const was = before[index]
+    if (was === undefined) return
+    child.x = was.x
+    child.y = was.y
+  })
+
+  report.push({
+    level: 'info', code: 'fidelity.auto-layout-rejected',
+    message:
+      `Auto-layout снят: Figma разложила ребёнка ${drifted + 1} не туда, `
+      + 'куда его кладёт флекс браузера. Возвращены абсолютные координаты.',
+    nodeId: base.id, screenId: '', needsPlaceholder: false,
+  })
 }
 
 export const applyScreen = async (
@@ -277,5 +355,11 @@ export const applyScreen = async (
    *  текста, и нарушение порядка даёт отказ уже в Figma, где
    *  разбираться труднее всего. */
   const { substitutions, report } = await loadFonts(figma, fonts, screen.id)
-  return { root: applyNode(figma, screen.root, substitutions, images), report }
+  const root = applyNode(figma, screen.root, substitutions, images, report)
+  /** Экран у записей об откате проставляется здесь: применитель узла
+   *  его не знает, а запись без адреса бесполезна. */
+  for (const entry of report) {
+    if (entry.screenId === '') entry.screenId = screen.id
+  }
+  return { root, report }
 }

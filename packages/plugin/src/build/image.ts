@@ -15,7 +15,7 @@ const emptyBase = (id: string, name: string, rect: Rect): SceneBase => ({
   rotation: 0, opacity: 1, blendMode: 'NORMAL',
   fills: [], stroke: null,
   corner: { tl: 0, tr: 0, br: 0, bl: 0 },
-  effects: [], children: [],
+  effects: [], autoLayout: null, children: [],
 })
 
 export type ImageBuildResult = SceneNode & {

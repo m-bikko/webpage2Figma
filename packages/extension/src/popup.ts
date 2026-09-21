@@ -86,12 +86,22 @@ chrome.runtime.onMessage.addListener((message: Progress) => {
   }
   /** Пустой отчёт показывается ЯВНО, а не пустотой: пустое место
    *  неотличимо от сломанного отчёта. */
+  /** Сводка по auto-layout выносится ОТДЕЛЬНО: это не изъяны, а
+   *  главный вопрос «пригодно ли для работы», и тонуть в сотне
+   *  записей она не должна. */
+  const rejected = message.report
+    .filter((entry) => entry.code === 'fidelity.auto-layout-rejected').length
+  const summary = rejected === 0 ? ''
+    : `<div class="row info">Auto-layout не применён к ${rejected} узлам — ` +
+      'причины ниже.</div>'
+
   const rows = message.report.length === 0
     ? '<div class="row info">Расхождений не найдено.</div>'
     : message.report.map((entry) =>
         `<div class="row"><span class="lvl ${entry.level}">${entry.level}</span>` +
         `<span>${escapeHtml(entry.message)}</span></div>`).join('')
-  show(`<div class="row"><b>Скачано: ${escapeHtml(message.file)}</b></div>${rows}`)
+  show(`<div class="row"><b>Скачано: ${escapeHtml(message.file)}</b></div>` +
+       `${summary}${rows}`)
 })
 
 button?.addEventListener('click', () => {

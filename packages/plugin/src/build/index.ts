@@ -1,16 +1,18 @@
 import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import type {
-  Asset, Bundle, Diagnostic, Fill, IrNode, NodeStyle, Screen, Shadow,
+  Asset, Bundle, Diagnostic, Fill, IrNode, LayoutAlign, LayoutJustify,
+  NodeStyle, Screen, Shadow,
 } from '@w2f/ir'
 import type {
-  FontRequest, Scene, SceneBase, SceneEffect, SceneNode, ScenePaint,
-  SceneScreen, SceneStroke, SceneText,
+  FontRequest, Scene, SceneAutoLayout, SceneBase, SceneEffect, SceneNode,
+  ScenePaint, SceneScreen, SceneStroke, SceneText,
 } from '../scene.js'
 import {
   figmaRotation, originOffset, scaleSubtree, sizeUnderTransform,
 } from './geometry.js'
 import { figmaRgba, gradientPaint, solidPaint } from './paint.js'
 import { imageNodeFor } from './image.js'
+import { autoLayoutVerdict } from '../layout/verdict.js'
 
 /** Режимы наложения CSS и Figma пишутся по-разному: `multiply` против
  *  `MULTIPLY`, `color-dodge` против `COLOR_DODGE`. Перевод механический,
@@ -211,6 +213,57 @@ const backgroundFirst = (
   rest: SceneNode[],
 ): SceneNode[] => (background === null ? rest : [background, ...rest])
 
+/** Отображение ПОЛНОЕ, хотя вердикт и не пропускает сюда
+ *  `space-around`/`space-evenly`: неполное дало бы `undefined` в
+ *  присваивании, а Figma отвергает такое значение отказом, который
+ *  всплыл бы только у пользователя. Значение для непропускаемых
+ *  случаев выбрано безопасным, а не «каким-нибудь». */
+const PRIMARY_ALIGN: Record<LayoutJustify,
+  SceneAutoLayout['primaryAxisAlignItems']> = {
+  start: 'MIN', center: 'CENTER', end: 'MAX',
+  'space-between': 'SPACE_BETWEEN',
+  'space-around': 'MIN', 'space-evenly': 'MIN',
+}
+
+const COUNTER_ALIGN: Record<LayoutAlign,
+  SceneAutoLayout['counterAxisAlignItems']> = {
+  start: 'MIN', center: 'CENTER', end: 'MAX',
+  stretch: 'MIN', baseline: 'MIN',
+}
+
+/** Auto-layout для узла — или `null`, если навязывать его нельзя.
+ *
+ *  Отказ ВСЕГДА объясняется в отчёте. «Не применили» без причины не
+ *  говорит дизайнеру, что поправить в вёрстке, и превращает отчёт в
+ *  шум, который учатся игнорировать. */
+const autoLayoutFor = (node: IrNode, ctx: BuildCtx): SceneAutoLayout | null => {
+  /** Узлы без раскладки и без детей не отчитываются: их подавляющее
+   *  большинство, и запись о каждом утопила бы отчёт. */
+  if (node.layout.mode === 'none' || node.children.length === 0) return null
+
+  const verdict = autoLayoutVerdict(node)
+  if (!verdict.safe) {
+    ctx.report.push({
+      level: 'info', code: DIAGNOSTIC_CODES.autoLayoutRejected,
+      message: `Auto-layout не применён: ${verdict.reason}.`,
+      nodeId: node.id, screenId: ctx.screenId, needsPlaceholder: false,
+    })
+    return null
+  }
+
+  return {
+    mode: node.layout.mode === 'row' ? 'HORIZONTAL' : 'VERTICAL',
+    itemSpacing: node.layout.gap,
+    paddingTop: node.layout.padding.top,
+    paddingRight: node.layout.padding.right,
+    paddingBottom: node.layout.padding.bottom,
+    paddingLeft: node.layout.padding.left,
+    primaryAxisAlignItems: PRIMARY_ALIGN[node.layout.justify],
+    counterAxisAlignItems: COUNTER_ALIGN[node.layout.align],
+    expected: verdict.expected.map((place) => ({ x: place.x, y: place.y })),
+  }
+}
+
 const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
   const size = sizeUnderTransform({ w: node.rect.w, h: node.rect.h }, node.transform)
   /** Поправка на разные точки преобразования: CSS работает вокруг
@@ -230,6 +283,7 @@ const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
     stroke: strokeFor(node.style),
     corner: node.style.corner,
     effects: effectsFor(node.style),
+    autoLayout: autoLayoutFor(node, ctx),
     /** Картинка-фон идёт ПЕРВЫМ ребёнком: в CSS `background-image`
      *  ложится над `background-color`, но под содержимым. */
     children: backgroundFirst(imageChildFor(node, ctx), childrenOf(node, ctx)),
