@@ -1,6 +1,8 @@
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { IR_VERSION, parseBundle, type Bundle } from '@w2f/ir'
-import { captureScreen, fixtureUrl, SIZES } from './helpers/capture.js'
+import { IR_VERSION, parseBundle, reconcileAssets, type Bundle } from '@w2f/ir'
+import { captureScreen, fixtureUrl, repoRoot, SIZES } from './helpers/capture.js'
 
 /**
  * Собирает бандл из настоящего захвата и прогоняет через входную проверку
@@ -19,18 +21,36 @@ import { captureScreen, fixtureUrl, SIZES } from './helpers/capture.js'
  * принимать, это станет известно здесь, а не в Figma.
  */
 
-const FIXTURES = [
-  'boxes', 'stacking', 'flex', 'text',
-  'transformed', 'transform-nested', 'broken-transform', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
-  'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated', 'group-effects',
-  'blur',
-] as const
+/** Список берётся ИЗ КАТАЛОГА, а не пишется руками.
+ *
+ *  Рукописный список молчит ровно тогда, когда нужен больше всего: при
+ *  добавлении фикстуры о нём забывают, и новая возможность остаётся
+ *  непроверенной валидатором. Это не догадка — так и случилось с
+ *  векторами. Фикстура `vector/` прошла пиксельный гейт и круговой
+ *  обход, а бандл через валидатор не прогонялся вовсе, и устаревший
+ *  инвариант `deferred.undiagnosed` отвергал КАЖДЫЙ захват страницы с
+ *  иконками. Нашлось это замером на живых страницах: три из шести —
+ *  github.com, stripe.com, tailwindcss.com — валидатор отклонял.
+ *
+ *  Каталог врать не может: фикстура либо есть, либо её нет. */
+const FIXTURES = readdirSync(resolve(repoRoot, 'fixtures'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort()
 
 for (const fixture of FIXTURES) {
   test(`бандл принимается валидатором: ${fixture}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(fixtureUrl(fixture))
     const captured = await captureScreen(page, 's0', 'Desktop')
+
+    /** Ассеты забираются и дерево приводится в согласие с доехавшим —
+     *  ровно как в расширении. Без этого фикстуры с картинками
+     *  отвергались бы по `asset.dangling`, то есть проверка спотыкалась
+     *  бы о собственную неполноту вместо настоящих изъянов. */
+    const resolved = await page.evaluate(() => window.__w2f.resolvePendingAssets())
+    const available = new Set(resolved.assets.map((asset) => asset.id))
+    const { screen } = reconcileAssets(captured.screen, available)
 
     const bundle: Bundle = {
       format: 'w2f',
@@ -39,11 +59,11 @@ for (const fixture of FIXTURES) {
       url: fixtureUrl(fixture),
       title: fixture,
       userAgent: 'bundle.spec.ts',
-      screens: [captured.screen],
-      assets: [],
+      screens: [screen],
+      assets: resolved.assets,
       fonts: captured.fonts,
       tokens: { variables: [], textStyles: [], paintStyles: [] },
-      report: captured.report,
+      report: [...captured.report, ...resolved.report],
     }
 
     const verdict = parseBundle(bundle)

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>pseudo-stacking</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:14px/1.4 monospace}
+  .stage{position:relative;height:200px;margin:16px}
+
+  /* ОБЁРТКА БЕЗ КОНТЕКСТА. position:relative с z-index:auto контекста
+     НЕ создаёт: по CSS 2.1 Appendix E она красится как атомарная, но
+     её позиционированные потомки принадлежат РОДИТЕЛЬСКОМУ контексту
+     и обязаны подниматься сквозь неё. */
+  .wrap{position:relative;width:100%;height:100%}
+
+  /* Потомок с большим z-index. Поднявшись, он обязан лечь ПОВЕРХ
+     соседа обёртки. Без подъёма он красится вместе с обёрткой — то
+     есть раньше соседа, — и сосед закрывает его собой. */
+  .inner{position:absolute;left:20px;top:20px;width:220px;height:120px;
+    background:#16a34a;z-index:5}
+  .sibling{position:absolute;left:120px;top:60px;width:220px;height:120px;
+    background:#dc2626;z-index:3}
+
+  /* Вторая пара: потомок с ОТРИЦАТЕЛЬНЫМ z-index обязан уйти под
+     потокового соседа обёртки. Без подъёма он останется над ним. */
+  .wrap2{position:relative;width:100%;height:100%}
+  .under{position:absolute;left:20px;top:20px;width:220px;height:120px;
+    background:#7c3aed;z-index:-1}
+  .flow{position:relative;left:120px;top:60px;width:220px;height:120px;
+    background:#f59e0b}
+
+  /* Третья пара: обёртка с z-index:0 контекст СОЗДАЁТ, и потомок из
+     неё подниматься не должен. Стоит рядом нарочно — чтобы подъём,
+     сделанный слишком широко, здесь сразу разошёлся с браузером. */
+  .wrap3{position:relative;z-index:0;width:100%;height:100%}
+  .trapped{position:absolute;left:20px;top:20px;width:220px;height:120px;
+    background:#0ea5e9;z-index:9}
+  .outside{position:absolute;left:120px;top:60px;width:220px;height:120px;
+    background:#1e293b;z-index:1}
+</style></head>
+<body>
+  <div class="stage">
+    <div class="wrap"><div class="inner"></div></div>
+    <div class="sibling"></div>
+  </div>
+
+  <div class="stage">
+    <div class="wrap2"><div class="under"></div></div>
+    <div class="flow"></div>
+  </div>
+
+  <div class="stage">
+    <div class="wrap3"><div class="trapped"></div></div>
+    <div class="outside"></div>
+  </div>
+</body></html>
