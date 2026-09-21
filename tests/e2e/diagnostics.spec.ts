@@ -73,6 +73,34 @@ test('фон <body> не подменяется фоном <html>', async ({ pag
   expect(report.some((i) => i.code === 'fidelity.page-background-moved')).toBe(false)
 })
 
+test('transform-nested: потомки трансформированного узла ОБЪЯСНЕНЫ, а не молчат', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('transform-nested'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const rotated = screen.root.children[0]
+  expect(rotated?.transform, 'сам родитель переносится верно').not.toBeNull()
+
+  const child = rotated?.children[0]
+  const grandchild = child?.children[0]
+  expect(child).toBeDefined()
+  expect(grandchild).toBeDefined()
+
+  // Геометрия потомков неверна — это известно и не чинится здесь. Но
+  // молчать об этом нельзя: пока трансформы были отложены, родитель нёс
+  // deferred.transform и инвариант заставлял бандл объяснить пропажу.
+  // Когда родитель стал переноситься верно, объяснение исчезло бы вместе
+  // с ним, а неверность потомков осталась.
+  const explained = (id: string | undefined): boolean =>
+    report.some((i) => i.nodeId === id && i.code === 'fidelity.transform-descendant')
+
+  expect(explained(child?.id), 'ребёнок обязан быть объяснён').toBe(true)
+  expect(explained(grandchild?.id), 'внук тоже — флаг наследуется вглубь').toBe(true)
+
+  // А сам родитель — не потомок, на нём диагностики быть не должно.
+  expect(explained(rotated?.id)).toBe(false)
+})
+
 test('transformed: трансформа переносится, rect — НЕтрансформированный бокс', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('transformed'))

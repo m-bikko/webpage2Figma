@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>transform-nested</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:40px}
+  /* Содержимое ВНУТРИ трансформированного родителя. Этот случай
+     переносится неверно: rect потомка снят как габарит уже повёрнутого
+     элемента, потому что getBoundingClientRect включает трансформы
+     предков. Фикстура в pixel-diff НЕ входит — рендер заведомо разойдётся.
+     Её задача — доказать, что расхождение объяснено диагностикой, а не
+     молчит. */
+  .rotated{width:200px;height:120px;background:#e2e8f0;transform:rotate(20deg)}
+  .child{width:60px;height:30px;margin:20px;background:#ef4444}
+  .grandchild{width:20px;height:10px;background:#1d4ed8}
+</style></head>
+<body>
+  <div class="rotated">
+    <div class="child"><div class="grandchild"></div></div>
+  </div>
+</body></html>

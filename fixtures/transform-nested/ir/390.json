@@ -1,0 +1,283 @@
+{
+  "screen": {
+    "id": "s-390",
+    "name": "Mobile",
+    "width": 390,
+    "height": 844,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 390,
+        "h": 220
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 40,
+          "right": 40,
+          "bottom": 40,
+          "left": 40
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 40.00002911376953,
+            "y": 60.000007612304685,
+            "w": 200,
+            "h": 120
+          },
+          "paintOrder": 1,
+          "isStackingContext": true,
+          "transform": {
+            "angle": 0.3490655860180159,
+            "scaleX": 1.0000003073244528,
+            "scaleY": 1.0000003073244528,
+            "translateX": 0,
+            "translateY": 0,
+            "originX": 100,
+            "originY": 60
+          },
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "solid",
+                "color": {
+                  "r": 226,
+                  "g": 232,
+                  "b": 240,
+                  "a": 1
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [
+            {
+              "id": "n2",
+              "sourceTag": "div",
+              "name": "div",
+              "rect": {
+                "x": 75.08519744873047,
+                "y": 36.256832122802734,
+                "w": 66.64215850830078,
+                "h": 48.71198654174805
+              },
+              "paintOrder": 2,
+              "isStackingContext": false,
+              "transform": null,
+              "layout": {
+                "mode": "none",
+                "gap": 0,
+                "padding": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "align": "start",
+                "justify": "start",
+                "wrap": false
+              },
+              "selfLayout": {
+                "positioning": "flow",
+                "align": null,
+                "grow": 0,
+                "shrink": 1
+              },
+              "style": {
+                "fills": [
+                  {
+                    "kind": "solid",
+                    "color": {
+                      "r": 239,
+                      "g": 68,
+                      "b": 68,
+                      "a": 1
+                    }
+                  }
+                ],
+                "stroke": null,
+                "corner": {
+                  "tl": 0,
+                  "tr": 0,
+                  "br": 0,
+                  "bl": 0
+                },
+                "shadows": [],
+                "opacity": 1,
+                "blend": "normal",
+                "blur": null,
+                "clip": false
+              },
+              "children": [
+                {
+                  "id": "n3",
+                  "sourceTag": "div",
+                  "name": "div",
+                  "rect": {
+                    "x": 81.92559814453125,
+                    "y": 36.256832122802734,
+                    "w": 22.21405029296875,
+                    "h": 16.237327575683594
+                  },
+                  "paintOrder": 3,
+                  "isStackingContext": false,
+                  "transform": null,
+                  "layout": {
+                    "mode": "none",
+                    "gap": 0,
+                    "padding": {
+                      "top": 0,
+                      "right": 0,
+                      "bottom": 0,
+                      "left": 0
+                    },
+                    "align": "start",
+                    "justify": "start",
+                    "wrap": false
+                  },
+                  "selfLayout": {
+                    "positioning": "flow",
+                    "align": null,
+                    "grow": 0,
+                    "shrink": 1
+                  },
+                  "style": {
+                    "fills": [
+                      {
+                        "kind": "solid",
+                        "color": {
+                          "r": 29,
+                          "g": 78,
+                          "b": 216,
+                          "a": 1
+                        }
+                      }
+                    ],
+                    "stroke": null,
+                    "corner": {
+                      "tl": 0,
+                      "tr": 0,
+                      "br": 0,
+                      "bl": 0
+                    },
+                    "shadows": [],
+                    "opacity": 1,
+                    "blend": "normal",
+                    "blur": null,
+                    "clip": false
+                  },
+                  "children": [],
+                  "kind": "frame"
+                }
+              ],
+              "kind": "frame"
+            }
+          ],
+          "kind": "frame"
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": [
+    {
+      "level": "warning",
+      "code": "fidelity.transform-descendant",
+      "message": "Узел лежит внутри трансформированного предка: его прямоугольник снят как габарит уже трансформированного элемента, и трансформа предка к нему не применяется.",
+      "nodeId": "n3",
+      "screenId": "s-390",
+      "needsPlaceholder": false
+    },
+    {
+      "level": "warning",
+      "code": "fidelity.transform-descendant",
+      "message": "Узел лежит внутри трансформированного предка: его прямоугольник снят как габарит уже трансформированного элемента, и трансформа предка к нему не применяется.",
+      "nodeId": "n2",
+      "screenId": "s-390",
+      "needsPlaceholder": false
+    }
+  ]
+}

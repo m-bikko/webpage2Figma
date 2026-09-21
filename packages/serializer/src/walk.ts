@@ -44,6 +44,10 @@ type WalkContext = {
   scrollX: number
   scrollY: number
   allocId: IdAllocator
+  /** Есть ли среди предков трансформированный узел. Ведётся сверху вниз,
+   *  потому что снизу это не восстановить: `getBoundingClientRect()` уже
+   *  включает трансформы предков и не говорит, откуда они взялись. */
+  insideTransform: boolean
 }
 
 /** Элементы, которые не рисуются и не должны попадать в макет. */
@@ -359,8 +363,11 @@ const buildNode = (
   const childProbes: LayoutProbe[] = []
 
   const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
+  const childCtx: WalkContext = transform === null
+    ? ctx
+    : { ...ctx, insideTransform: true }
   for (const child of ordered) {
-    const built = buildNode(child, cs, ctx)
+    const built = buildNode(child, cs, childCtx)
     if (built === null) continue
     children.push(built.node)
     childProbes.push(built.probe)
@@ -384,6 +391,28 @@ const buildNode = (
     selfLayout: readSelfLayout(cs),
     style: readStyle(cs, box, ctx.sink, id),
     children,
+  }
+
+  /** Потомок трансформированного предка переносится НЕВЕРНО: его `rect`
+   *  снят как осепараллельный габарит уже повёрнутого элемента, потому что
+   *  `getBoundingClientRect()` включает трансформы предков, а рендерер
+   *  рисует его неповёрнутым.
+   *
+   *  Геометрию это не чинит — чинит честность. Пока трансформы были
+   *  отложены, родитель нёс `deferred.transform`, и инвариант заставлял
+   *  бандл объяснить, что поддерево не перенесено. Когда родитель стал
+   *  переноситься верно, объяснение исчезло, а неверность потомков
+   *  осталась: улучшение корректности породило молчаливую потерю.
+   *  Исправление геометрии — отдельная работа, требующая хранить `rect`
+   *  в локальных координатах родителя и композировать трансформы вниз. */
+  if (ctx.insideTransform) {
+    ctx.sink.report(
+      'warning', DIAGNOSTIC_CODES.transformDescendant,
+      'Узел лежит внутри трансформированного предка: его прямоугольник снят ' +
+      'как габарит уже трансформированного элемента, и трансформа предка к ' +
+      'нему не применяется.',
+      id, false,
+    )
   }
 
   const placeholder = placeholderFor(el, ctx.sink, id)
@@ -499,6 +528,7 @@ export const walkDocument = (
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,
+    insideTransform: false,
   }
 
   const built = buildNode(document.body, null, ctx)
