@@ -77,6 +77,35 @@ describe('hasSkew', () => {
     expect(hasSkew({ a: 1, b: 0, c: 0.364, d: 1, e: 0, f: 0 })).toBe(true)
   })
 
+  it('false для поворота с НЕРАВНОМЕРНЫМ масштабом', () => {
+    // Измерено при исполнении: с абсолютным допуском 1e-6 этот случай
+    // объявлялся сдвинутым, то есть корректная трансформа отвергалась.
+    // rotate(37deg) scale(5,4).
+    const rad = (37 * Math.PI) / 180
+    const cos = Math.cos(rad)
+    const sin = Math.sin(rad)
+    expect(hasSkew({
+      a: 5 * cos, b: 5 * sin, c: -4 * sin, d: 4 * cos, e: 0, f: 0,
+    })).toBe(false)
+  })
+
+  it('false при большом неравномерном масштабе', () => {
+    const rad = (37 * Math.PI) / 180
+    const cos = Math.cos(rad)
+    const sin = Math.sin(rad)
+    expect(hasSkew({
+      a: 120 * cos, b: 120 * sin, c: -80 * sin, d: 80 * cos, e: 0, f: 0,
+    })).toBe(false)
+  })
+
+  it('true для сдвига даже при большом масштабе — нормировка не глушит сигнал', () => {
+    // skewX(20deg) вместе со scale(100): нормировка обязана сохранить
+    // чувствительность, а не списать сдвиг на масштаб.
+    expect(hasSkew({
+      a: 100, b: 0, c: 100 * 0.364, d: 100, e: 0, f: 0,
+    })).toBe(true)
+  })
+
   it('false для единичной матрицы', () => {
     expect(hasSkew({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })).toBe(false)
   })
