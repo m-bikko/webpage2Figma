@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import type { Page } from '@playwright/test'
 import type { Diagnostic, FontRequirement, Screen } from '@h2d/ir'
@@ -42,8 +42,14 @@ export const SIZES = [
   { name: 'Mobile', width: 390, height: 844 },
 ] as const
 
+/** Фикстуры отдаются по HTTP, а не `file://`. Причина — в
+ *  `scripts/fixture-server.mjs`: под `file://` Chrome считает документ
+ *  непрозрачным источником, канва отравлена и `fetch` запрещён, поэтому
+ *  успешный путь работы с ассетами не выполняется ни разу. */
+export const FIXTURE_ORIGIN = 'http://127.0.0.1:4317'
+
 export const fixtureUrl = (name: string): string =>
-  pathToFileURL(resolve(repoRoot, 'fixtures', name, 'index.html')).href
+  `${FIXTURE_ORIGIN}/${name}/index.html`
 
 /** Инжектит собранный сериализатор и вызывает его внутри страницы.
  *

@@ -21,7 +21,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 
@@ -69,9 +69,33 @@ if (target === undefined) {
 
 const width = Number.parseInt(widthArg ?? '1440', 10)
 const height = Number.parseInt(heightArg ?? '900', 10)
-const url = /^https?:\/\//.test(target)
-  ? target
-  : pathToFileURL(resolve(root, target)).href
+/** Локальный путь внутри `fixtures/` отдаётся через HTTP по той же
+ *  причине, что и в тестах: под `file://` Chrome считает документ
+ *  непрозрачным источником, канва отравлена и `fetch` запрещён, поэтому
+ *  изображения не читаются вовсе. Внешний URL передаётся как есть.
+ *
+ *  Файл ВНЕ `fixtures/` по-прежнему открывается через `file://`, и это
+ *  намеренно: так ведёт себя настоящая страница с недоступными байтами,
+ *  а путь отказа тоже должен быть выполним руками. */
+const serveTarget = async () => {
+  if (/^https?:\/\//.test(target)) return { url: target, close: async () => {} }
+  const abs = resolve(root, target)
+  const fixtures = resolve(root, 'fixtures')
+  if (!abs.startsWith(fixtures + sep)) {
+    return { url: pathToFileURL(abs).href, close: async () => {} }
+  }
+  const { createFixtureServer, FIXTURE_PORT } =
+    await import(pathToFileURL(resolve(root, 'scripts/fixture-server.mjs')).href)
+  const server = createFixtureServer()
+  await new Promise((done) => server.listen(FIXTURE_PORT, '127.0.0.1', done))
+  return {
+    url: `http://127.0.0.1:${FIXTURE_PORT}${abs.slice(fixtures.length).split(sep).join('/')}`,
+    close: () => new Promise((done) => server.close(done)),
+  }
+}
+
+const served = await serveTarget()
+const url = served.url
 
 let serializer
 try {
@@ -159,4 +183,5 @@ try {
   console.log('сравни page.png и render.png — это и есть проверка точности глазами\n')
 } finally {
   await browser.close()
+  await served.close()
 }
