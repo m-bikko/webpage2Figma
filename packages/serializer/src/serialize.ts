@@ -41,7 +41,7 @@ export type SerializeOptions = {
  *  ничего не знает и ничего не эмулирует. */
 export const serializeScreen = (options: SerializeOptions): SerializeResult => {
   const sink = new DiagnosticSink(options.id)
-  const root = walkDocument(sink, options.allocId, options.requests)
+  const root = walkDocument(sink, options.allocId, options.requests, options.id)
   if (root === null) {
     throw new Error('Документ пуст: <body> не отрисован.')
   }

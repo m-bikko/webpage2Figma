@@ -59,6 +59,9 @@ type WalkContext = {
    *  на экран: инвариант `asset.dangling` проверяет ссылки в пределах
    *  бандла, и один логотип на пяти экранах обязан быть одним ассетом. */
   requests: AssetRequests
+  /** Экран, который снимается сейчас. Уезжает в заявку, чтобы отказ по
+   *  ассету был записью с адресом, а не без. */
+  screenId: string
   scrollX: number
   scrollY: number
   allocId: IdAllocator
@@ -187,6 +190,7 @@ const readFills = (
   sink: DiagnosticSink,
   id: string,
   requests: AssetRequests,
+  screenId: string,
 ): Fill[] => {
   const fills: Fill[] = []
 
@@ -231,7 +235,7 @@ const readFills = (
         fills.push({
           kind: 'image',
           ref: {
-            assetId: requests.request(resolved, natural.w, natural.h, id),
+            assetId: requests.request(resolved, natural.w, natural.h, id, screenId),
             placement: backgroundPlacementFor(
               cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat,
               origin, natural,
@@ -257,6 +261,7 @@ const readStyle = (
   sink: DiagnosticSink,
   id: string,
   requests: AssetRequests,
+  screenId: string,
 ): NodeStyle => {
   if (isEllipticalCorner(cs)) {
     sink.report(
@@ -286,7 +291,7 @@ const readStyle = (
     : 'normal'
 
   return {
-    fills: readFills(cs, box, sink, id, requests),
+    fills: readFills(cs, box, sink, id, requests, screenId),
     stroke: readStroke(cs),
     corner: readCorner(cs),
     shadows: parseBoxShadow(cs.boxShadow),
@@ -526,7 +531,7 @@ const readImage = (
   return {
     kind: 'ref',
     ref: {
-      assetId: ctx.requests.request(img.currentSrc, natural.w, natural.h, id),
+      assetId: ctx.requests.request(img.currentSrc, natural.w, natural.h, id, ctx.screenId),
       placement: placementFor(cs.objectFit, cs.objectPosition, box, natural),
     },
   }
@@ -653,7 +658,7 @@ const buildNode = (
     transform,
     layout: readLayout(cs),
     selfLayout: readSelfLayout(cs),
-    style: readStyle(cs, box, ctx.sink, id, ctx.requests),
+    style: readStyle(cs, box, ctx.sink, id, ctx.requests, ctx.screenId),
     children,
   }
 
@@ -799,10 +804,12 @@ export const walkDocument = (
   sink: DiagnosticSink,
   allocId: IdAllocator,
   requests: AssetRequests,
+  screenId: string,
 ): IrNode | null => {
   const ctx: WalkContext = {
     sink,
     requests,
+    screenId,
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,

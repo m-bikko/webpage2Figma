@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>image-cors</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  img{width:120px;height:90px;background:#d4d4d8;object-fit:contain}
+</style></head>
+<body>
+  <!-- Другой порт — другой источник. Картинка ОТРИСУЕТСЯ (изображения
+       не ограничены CORS для показа), значит заявка будет подана, а
+       fetch её байты не отдаст. Это и есть путь отказа фазы
+       разрешения, и в жизни он самый частый: любая картинка с чужого
+       CDN ведёт себя так же. -->
+  <img src="http://127.0.0.1:4318/image-fit/asset.png" alt="чужой источник">
+</body></html>

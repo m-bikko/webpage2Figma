@@ -18,6 +18,10 @@ export type AssetRequest = {
   /** Первый узел, которому ассет понадобился. Сообщение об отказе без
    *  узла не говорит, куда смотреть; при дедупликации остаётся первый. */
   nodeId: string
+  /** Экран этого узла. Нужен потому, что `Diagnostic` привязан к экрану,
+   *  а ассеты живут на уровне бандла: без этого поля отказ по ассету
+   *  оказался бы записью без адреса. */
+  screenId: string
 }
 
 /** Живёт на уровне ЗАХВАТА, а не экрана — так же, как аллокатор
@@ -34,6 +38,7 @@ export class AssetRequests {
     naturalWidth: number,
     naturalHeight: number,
     nodeId: string,
+    screenId: string,
   ): string {
     const existing = this.byUrl.get(url)
     if (existing !== undefined) return existing
@@ -41,7 +46,7 @@ export class AssetRequests {
     const id = `a${this.counter}`
     this.counter += 1
     this.byUrl.set(url, id)
-    this.items.push({ id, url, naturalWidth, naturalHeight, nodeId })
+    this.items.push({ id, url, naturalWidth, naturalHeight, nodeId, screenId })
     return id
   }
 

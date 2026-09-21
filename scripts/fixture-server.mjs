@@ -18,6 +18,17 @@ import { fileURLToPath } from 'node:url'
 
 export const FIXTURE_PORT = 4317
 
+/** Второй порт — ВТОРОЙ ИСТОЧНИК. Тот же хост и те же файлы, но по
+ *  правилам браузера это чужой origin, и заголовков CORS сервер не
+ *  шлёт. Нужен для единственного случая, который иначе непроверяем:
+ *  картинка ОТРИСОВАЛАСЬ (изображения не ограничены CORS для показа),
+ *  то есть заявка подана, а `fetch` её байты не отдаёт.
+ *
+ *  Это не экзотика, а доминирующий случай в жизни: любая картинка с
+ *  чужого CDN ведёт себя ровно так. Без второго порта путь отказа
+ *  фазы разрешения не выполнялся бы ни разу. */
+export const FIXTURE_ALT_PORT = 4318
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures')
 
 const TYPES = {
@@ -64,5 +75,8 @@ export const createFixtureServer = () => createServer(async (req, res) => {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   createFixtureServer().listen(FIXTURE_PORT, '127.0.0.1', () => {
     console.log(`фикстуры на http://127.0.0.1:${FIXTURE_PORT}/`)
+  })
+  createFixtureServer().listen(FIXTURE_ALT_PORT, '127.0.0.1', () => {
+    console.log(`чужой источник на http://127.0.0.1:${FIXTURE_ALT_PORT}/`)
   })
 }

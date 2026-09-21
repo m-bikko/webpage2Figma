@@ -3,6 +3,7 @@ import {
 } from './serialize.js'
 import type { IdAllocator } from './walk.js'
 import { AssetRequests } from './assets.js'
+import { resolveAssets, type ResolvedAssets } from './resolve-assets.js'
 
 /** Аллокатор идентификаторов живёт ВНУТРИ страницы и переживает несколько
  *  вызовов. Это не деталь реализации, а требование двух сторон сразу.
@@ -41,7 +42,19 @@ const captureScreen = (id: string, name: string): SerializeResult => {
 
 /** Точка входа IIFE-бандла: то, что Playwright и extension вызывают
  *  внутри страницы. */
-const api = { beginCapture, captureScreen, emptyBundle }
+/** Забирает байты по всем заявкам, накопленным за захват.
+ *
+ *  Отдельный вызов, а не часть `captureScreen`, потому что обход DOM
+ *  обязан быть синхронным: `await` внутри него позволил бы раскладке
+ *  измениться на полпути. Вызывается ОДИН раз после всех экранов —
+ *  накопитель общий, и ассет, встреченный на первом экране, не будет
+ *  забран заново на пятом. */
+const resolvePendingAssets = async (): Promise<ResolvedAssets> => {
+  if (requests === null) return { assets: [], base64: {}, report: [] }
+  return resolveAssets(requests.drain())
+}
+
+const api = { beginCapture, captureScreen, emptyBundle, resolvePendingAssets }
 
 declare global {
   interface Window {

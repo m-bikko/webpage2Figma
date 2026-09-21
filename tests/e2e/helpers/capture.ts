@@ -16,6 +16,16 @@ export type CaptureResult = {
 /** Повтор формы из сериализатора, а не импорт: тесты читают его бандл
  *  как текст и не импортируют пакет. Та же причина, что у блока
  *  `declare global` ниже. */
+/** Повтор формы из сериализатора — по той же причине, что и остальные
+ *  объявления здесь: тесты читают его бандл как текст. Байты приезжают
+ *  base64-строками, потому что `Uint8Array` не переживает границу
+ *  `page.evaluate`: она сериализует значение как JSON. */
+export type ResolvedAssets = {
+  assets: { id: string; mimeType: string; width: number; height: number; path: string }[]
+  base64: Record<string, string>
+  report: Diagnostic[]
+}
+
 export type AssetRequest = {
   id: string
   url: string
@@ -34,6 +44,7 @@ declare global {
     __h2d: {
       beginCapture: () => void
       captureScreen: (id: string, name: string) => CaptureResult
+      resolvePendingAssets: () => Promise<ResolvedAssets>
     }
   }
 }
