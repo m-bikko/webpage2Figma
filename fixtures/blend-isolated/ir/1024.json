@@ -370,6 +370,14 @@
       "nodeId": "n5",
       "screenId": "s-1024",
       "needsPlaceholder": false
+    },
+    {
+      "level": "warning",
+      "code": "fidelity.opacity-group",
+      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
+      "nodeId": "n5",
+      "screenId": "s-1024",
+      "needsPlaceholder": false
     }
   ]
 }

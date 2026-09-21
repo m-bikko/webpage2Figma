@@ -197,6 +197,66 @@ test('radial-gradient: радиальный диагностируется, а �
     .toBe(true)
 })
 
+test('group-effects: потомки под каждым групповым эффектом ОБЪЯСНЕНЫ', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('group-effects'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const row = screen.root.children[0]
+  const [faded, blurred, turned] = row?.children ?? []
+
+  const has = (id: string | undefined, code: string): boolean =>
+    report.some((i) => i.nodeId === id && i.code === code)
+
+  // Общая форма дефекта: CSS применяет эффект к элементу ВМЕСТЕ с
+  // поддеревом, плоский рендерер — только к узлу. Измерено зондом:
+  // прозрачность с потомком даёт 6000 расходящихся пикселей, размытие —
+  // 2362, и оба при пустом отчёте.
+  const fadedKid = faded?.children[0]
+  const fadedGrandkid = fadedKid?.children[0]
+  expect(has(fadedKid?.id, 'fidelity.opacity-group')).toBe(true)
+  expect(has(fadedGrandkid?.id, 'fidelity.opacity-group'),
+    'эффект наследуется вглубь, а не только на прямых детей').toBe(true)
+
+  expect(has(blurred?.children[0]?.id, 'fidelity.blur-descendant')).toBe(true)
+  expect(has(turned?.children[0]?.id, 'fidelity.transform-descendant')).toBe(true)
+
+  // ВЛОЖЕННЫЕ эффекты: размытие внутри прозрачности. Потомок обязан
+  // получить ОБЕ диагностики — ради этого случая существует слияние
+  // множеств в контексте обхода, и без такой проверки накопление
+  // остаётся непроверенным кодом.
+  const nested = row?.children[3]
+  const innerBlur = nested?.children[0]
+  const deepest = innerBlur?.children[0]
+  expect(has(innerBlur?.id, 'fidelity.opacity-group'),
+    'размытый узел внутри прозрачного — сам потомок прозрачности').toBe(true)
+  expect(has(deepest?.id, 'fidelity.opacity-group')).toBe(true)
+  expect(has(deepest?.id, 'fidelity.blur-descendant'),
+    'вглубь обязаны дойти ОБА эффекта, а не только ближайший').toBe(true)
+
+  // На самих носителях эффекта диагностики быть не должно: они переносятся
+  // верно, неверны именно потомки.
+  expect(has(faded?.id, 'fidelity.opacity-group')).toBe(false)
+  expect(has(blurred?.id, 'fidelity.blur-descendant')).toBe(false)
+  expect(has(turned?.id, 'fidelity.transform-descendant')).toBe(false)
+})
+
+test('boxes: узлы БЕЗ групповых эффектов не диагностируются', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('boxes'))
+  const { report } = await captureScreen(page, 's0', 'Desktop')
+
+  // Иначе диагностика стала бы шумом. В boxes есть и полупрозрачный блок,
+  // и блок с клипом — но ни у одного нет детей под эффектом.
+  for (const code of [
+    'fidelity.opacity-group', 'fidelity.blur-descendant',
+    'fidelity.transform-descendant',
+  ]) {
+    expect(report.some((i) => i.code === code), `лишняя диагностика ${code}`)
+      .toBe(false)
+  }
+})
+
 test('blend-isolated: наложение в изолирующей группе ОБЪЯСНЕНО, а не молчит', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('blend-isolated'))

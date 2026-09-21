@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>group-effects</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  /* Групповые эффекты CSS применяются к элементу ВМЕСТЕ с поддеревом, а
+     плоский рендерер — только к самому узлу. Фикстура в pixel-diff НЕ
+     входит: рендер заведомо разойдётся. Её задача доказать, что каждое
+     расхождение объяснено диагностикой, а не молчит. */
+  .row{display:flex;gap:24px}
+  .box{width:160px;height:110px}
+  .faded{background:#ef4444;opacity:0.5}
+  .blurred{background:#22c55e;filter:blur(6px)}
+  .turned{background:#6366f1;transform:rotate(12deg)}
+  .kid{width:80px;height:50px;margin:24px;background:#1d4ed8}
+  .grandkid{width:30px;height:16px;background:#fbbf24}
+  /* ВЛОЖЕННЫЕ эффекты: размытие внутри прозрачности. Потомок обязан
+     получить ОБЕ диагностики — ради этого случая и существует слияние
+     множеств в контексте обхода. Без него накопление непроверено. */
+  .nested{width:160px;height:110px;background:#0ea5e9;opacity:0.6}
+  .inner-blur{width:110px;height:70px;margin:18px;background:#7c3aed;
+    filter:blur(4px)}
+</style></head>
+<body><div class="row">
+  <div class="box faded"><div class="kid"><div class="grandkid"></div></div></div>
+  <div class="box blurred"><div class="kid"></div></div>
+  <div class="box turned"><div class="kid"></div></div>
+  <div class="nested"><div class="inner-blur"><div class="grandkid"></div></div></div>
+</div></body></html>

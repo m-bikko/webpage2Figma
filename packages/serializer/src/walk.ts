@@ -39,15 +39,37 @@ export const createIdAllocator = (): IdAllocator => {
   }
 }
 
+/** Эффект, который CSS применяет к элементу вместе с его поддеревом. */
+export type GroupEffect = 'transform' | 'blur' | 'opacity'
+
+const GROUP_EFFECT_CODES = {
+  transform: DIAGNOSTIC_CODES.transformDescendant,
+  blur: DIAGNOSTIC_CODES.blurDescendant,
+  opacity: DIAGNOSTIC_CODES.opacityGroup,
+} as const
+
+const GROUP_EFFECT_MESSAGES = {
+  transform: 'трансформа предка к нему не применяется, а его прямоугольник ' +
+    'снят как габарит уже трансформированного элемента',
+  blur: 'размытие предка к нему не применяется, и он остаётся резким',
+  opacity: 'прозрачность предка применяется к группе целиком, а рендерер ' +
+    'применяет её к каждому узлу отдельно',
+} as const
+
 type WalkContext = {
   sink: DiagnosticSink
   scrollX: number
   scrollY: number
   allocId: IdAllocator
-  /** Есть ли среди предков трансформированный узел. Ведётся сверху вниз,
-   *  потому что снизу это не восстановить: `getBoundingClientRect()` уже
-   *  включает трансформы предков и не говорит, откуда они взялись. */
-  insideTransform: boolean
+  /** Групповые эффекты, действующие на этот узел от предков.
+   *
+   *  Общая форма дефекта, обнаруженная четырежды: CSS применяет такой
+   *  эффект к элементу ВМЕСТЕ с поддеревом, а плоский рендерер — только к
+   *  самому узлу. Ведётся сверху вниз, потому что снизу не восстановить:
+   *  `getBoundingClientRect()` уже включает трансформы предков и не
+   *  говорит, откуда они, а прозрачность и размытие в вычисленном стиле
+   *  потомка просто отсутствуют. */
+  groupEffects: readonly GroupEffect[]
   /** Есть ли среди предков ИЗОЛИРУЮЩАЯ группа. Изолируют не все
    *  stacking context: `position: relative; z-index: 1` не изолирует, а
    *  `isolation: isolate`, `opacity < 1`, фильтр, маска и собственный
@@ -387,12 +409,22 @@ const buildNode = (
     cs.clipPath !== 'none' ||
     cs.mixBlendMode !== 'normal'
 
+  const ownEffects: GroupEffect[] = []
+  if (transform !== null) ownEffects.push('transform')
+  if (blurRadius(cs.filter) > 0) ownEffects.push('blur')
+  if (Number.parseFloat(cs.opacity) < 1) ownEffects.push('opacity')
+
   const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
-  const needsChildCtx = transform !== null || isolates
+  /** Производный контекст создаётся только когда узел что-то добавляет:
+   *  копия на каждый узел дерева из десятков тысяч элементов — лишняя
+   *  работа без выигрыша. */
+  const needsChildCtx = ownEffects.length > 0 || isolates
   const childCtx: WalkContext = needsChildCtx
     ? {
         ...ctx,
-        insideTransform: ctx.insideTransform || transform !== null,
+        groupEffects: ownEffects.length > 0
+          ? [...new Set([...ctx.groupEffects, ...ownEffects])]
+          : ctx.groupEffects,
         insideIsolation: ctx.insideIsolation || isolates,
       }
     : ctx
@@ -450,12 +482,11 @@ const buildNode = (
     )
   }
 
-  if (ctx.insideTransform) {
+  for (const effect of ctx.groupEffects) {
     ctx.sink.report(
-      'warning', DIAGNOSTIC_CODES.transformDescendant,
-      'Узел лежит внутри трансформированного предка: его прямоугольник снят ' +
-      'как габарит уже трансформированного элемента, и трансформа предка к ' +
-      'нему не применяется.',
+      'warning', GROUP_EFFECT_CODES[effect],
+      `Узел лежит внутри предка с эффектом "${effect}": ` +
+      `${GROUP_EFFECT_MESSAGES[effect]}.`,
       id, false,
     )
   }
@@ -573,7 +604,7 @@ export const walkDocument = (
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,
-    insideTransform: false,
+    groupEffects: [],
     insideIsolation: false,
   }
 
