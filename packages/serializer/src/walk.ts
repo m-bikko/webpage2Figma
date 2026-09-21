@@ -10,7 +10,10 @@ import type {
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { parseLinearGradient } from './css/gradient.js'
-import { classifyBackgroundImage, placementFor } from './css/image.js'
+import {
+  backgroundPlacementFor, classifyBackgroundImage, placementFor, repeatVerdict,
+  type OriginBox,
+} from './css/image.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
 import {
@@ -124,6 +127,53 @@ const readSelfLayout = (cs: CSSStyleDeclaration): SelfLayout => {
   }
 }
 
+/** Натуральный размер уже загруженного фонового изображения.
+ *
+ *  У фона, в отличие от `<img>`, нет элемента с `naturalWidth`. Приём —
+ *  завести `new Image()` на тот же URL: браузер держит картинку в своём
+ *  кеше, и для УЖЕ отрисованного фона размер доступен немедленно.
+ *  Измерено в Chromium: `complete === true`, размер 64×32 сразу.
+ *
+ *  `null` означает, что размер синхронно недоступен. Подставлять вместо
+ *  него размер бокса нельзя: это выдало бы догадку за факт и молча
+ *  исказило бы масштаб. */
+const naturalSizeOf = (url: string): { w: number; h: number } | null => {
+  const probe = new Image()
+  probe.src = url
+  if (!probe.complete || probe.naturalWidth === 0) return null
+  return { w: probe.naturalWidth, h: probe.naturalHeight }
+}
+
+/** Бокс начала отсчёта фона в координатах узла.
+ *
+ *  `rect` узла — это border box, а `background-origin` по умолчанию
+ *  `padding-box`: фон начинается ВНУТРИ рамки. Без этого сдвига фон на
+ *  элементе с рамкой уезжает на её толщину. */
+const originBoxOf = (
+  cs: CSSStyleDeclaration,
+  box: { w: number; h: number },
+): OriginBox => {
+  const origin = cs.backgroundOrigin
+  if (origin === 'border-box') return { x: 0, y: 0, w: box.w, h: box.h }
+
+  const px = (value: string): number => Number.parseFloat(value) || 0
+  let left = px(cs.borderLeftWidth)
+  let top = px(cs.borderTopWidth)
+  let right = px(cs.borderRightWidth)
+  let bottom = px(cs.borderBottomWidth)
+  if (origin === 'content-box') {
+    left += px(cs.paddingLeft)
+    top += px(cs.paddingTop)
+    right += px(cs.paddingRight)
+    bottom += px(cs.paddingBottom)
+  }
+  return {
+    x: left, y: top,
+    w: Math.max(0, box.w - left - right),
+    h: Math.max(0, box.h - top - bottom),
+  }
+}
+
 /** `box` — размер того прямоугольника, который поедет в `rect`, а НЕ
  *  габарит из `getBoundingClientRect()`. Разница появляется ровно на
  *  трансформированном элементе: ручки градиента нормализованы по боксу, и
@@ -136,6 +186,7 @@ const readFills = (
   box: { w: number; h: number },
   sink: DiagnosticSink,
   id: string,
+  requests: AssetRequests,
 ): Fill[] => {
   const fills: Fill[] = []
 
@@ -153,9 +204,41 @@ const readFills = (
    *  `background-image` рисуется над `background-color`. Порядок в массиве
    *  `fills` и есть порядок отрисовки. */
   if (cs.backgroundImage !== 'none') {
-    const gradient = parseLinearGradient(cs.backgroundImage, box)
-    if (gradient !== null) {
-      fills.push({ kind: 'gradient', gradient })
+    const verdict = classifyBackgroundImage(cs.backgroundImage)
+    if (verdict.kind === 'gradient') {
+      const gradient = parseLinearGradient(cs.backgroundImage, box)
+      if (gradient !== null) fills.push({ kind: 'gradient', gradient })
+    } else if (verdict.kind === 'raster') {
+      /** URL из вычисленного стиля уже абсолютен, но `new URL` с базой
+       *  документа делает это утверждение независимым от браузера:
+       *  полагаться на относительность мы не хотим, а идентификатор
+       *  ассета выдаётся по URL и обязан быть стабильным. */
+      const resolved = new URL(verdict.url, document.baseURI).href
+      const natural = naturalSizeOf(resolved)
+      if (natural === null) {
+        /** Размер источника неизвестен синхронно. Подставить размер
+         *  бокса значило бы выдать догадку за факт и молча исказить
+         *  масштаб — поэтому заливки не будет, а будет запись в отчёт. */
+        sink.report('warning', DIAGNOSTIC_CODES.imageUnreadable,
+          `Размер фонового изображения недоступен: ${resolved}`, id, false)
+      } else {
+        const origin = originBoxOf(cs, box)
+        if (repeatVerdict(cs.backgroundRepeat).partial) {
+          sink.report('info', DIAGNOSTIC_CODES.deferredRepeatMode,
+            `background-repeat: ${cs.backgroundRepeat} не выражается одним ` +
+            `режимом на обе оси и перенесён без повтора.`, id, false)
+        }
+        fills.push({
+          kind: 'image',
+          ref: {
+            assetId: requests.request(resolved, natural.w, natural.h, id),
+            placement: backgroundPlacementFor(
+              cs.backgroundSize, cs.backgroundPosition, cs.backgroundRepeat,
+              origin, natural,
+            ),
+          },
+        })
+      }
     }
   }
 
@@ -173,6 +256,7 @@ const readStyle = (
   box: { w: number; h: number },
   sink: DiagnosticSink,
   id: string,
+  requests: AssetRequests,
 ): NodeStyle => {
   if (isEllipticalCorner(cs)) {
     sink.report(
@@ -202,7 +286,7 @@ const readStyle = (
     : 'normal'
 
   return {
-    fills: readFills(cs, box, sink, id),
+    fills: readFills(cs, box, sink, id, requests),
     stroke: readStroke(cs),
     corner: readCorner(cs),
     shadows: parseBoxShadow(cs.boxShadow),
@@ -294,10 +378,9 @@ const reportGaps = (
           id, false)
         break
       case 'raster':
-        /** Растр переносится в Task 5, где есть заявки на ассеты. Пока —
-         *  ЯВНАЯ диагностика, а не тишина и не чужой код. */
-        sink.report('warning', DIAGNOSTIC_CODES.imageUnreadable,
-          'Растровый фон ещё не переносится.', id, false)
+        /** Растровым фоном занимается `readFills`: там есть накопитель
+         *  заявок. Он же и сообщит, если байты недоступны. Дублировать
+         *  диагностику здесь значило бы ругаться на то, что работает. */
         break
       case 'none':
         break
@@ -570,7 +653,7 @@ const buildNode = (
     transform,
     layout: readLayout(cs),
     selfLayout: readSelfLayout(cs),
-    style: readStyle(cs, box, ctx.sink, id),
+    style: readStyle(cs, box, ctx.sink, id, ctx.requests),
     children,
   }
 

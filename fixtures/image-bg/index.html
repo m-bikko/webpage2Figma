@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>image-bg</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  /* Подложка непрозрачна: на белом незакрытое место неотличимо от фона,
+     и `contain` было бы не отличить от `cover`. */
+  .row{display:flex;gap:16px}
+  .cell{width:120px;height:90px;background-color:#d4d4d8;
+    background-image:url(../image-fit/asset.png);background-repeat:no-repeat}
+  .cover{background-size:cover}
+  .contain{background-size:contain}
+  .auto{background-size:auto;background-position:0% 0%}
+  .sized{background-size:96px auto;background-position:100% 100%}
+  .tiled{background-size:auto;background-repeat:repeat}
+  /* background-origin по умолчанию padding-box: фон начинается ВНУТРИ
+     рамки, а наш rect — это border box. Без рамки ветка пуста и ничего
+     не проверяет, поэтому рамка здесь толстая и заметная. */
+  .bordered{border:12px solid #18181b;background-size:contain;
+    background-position:0% 0%}
+</style></head>
+<body>
+  <div class="row">
+    <div class="cell cover"></div>
+    <div class="cell contain"></div>
+    <div class="cell auto"></div>
+    <div class="cell sized"></div>
+    <div class="cell tiled"></div>
+    <div class="cell bordered"></div>
+  </div>
+</body></html>

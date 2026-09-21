@@ -176,3 +176,117 @@ export const placementFor = (
     scaleY: scale.y,
   }
 }
+
+/** Бокс НАЧАЛА ОТСЧЁТА фона, в координатах узла.
+ *
+ *  Фон считается не от границы бокса: `background-origin` по умолчанию
+ *  `padding-box`, то есть фон начинается ВНУТРИ рамки. `rect` узла —
+ *  это border box, поэтому смещения обязаны включать сдвиг, а проценты
+ *  размера и позиции — считаться от размеров именно этого бокса.
+ *  Измерено: Chromium отдаёт `background-origin: padding-box` даже
+ *  когда свойство не объявлено. */
+export type OriginBox = { x: number; y: number; w: number; h: number }
+
+/** Одна компонента `background-size`: пиксели, проценты от стороны
+ *  бокса начала отсчёта, либо `auto`. */
+const parseSizePart = (part: string, side: number): number | 'auto' => {
+  if (part === 'auto') return 'auto'
+  const percent = /^(-?[\d.]+)%$/.exec(part)
+  if (percent !== null) {
+    const value = Number.parseFloat(percent[1] ?? '')
+    return Number.isNaN(value) ? 'auto' : (side * value) / 100
+  }
+  const px = /^(-?[\d.]+)px$/.exec(part)
+  if (px !== null) {
+    const value = Number.parseFloat(px[1] ?? '')
+    return Number.isNaN(value) ? 'auto' : value
+  }
+  return 'auto'
+}
+
+/** Масштабы фона.
+ *
+ *  Замерено: `cover`, `contain` и `auto` в вычисленном стиле остаются
+ *  словами и в пиксели НЕ разворачиваются. Прочитать готовое нельзя,
+ *  арифметику приходится считать самим. */
+const backgroundScaleFor = (
+  size: string,
+  origin: OriginBox,
+  natural: Size,
+): { x: number; y: number } => {
+  const trimmed = size.trim()
+  if (trimmed === 'cover' || trimmed === 'contain') {
+    return scaleFor(trimmed, { w: origin.w, h: origin.h }, natural)
+  }
+
+  const parts = trimmed.split(/\s+/)
+  const rawW = parseSizePart(parts[0] ?? 'auto', origin.w)
+  const rawH = parseSizePart(parts[1] ?? 'auto', origin.h)
+
+  /** Оба `auto` — натуральный размер. Это НЕ то же, что `contain`:
+   *  `contain` растянул бы картинку до бокса. */
+  if (rawW === 'auto' && rawH === 'auto') return { x: 1, y: 1 }
+  /** Одно `auto` означает «сохрани пропорцию», а не «натуральная
+   *  сторона»: иначе картинка поехала бы по второй оси. */
+  if (rawH !== 'auto' && rawW === 'auto') {
+    const s = rawH / natural.h
+    return { x: s, y: s }
+  }
+  if (rawW !== 'auto' && rawH === 'auto') {
+    const s = rawW / natural.w
+    return { x: s, y: s }
+  }
+  if (rawW === 'auto' || rawH === 'auto') return { x: 1, y: 1 }
+  return { x: rawW / natural.w, y: rawH / natural.h }
+}
+
+/** Режим повтора.
+ *
+ *  `repeat-x`, `repeat-y`, `round` и `space` намеренно НЕ сводятся к
+ *  плитке: контракт держит один режим на обе оси, а такая подмена
+ *  залила бы весь бокс вместо одной полосы. Вызывающий обязан сообщить
+ *  по `deferredRepeatMode` — признак `partial`. */
+export const repeatVerdict = (
+  repeat: string,
+): { tile: boolean; partial: boolean } => {
+  const value = repeat.trim()
+  if (value === 'repeat') return { tile: true, partial: false }
+  if (value === 'no-repeat') return { tile: false, partial: false }
+  return { tile: false, partial: true }
+}
+
+export const backgroundPlacementFor = (
+  size: string,
+  position: string,
+  repeat: string,
+  origin: OriginBox,
+  natural: Size,
+): ImagePlacement => {
+  const scale = backgroundScaleFor(size, origin, natural)
+  const freeX = origin.w - natural.w * scale.x
+  const freeY = origin.h - natural.h * scale.y
+
+  const parts = position.trim().split(/\s+/)
+  const rawX = parts[0] ?? ''
+  const rawY = parts[1] ?? parts[0] ?? ''
+
+  const { tile } = repeatVerdict(repeat)
+  /** Режим берётся из `background-size`, а не из `object-fit`: слов
+   *  `cover`/`contain` в нём те же, но `auto` — своё. */
+  const trimmedSize = size.trim()
+  const mode: ImagePlacement['mode'] =
+    tile ? 'tile'
+    : trimmedSize === 'cover' ? 'fill'
+    : trimmedSize === 'contain' ? 'fit'
+    : 'crop'
+
+  return {
+    mode,
+    /** Сдвиг начала отсчёта прибавляется в конце: всё выше считалось
+     *  ВНУТРИ бокса начала отсчёта, а наружу отдаются координаты узла. */
+    offsetX: origin.x + (parsePositionPart(rawX, freeX) ?? freeX / 2),
+    offsetY: origin.y + (parsePositionPart(rawY, freeY) ?? freeY / 2),
+    scaleX: scale.x,
+    scaleY: scale.y,
+  }
+}
