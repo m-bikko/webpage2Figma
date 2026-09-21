@@ -10,11 +10,12 @@
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test": "pnpm typecheck && pnpm typecheck:root && pnpm test:unit && pnpm test:e2e",
+    "test": "pnpm typecheck && pnpm typecheck:root && pnpm build && pnpm test:unit && pnpm test:e2e",
     "build:serializer": "pnpm --filter @h2d/serializer build",
     "capture": "node scripts/capture.mjs",
     "build:bundle": "pnpm --filter @h2d/bundle build",
-    "build:plugin": "pnpm --filter @h2d/plugin build"
+    "build:plugin": "pnpm --filter @h2d/plugin build",
+    "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",

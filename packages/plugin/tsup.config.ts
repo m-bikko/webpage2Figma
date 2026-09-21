@@ -4,6 +4,15 @@ export default defineConfig({
   entry: { code: 'src/main.ts' },
   format: ['iife'],
   target: 'es2020',
+  /** Платформа — БРАУЗЕР, а не Node (умолчание tsup).
+   *
+   *  Не косметика. Под Node esbuild выбирает у `fflate` ветку с
+   *  поддержкой воркеров, которая начинается с `require("module")`.
+   *  В песочнице плагина Figma `require` не существует вовсе, и
+   *  бандл падает на первой же строке: «Dynamic require of "module"
+   *  is not supported». Ошибка проявляется только при запуске в
+   *  Figma — ни сборка, ни типы её не видят. */
+  platform: 'browser',
   sourcemap: true,
   clean: true,
   /** ВСЁ втягивается в один файл. Рантайм плагина Figma не умеет
