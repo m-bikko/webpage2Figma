@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer packages/bundle packages/plugin",
+    "typecheck": "tsc -b packages/ir packages/serializer packages/reference-renderer packages/bundle packages/plugin packages/extension",
     "typecheck:root": "tsc -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
@@ -15,14 +15,17 @@
     "capture": "node scripts/capture.mjs",
     "build:bundle": "pnpm --filter @h2d/bundle build",
     "build:plugin": "pnpm --filter @h2d/plugin build",
-    "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin",
-    "verify-figma": "node scripts/verify-figma.mjs"
+    "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin && pnpm build:extension",
+    "verify-figma": "node scripts/verify-figma.mjs",
+    "build:extension": "pnpm --filter @h2d/extension build"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",
     "@h2d/ir": "workspace:*",
+    "@h2d/plugin": "workspace:*",
     "@h2d/reference-renderer": "workspace:*",
     "@playwright/test": "^1.48.0",
+    "@types/chrome": "^0.3.0",
     "@types/node": "^22.7.0",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
@@ -31,7 +34,7 @@
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
-    "@h2d/plugin": "workspace:*"
+    "@h2d/extension": "workspace:*"
   },
   "dependencies": {
     "fflate": "^0.8.3"

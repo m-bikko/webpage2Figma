@@ -15,6 +15,9 @@ importers:
       '@figma/plugin-typings':
         specifier: ^1.138.0
         version: 1.138.0
+      '@h2d/extension':
+        specifier: workspace:*
+        version: link:packages/extension
       '@h2d/ir':
         specifier: workspace:*
         version: link:packages/ir
@@ -27,6 +30,9 @@ importers:
       '@playwright/test':
         specifier: ^1.48.0
         version: 1.63.0
+      '@types/chrome':
+        specifier: ^0.3.0
+        version: 0.3.0
       '@types/node':
         specifier: ^22.7.0
         version: 22.20.4
@@ -60,6 +66,15 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+
+  packages/extension:
+    dependencies:
+      '@h2d/bundle':
+        specifier: workspace:*
+        version: link:../bundle
+      '@h2d/ir':
+        specifier: workspace:*
+        version: link:../ir
 
   packages/ir:
     dependencies:
@@ -550,8 +565,20 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@types/chrome@0.3.0':
+    resolution: {integrity: sha512-HPAMKyJwUnNJdVsxgypwvIStlwRhhaLnxgEwKIB99oOcffJrC4UMeD5xseVoBwDinSkr690DCBaAtSYdK6M1qw==}
+
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
+
+  '@types/filesystem@0.0.36':
+    resolution: {integrity: sha512-vPDXOZuannb9FZdxgHnqSwAG/jvdGM8Wq+6N4D/d80z+D4HWH+bItqsZaVRQykAn6WEVeEkLm2oQigyHtgb0RA==}
+
+  '@types/filewriter@0.0.33':
+    resolution: {integrity: sha512-xFU8ZXTw4gd358lb2jw25nxY9QAgqn2+bKKjKOYfNCzN4DKCFetK7sPtrlpg66Ywe3vWY9FNxprZawAh9wfJ3g==}
+
+  '@types/har-format@1.2.16':
+    resolution: {integrity: sha512-fluxdy7ryD3MV6h8pTfTYpy/xQzCFC7m89nOH9y94cNqJ1mDIDPut7MnRHI3F6qRmh/cT2fUjG1MLdCNb4hE9A==}
 
   '@types/node@22.20.4':
     resolution: {integrity: sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA==}
@@ -1209,7 +1236,20 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.63.4':
     optional: true
 
+  '@types/chrome@0.3.0':
+    dependencies:
+      '@types/filesystem': 0.0.36
+      '@types/har-format': 1.2.16
+
   '@types/estree@1.0.9': {}
+
+  '@types/filesystem@0.0.36':
+    dependencies:
+      '@types/filewriter': 0.0.33
+
+  '@types/filewriter@0.0.33': {}
+
+  '@types/har-format@1.2.16': {}
 
   '@types/node@22.20.4':
     dependencies:

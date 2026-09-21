@@ -1,0 +1,11 @@
+{
+  "name": "@h2d/extension",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/worker.ts",
+  "scripts": { "build": "tsup" },
+  "dependencies": {
+    "@h2d/bundle": "workspace:*",
+    "@h2d/ir": "workspace:*"
+  }
+}

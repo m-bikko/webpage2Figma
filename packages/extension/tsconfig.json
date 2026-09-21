@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["chrome"],
+    "lib": ["ES2022", "DOM", "WebWorker"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [{ "path": "../ir" }, { "path": "../bundle" }]
+}
