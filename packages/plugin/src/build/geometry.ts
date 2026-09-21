@@ -1,4 +1,10 @@
-import type { IrNode, Transform } from '@h2d/ir'
+import type { IrNode, TextRun, Transform } from '@h2d/ir'
+
+const scaleRun = (run: TextRun, sx: number): TextRun => ({
+  ...run,
+  fontSize: run.fontSize * sx,
+  letterSpacing: run.letterSpacing * sx,
+})
 
 /** Поворот в том виде, в каком его понимает Figma.
  *
@@ -13,12 +19,19 @@ import type { IrNode, Transform } from '@h2d/ir'
  *  совершенно правдоподобно и не заметен ни на чём симметричном,
  *  поэтому проверяется явным сравнением, а не через `Math.abs`.
  *
+ *  ЕДИНИЦЫ ТОЖЕ РАЗНЫЕ. Наш контракт хранит угол в РАДИАНАХ, Figma
+ *  отдаёт и принимает `rotation` в ГРАДУСАХ. Первая редакция этой
+ *  функции возвращала просто `-angle`, и тест её не поймал, потому что
+ *  был написан в тех же единицах, что и код: он проверял согласие
+ *  реализации с собой, а не с Figma. Поэтому проверка построена на
+ *  значениях, у которых радианы и градусы заведомо не совпадают.
+ *
  *  `-0` сворачивается в `0`: он утекает в JSON как `-0` и ломает
  *  сравнение снапшотов. Та же причина, что и при нормализации
  *  градиентов в плане 2. */
 export const figmaRotation = (transform: Transform | null): number => {
   if (transform === null) return 0
-  const rotation = -transform.angle
+  const rotation = (-transform.angle * 180) / Math.PI
   return rotation === 0 ? 0 : rotation
 }
 
@@ -74,9 +87,14 @@ export const scaleSubtree = (
   nodes: readonly IrNode[],
   sx: number,
   sy: number,
-): IrNode[] => nodes.map((node) => {
-  const scaled: IrNode = {
-    ...node,
+): IrNode[] => nodes.map((node): IrNode => {
+  /** Общая часть выносится отдельно, а дискриминант приписывается
+   *  обратно ниже. Разложить размеченное объединение через `...node`
+   *  и присвоить результат типу `IrNode` нельзя: TypeScript теряет
+   *  связь дискриминанта с остальными полями и отвергает результат —
+   *  и он прав, такая запись допускает узел с `kind: 'image'` без
+   *  поля `image`. */
+  const geometry = {
     rect: {
       x: node.rect.x * sx, y: node.rect.y * sy,
       w: node.rect.w * sx, h: node.rect.h * sy,
@@ -96,23 +114,26 @@ export const scaleSubtree = (
     },
     children: scaleSubtree(node.children, sx, sy),
   }
-  if (scaled.kind === 'text') {
+
+  if (node.kind === 'text') {
     return {
-      ...scaled,
+      ...node, ...geometry,
       text: {
-        ...scaled.text,
-        lineHeight: scaled.text.lineHeight * sy,
-        runs: scaled.text.runs.map((run) => ({
-          ...run,
-          fontSize: run.fontSize * sx,
-          letterSpacing: run.letterSpacing * sx,
-        })),
-        lines: scaled.text.lines.map((line) => ({
+        ...node.text,
+        lineHeight: node.text.lineHeight * sy,
+        /** Голова и хвост разведены намеренно: контракт объявляет
+         *  `runs` НЕпустым кортежем, а `.map()` эту гарантию теряет.
+         *  Ослаблять тип ради удобства записи здесь нельзя — пустой
+         *  список прогонов означал бы текст без единого начертания. */
+        runs: [scaleRun(node.text.runs[0], sx), ...node.text.runs.slice(1).map(
+          (run) => scaleRun(run, sx),
+        )] as [TextRun, ...TextRun[]],
+        lines: node.text.lines.map((line) => ({
           x: line.x * sx, y: line.y * sy,
           w: line.w * sx, h: line.h * sy, text: line.text,
         })),
       },
     }
   }
-  return scaled
+  return { ...node, ...geometry }
 })

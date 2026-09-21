@@ -3,8 +3,15 @@ import { figmaRotation, sizeUnderTransform, scaleSubtree } from '../src/build/ge
 import { frameNode } from '@h2d/ir/test-fixtures'
 import type { Transform } from '@h2d/ir'
 
-const t = (o: Partial<Transform> = {}): Transform =>
-  ({ angle: 0, scaleX: 1, scaleY: 1, originX: 0, originY: 0, ...o })
+const t = (o: Partial<Transform> = {}): Transform => ({
+  angle: 0, scaleX: 1, scaleY: 1,
+  translateX: 0, translateY: 0, originX: 0, originY: 0, ...o,
+})
+
+/** Градусы в радианы — контракт хранит угол в радианах, Figma принимает
+ *  градусы. Хелпер существует, чтобы тест читался в тех единицах, в
+ *  которых думает Figma, и не повторял единицы реализации. */
+const deg = (value: number): number => (value * Math.PI) / 180
 
 describe('figmaRotation', () => {
   /** Знак проверяется ЯВНО, без Math.abs. Документация Figma:
@@ -13,11 +20,20 @@ describe('figmaRotation', () => {
    *  поворот, который выглядит совершенно правдоподобно и не заметен
    *  ни на чём симметричном. */
   it('меняет знак относительно нашего угла', () => {
-    expect(figmaRotation(t({ angle: 20 }))).toBeCloseTo(-20, 9)
+    expect(figmaRotation(t({ angle: deg(20) }))).toBeCloseTo(-20, 9)
   })
 
   it('и в обратную сторону тоже', () => {
-    expect(figmaRotation(t({ angle: -35 }))).toBeCloseTo(35, 9)
+    expect(figmaRotation(t({ angle: deg(-35) }))).toBeCloseTo(35, 9)
+  })
+
+  /** Единицы. Контракт хранит РАДИАНЫ, Figma принимает ГРАДУСЫ.
+   *  Первая редакция возвращала просто `-angle`, и тест этого не
+   *  поймал: он был написан в тех же единицах, что и код. Прямой угол
+   *  выбран потому, что в радианах это ≈1.5708, а в градусах 90 —
+   *  перепутать их незаметно невозможно. */
+  it('отдаёт градусы, а не радианы', () => {
+    expect(figmaRotation(t({ angle: Math.PI / 2 }))).toBeCloseTo(-90, 9)
   })
 
   /** `-0` — не косметика: он утекает в JSON как `-0`, ломает сравнение
