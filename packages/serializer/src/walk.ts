@@ -10,6 +10,7 @@ import type {
 import { isInvisible, parseColor } from './css/color.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { parseLinearGradient } from './css/gradient.js'
+import { classifyBackgroundImage } from './css/image.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
 import {
@@ -247,23 +248,54 @@ const reportGaps = (
 ): void => {
   if (cs.backgroundImage !== 'none') {
     const rect = el.getBoundingClientRect()
-    const linear = parseLinearGradient(cs.backgroundImage, {
-      w: rect.width, h: rect.height,
-    })
+    const verdict = classifyBackgroundImage(cs.backgroundImage)
     /** Диагностика только на то, что НЕ разобрали. Линейные градиенты
-     *  теперь переносятся, и сообщать о них было бы шумом, а шум учит
-     *  игнорировать отчёт целиком. Радиальные, конические и repeating
-     *  по-прежнему не переносятся и обязаны быть названы. */
-    if (linear === null) {
-      const repeating = cs.backgroundImage.includes('repeating-')
-      sink.report(
-        repeating ? 'warning' : 'info',
-        repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
-                  : DIAGNOSTIC_CODES.deferredGradient,
-        `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится: ` +
-        `в этом плане поддержан только linear-gradient.`,
-        id, false,
-      )
+     *  переносятся, и сообщать о них было бы шумом, а шум учит
+     *  игнорировать отчёт целиком.
+     *
+     *  Вердикт нужен потому, что прежняя ветка сообщала обо ВСЁМ
+     *  неразобранном кодом `deferred.gradient` — включая `url(...)`.
+     *  Растр градиентом не является, и такое сообщение уводило
+     *  читателя отчёта не туда. */
+    switch (verdict.kind) {
+      case 'gradient': {
+        const linear = parseLinearGradient(cs.backgroundImage, {
+          w: rect.width, h: rect.height,
+        })
+        if (linear === null) {
+          const repeating = cs.backgroundImage.includes('repeating-')
+          sink.report(
+            repeating ? 'warning' : 'info',
+            repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
+                      : DIAGNOSTIC_CODES.deferredGradient,
+            `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится: ` +
+            `в этом плане поддержан только linear-gradient.`,
+            id, false,
+          )
+        }
+        break
+      }
+      case 'vector':
+        sink.report('info', verdict.code,
+          'Векторный фон (SVG) не переносится растром.', id, false)
+        break
+      case 'multi-layer':
+        sink.report('info', verdict.code,
+          'Несколько слоёв фона: перенесён только случай одного слоя.', id, false)
+        break
+      case 'unknown':
+        sink.report('warning', DIAGNOSTIC_CODES.deferredGradient,
+          `Фоновое изображение "${verdict.raw.slice(0, 60)}" не распознано.`,
+          id, false)
+        break
+      case 'raster':
+        /** Растр переносится в Task 5, где есть заявки на ассеты. Пока —
+         *  ЯВНАЯ диагностика, а не тишина и не чужой код. */
+        sink.report('warning', DIAGNOSTIC_CODES.imageUnreadable,
+          'Растровый фон ещё не переносится.', id, false)
+        break
+      case 'none':
+        break
     }
   }
   if (cs.transform !== 'none') {
