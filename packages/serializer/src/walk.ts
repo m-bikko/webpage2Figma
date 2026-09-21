@@ -515,6 +515,52 @@ const reportGaps = (
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedClipPath,
       `clip-path "${cs.clipPath}" не переносится.`, id, false)
   }
+  /** Маска теряется МОЛЧА, если о ней не сказать.
+   *
+   *  `mask-image` и `border-image` в Figma выражаются иначе, чем в
+   *  CSS, и перенос без способа сверить результат был бы догадкой.
+   *  Код для этого случая был заведён давно, но не порождался ни разу:
+   *  нашла это проверка, требующая, чтобы у каждого кода был источник.
+   *  До неё элемент с маской приезжал целым прямоугольником — то есть
+   *  показывал то, что на странице скрыто маской.
+   *
+   *  Измерено на живых страницах: от одной до трёх масок на страницу. */
+  if (cs.maskImage !== 'none' && cs.maskImage !== '') {
+    sink.report('warning', DIAGNOSTIC_CODES.deferredMask,
+      `mask-image "${cs.maskImage.slice(0, 60)}" не переносится: узел ` +
+      `приедет целым, без вырезанной маской части.`, id, false)
+  }
+  if (cs.borderImageSource !== 'none' && cs.borderImageSource !== '') {
+    sink.report('warning', DIAGNOSTIC_CODES.deferredMask,
+      `border-image "${cs.borderImageSource.slice(0, 60)}" не переносится: ` +
+      `рамка приедет обычной сплошной или не приедет вовсе.`, id, false)
+  }
+
+  /** Содержимое shadow DOM не обходится вовсе, и об этом тоже надо
+   *  сказать. Открытый корень доступен, закрытый — нет; обход ни того,
+   *  ни другого пока не делает, а узлы внутри на странице видны.
+   *
+   *  Измерено: на пяти живых страницах от нуля до одного хозяина с
+   *  одним-двумя узлами внутри — потеря настоящая, но редкая, и
+   *  диагностика здесь честнее поспешной реализации. */
+  const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot
+  if (shadow !== null && shadow !== undefined) {
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
+      `Содержимое shadow DOM (${shadow.childElementCount} узлов) не ` +
+      `переносится: обход идёт по обычному дереву.`, id, false)
+  } else if (el.tagName.includes('-')) {
+    /** Дефис в имени — пользовательский элемент. Корня не видно: он
+     *  либо закрытый, либо его нет вовсе. Различить снаружи нельзя,
+     *  поэтому сообщается ровно то, что известно. */
+    const inner = el.childElementCount
+    if (inner === 0 && el.getBoundingClientRect().width > 0) {
+      sink.report('info', DIAGNOSTIC_CODES.unsupportedClosedShadowRoot,
+        `Пользовательский элемент <${el.tagName.toLowerCase()}> занимает ` +
+        `место, но детей у него не видно: содержимое, скорее всего, в ` +
+        `закрытом shadow DOM и недоступно.`, id, false)
+    }
+  }
+
   if (cs.position === 'sticky' || cs.position === 'fixed') {
     sink.report('info', DIAGNOSTIC_CODES.stickyFlattened,
       `position: ${cs.position} снят в текущем скролл-положении.`, id, false)
@@ -533,9 +579,10 @@ const reportGaps = (
    *  может пойти не так, сообщается там, где строится узел, — с
    *  названной причиной вместо общего «не переносится».
    *
-   *  Код `deferred.vector` сохранён: коды стабильны, и его всё ещё
-   *  порождает `classifyBackgroundImage` для SVG в `background-image`,
-   *  который растром не переносится. */
+   *  Код `deferred.vector` с тех пор перестал порождаться вовсе:
+   *  фоновый SVG тоже переносится, только через ассет — байтами
+   *  исходника. Код оставлен ради стабильности, потому что бандлы
+   *  прежних версий его содержат. */
   /** Диагностика про псевдоэлементы выдаётся ТАМ, где они строятся:
    *  причина отказа известна только после разбора, а общее «не
    *  переносится» её скрывало. Переносимые не диагностируются вовсе —

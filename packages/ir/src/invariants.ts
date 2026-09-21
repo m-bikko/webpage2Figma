@@ -469,10 +469,9 @@ const checkDeferredDiagnosed = (bundle: Bundle): InvariantError[] => {
        *  видела, потому что бандл через валидатор не прогонялся
        *  вовсе; дыру закрывает `bundle.spec.ts`.
        *
-       *  Код `deferred.vector` жив и продолжает выдаваться для SVG в
-       *  `background-image`: там переносить нечего, растром вектор не
-       *  идёт. Но такой узел не `kind: 'vector'`, и под эту проверку
-       *  не подпадал никогда. */
+       *  Код `deferred.vector` с тех пор перестал порождаться вовсе:
+       *  фоновый SVG тоже переносится, только через ассет. Код оставлен
+       *  ради стабильности — бандлы прежних версий его содержат. */
 
       for (const { code, feature } of deferred) {
         const explained = bundle.report.some(

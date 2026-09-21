@@ -5,7 +5,6 @@ export type BackgroundImageVerdict =
   | { kind: 'none' }
   | { kind: 'raster'; url: string }
   | { kind: 'gradient' }
-  | { kind: 'multi-layer'; code: DiagnosticCode }
   | { kind: 'unknown'; raw: string }
 
 /** Верхнеуровневые запятые — границы слоёв фона. Наивный `split(',')`
@@ -83,15 +82,16 @@ export const classifyBackgroundImage = (value: string): BackgroundImageVerdict =
   const trimmed = value.trim()
   if (trimmed === '' || trimmed === 'none') return { kind: 'none' }
 
-  const layers = splitLayers(trimmed)
-  if (layers.length > 1) {
-    return {
-      kind: 'multi-layer',
-      code: DIAGNOSTIC_CODES.deferredMultiLayerBackground,
-    }
-  }
-
-  const layer = layers[0] ?? ''
+  /** Многослойность здесь БОЛЬШЕ НЕ РАЗБИРАЕТСЯ: слои разделяет
+   *  вызывающий (`backgroundLayers`) и передаёт сюда по одному. Ветка
+   *  «несколько слоёв» осталась бы мёртвой, а мёртвая ветка с кодом
+   *  диагностики выглядит как работающая защита — и потому хуже её
+   *  отсутствия.
+   *
+   *  На всякий случай берётся ПЕРВЫЙ слой, а не весь текст: если
+   *  вызывающий когда-нибудь передаст сюда список, разбор коснётся
+   *  чего-то осмысленного, а не склейки. */
+  const layer = splitLayers(trimmed)[0] ?? ''
   const url = parseUrlToken(layer)
   if (url !== null) {
     /** SVG в фоне — ТОТ ЖЕ растровый путь.

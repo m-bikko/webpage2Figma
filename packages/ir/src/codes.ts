@@ -24,6 +24,10 @@ export const DIAGNOSTIC_CODES = {
   deferredTransform: 'deferred.transform',
   deferredBlur: 'deferred.blur',
   deferredBlend: 'deferred.blend',
+  /** БОЛЬШЕ НЕ ПОРОЖДАЕТСЯ. Оставлен ради стабильности: бандлы,
+   *  снятые прежними версиями, его содержат, и плагин обязан их
+   *  принимать. Векторы переносятся — и инлайновые исходником, и
+   *  фоновые через ассет. */
   deferredVector: 'deferred.vector',
   deferredPseudoElement: 'deferred.pseudo-element',
 
@@ -44,9 +48,9 @@ export const DIAGNOSTIC_CODES = {
   /** `mask-image` или `border-image`. Figma выражает маску иначе, чем
    *  CSS, и перенос без способа сверить результат был бы догадкой. */
   deferredMask: 'deferred.mask',
-  /** Несколько слоёв `background-image` в одном объявлении. Контракт их
-   *  представляет (`fills` — список), но порядок и смешение слоёв не
-   *  измерены, поэтому перенесён только случай одного слоя. */
+  /** БОЛЬШЕ НЕ ПОРОЖДАЕТСЯ. Оставлен ради стабильности, как и
+   *  `deferred.vector`: слои фона переносятся все, каждый своей
+   *  заливкой, в порядке, обратном записи в CSS. */
   deferredMultiLayerBackground: 'deferred.multi-layer-background',
   /** `repeat-x`, `repeat-y`, `round`, `space`: повтор по одной оси или
    *  с подгонкой шага. Контракт держит один режим на обе оси и этого не
