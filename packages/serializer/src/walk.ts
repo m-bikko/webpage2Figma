@@ -472,6 +472,13 @@ const placeholderFor = (
       'Содержимое <canvas> не переносится.', id, true)
     return { code: DIAGNOSTIC_CODES.unsupportedCanvas, label: 'canvas' }
   }
+  if (el.tagName === 'VIDEO') {
+    sink.report('warning', DIAGNOSTIC_CODES.unsupportedVideo,
+      'Содержимое <video> не переносится: кадр видео — не изображение ' +
+      'страницы, и выдавать один момент времени за содержимое неверно.',
+      id, true)
+    return { code: DIAGNOSTIC_CODES.unsupportedVideo, label: 'video' }
+  }
   if (el.tagName === 'IFRAME') {
     const frame = el as HTMLIFrameElement
     let sameOrigin = false

@@ -1,0 +1,149 @@
+{
+  "screen": {
+    "id": "s-768",
+    "name": "Tablet",
+    "width": 768,
+    "height": 1024,
+    "dpr": 1,
+    "scroll": {
+      "x": 0,
+      "y": 0
+    },
+    "root": {
+      "id": "n0",
+      "sourceTag": "body",
+      "name": "body",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 768,
+        "h": 187
+      },
+      "paintOrder": 0,
+      "isStackingContext": false,
+      "transform": null,
+      "layout": {
+        "mode": "none",
+        "gap": 0,
+        "padding": {
+          "top": 24,
+          "right": 24,
+          "bottom": 24,
+          "left": 24
+        },
+        "align": "start",
+        "justify": "start",
+        "wrap": false
+      },
+      "selfLayout": {
+        "positioning": "flow",
+        "align": null,
+        "grow": 0,
+        "shrink": 1
+      },
+      "style": {
+        "fills": [
+          {
+            "kind": "solid",
+            "color": {
+              "r": 255,
+              "g": 255,
+              "b": 255,
+              "a": 1
+            }
+          }
+        ],
+        "stroke": null,
+        "corner": {
+          "tl": 0,
+          "tr": 0,
+          "br": 0,
+          "bl": 0
+        },
+        "shadows": [],
+        "opacity": 1,
+        "blend": "normal",
+        "blur": null,
+        "clip": false
+      },
+      "children": [
+        {
+          "id": "n1",
+          "sourceTag": "video",
+          "name": "video",
+          "rect": {
+            "x": 24,
+            "y": 24,
+            "w": 240,
+            "h": 135
+          },
+          "paintOrder": 1,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "solid",
+                "color": {
+                  "r": 212,
+                  "g": 212,
+                  "b": 216,
+                  "a": 1
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": true
+          },
+          "children": [],
+          "kind": "placeholder",
+          "placeholder": {
+            "code": "unsupported.video",
+            "label": "video"
+          }
+        }
+      ],
+      "kind": "frame"
+    },
+    "screenshotId": null
+  },
+  "report": [
+    {
+      "level": "warning",
+      "code": "unsupported.video",
+      "message": "Содержимое <video> не переносится: кадр видео — не изображение страницы, и выдавать один момент времени за содержимое неверно.",
+      "nodeId": "n1",
+      "screenId": "s-768",
+      "needsPlaceholder": true
+    }
+  ]
+}

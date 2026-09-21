@@ -11,7 +11,7 @@ const FIXTURES = [
   'transformed', 'transform-nested', 'broken-transform', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
   'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated', 'group-effects',
   'blur',
-  'image-fit', 'image-bg', 'image-cors', 'image-broken',
+  'image-fit', 'image-bg', 'image-cors', 'image-broken', 'video',
 ] as const
 
 const snapshotPath = (fixture: string, width: number): string =>
@@ -179,4 +179,23 @@ test('text: узкий абзац переносится на несколько
   for (const line of lines) {
     expect(line.text.length).toBeGreaterThan(0)
   }
+})
+
+/** `<video>` обязан стать ЗАГЛУШКОЙ с диагностикой, а не пустым
+ *  фреймом. Это был последний молчаливый откат в проекте: элемент
+ *  занимал место, ничего не рисовал и ни о чём не сообщал. */
+test('video не исчезает молча', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 400 })
+  await page.goto(fixtureUrl('video'))
+  const { screen, report } = await captureScreen(page, 's', 'Probe')
+
+  const kinds: string[] = []
+  const visit = (node: IrNode): void => {
+    if (node.sourceTag === 'video') kinds.push(node.kind)
+    node.children.forEach(visit)
+  }
+  visit(screen.root)
+
+  expect(kinds).toEqual(['placeholder'])
+  expect(report.map((entry) => entry.code)).toContain('unsupported.video')
 })

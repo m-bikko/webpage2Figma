@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>video</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  /* Подложка непрозрачна: на белом заглушку не отличить от пропажи. */
+  video{width:240px;height:135px;background:#d4d4d8}
+</style></head>
+<body>
+  <!-- Источника нет намеренно: проверяется не воспроизведение, а то,
+       что элемент не исчезает молча. До этой фикстуры <video> приезжал
+       пустым фреймом без единой записи в отчёте. -->
+  <video controls></video>
+</body></html>

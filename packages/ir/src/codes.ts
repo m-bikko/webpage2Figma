@@ -3,6 +3,14 @@
  *  а импортировать из сериализатора не может. */
 export const DIAGNOSTIC_CODES = {
   unsupportedCanvas: 'unsupported.canvas',
+  /** `<video>` и его `poster`. Кадр видео — не изображение страницы,
+   *  и переносить его как картинку значило бы выдать один момент
+   *  времени за содержимое.
+   *
+   *  Код заведён поздно и закрывает долг, записанный ещё в плане 4:
+   *  до него `<video>` приезжал обычным пустым фреймом БЕЗ единой
+   *  записи в отчёте — последняя молчаливая потеря в проекте. */
+  unsupportedVideo: 'unsupported.video',
   unsupportedCrossOriginIframe: 'unsupported.cross-origin-iframe',
   unsupportedClosedShadowRoot: 'unsupported.closed-shadow-root',
   unsupportedClipPath: 'unsupported.clip-path',
