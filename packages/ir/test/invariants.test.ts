@@ -301,13 +301,25 @@ describe('checkInvariants: отложенные фичи обязаны диаг
     expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 
-  it('ловит blur без diagnostic', () => {
+  /** Отложено теперь только ФОНОВОЕ размытие, поэтому и требование
+   *  диагностики осталось только на нём. Проверяются оба исхода подряд:
+   *  без второго теста сужение прошло бы незаметно и при полностью
+   *  выключенной проверке. */
+  it('ловит фоновое размытие без diagnostic', () => {
+    const root = frameNode({
+      id: 'a', paintOrder: 0,
+      style: { ...frameNode().style, blur: { layer: 0, background: 4 } },
+    })
+    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
+      .toContain('deferred.undiagnosed')
+  })
+
+  it('принимает размытие слоя без диагностики: фича больше не отложена', () => {
     const root = frameNode({
       id: 'a', paintOrder: 0,
       style: { ...frameNode().style, blur: { layer: 4, background: 0 } },
     })
-    expect(codesOf(checkInvariants(bundle({ screens: [screen({ root })] }))))
-      .toContain('deferred.undiagnosed')
+    expect(checkInvariants(bundle({ screens: [screen({ root })] }))).toEqual([])
   })
 })
 

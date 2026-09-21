@@ -23,6 +23,7 @@ const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text',
   'transformed', 'transform-nested', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
   'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated',
+  'blur',
 ] as const
 
 for (const fixture of FIXTURES) {

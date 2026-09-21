@@ -161,7 +161,7 @@ describe('renderScreenToSvg: тени', () => {
   })
 
   /** Прямого примитива для внутренней тени в SVG нет, и раньше
-   *  `shadowFilter` просто игнорировал `kind: 'inner'`: узел приезжал
+   *  `effectsFilter` просто игнорировал `kind: 'inner'`: узел приезжал
    *  вообще без фильтра, а вместе с ним исчезала тень, которую Figma
    *  через INNER_SHADOW поддерживает. */
   it('внутренняя тень собирается из инверсии альфы, а не игнорируется', () => {
@@ -182,6 +182,71 @@ describe('renderScreenToSvg: тени', () => {
   it('фильтр считается в sRGB, а не в linearRGB по умолчанию', () => {
     expect(renderScreenToSvg(screen(shadowed('outer'))))
       .toContain('color-interpolation-filters="sRGB"')
+  })
+})
+
+describe('renderScreenToSvg: размытие слоя', () => {
+  const blurred = (blur: { layer: number; background: number }): IrNode => {
+    const node = filled({ r: 99, g: 102, b: 241, a: 1 })
+    node.style.blur = blur
+    return node
+  }
+
+  const withShadow = (kind: 'outer' | 'inner', layer: number): IrNode => {
+    const node = blurred({ layer, background: 0 })
+    node.style.shadows = [{
+      kind, color: { r: 0, g: 0, b: 0, a: 0.45 },
+      offsetX: 0, offsetY: 4, blur: 8, spread: 0,
+    }]
+    return node
+  }
+
+  /** Единица измерения — единственное, что здесь легко перепутать, и
+   *  ошибка не выглядит ошибкой: размытие просто вдвое сильнее или
+   *  слабее. CSS `blur(4px)` — это стандартное отклонение 4, тогда как
+   *  `box-shadow ... 8px` — отклонение 4. Проверяется точное значение,
+   *  а не факт наличия примитива: pixel-diff ловит перепутанную единицу
+   *  508 пикселями на фикстуре `blur/`, но тест здесь называет причину. */
+  it('stdDeviation равен радиусу CSS, а не его половине', () => {
+    const svg = renderScreenToSvg(screen(blurred({ layer: 4, background: 0 })))
+    expect(svg).toContain('<feGaussianBlur stdDeviation="4"/>')
+    expect(svg).not.toContain('stdDeviation="2"')
+  })
+
+  it('размытый узел ссылается на фильтр, которого без размытия не было бы', () => {
+    const svg = renderScreenToSvg(screen(blurred({ layer: 10, background: 0 })))
+    expect(svg).toContain('filter="url(#fx-n0)"')
+    expect(svg).toContain('color-interpolation-filters="sRGB"')
+  })
+
+  /** Фоновое размытие рендерер не воспроизводит: дерево плоское, и
+   *  «того, что за элементом», у него нет. Пустой `<filter>` в этом
+   *  случае был бы хуже отсутствия: ссылка на фильтр без примитивов
+   *  оставляет элемент невидимым, то есть узел исчез бы молча. */
+  it('одно фоновое размытие не порождает ни фильтра, ни ссылки на него', () => {
+    const svg = renderScreenToSvg(screen(blurred({ layer: 0, background: 8 })))
+    expect(svg).not.toContain('<filter')
+    expect(svg).not.toContain('filter="url(')
+  })
+
+  /** Размытие идёт ПОСЛЕ теней в той же цепочке: в CSS `filter`
+   *  применяется к уже отрисованному элементу вместе с его
+   *  `box-shadow`. Поставленное первым, оно осталось бы неиспользованным
+   *  результатом, потому что первая `feDropShadow` берёт `SourceGraphic`
+   *  явно — то есть размытие молча пропало бы на узле с тенью. */
+  it('на узле с тенью размытие не теряется и стоит в конце цепочки', () => {
+    const svg = renderScreenToSvg(screen(withShadow('outer', 6)))
+    const blurAt = svg.indexOf('<feGaussianBlur stdDeviation="6"/>')
+    const dropAt = svg.indexOf('<feDropShadow')
+    expect(blurAt).toBeGreaterThan(-1)
+    expect(blurAt).toBeGreaterThan(dropAt)
+  })
+
+  it('внутренняя тень вместе с размытием сохраняет свои примитивы', () => {
+    const svg = renderScreenToSvg(screen(withShadow('inner', 6)))
+    expect(svg).toContain('<feComponentTransfer')
+    expect(svg).toContain('in2="SourceAlpha" operator="in"')
+    expect(svg).toContain('<feGaussianBlur stdDeviation="6"/>')
   })
 })
 

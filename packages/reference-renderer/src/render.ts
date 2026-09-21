@@ -1,5 +1,6 @@
 import type {
-  Corner, Gradient, IrNode, Rect, Rgba8, Screen, Shadow, Sides, Stroke, TextRun,
+  Blur, Corner, Gradient, IrNode, Rect, Rgba8, Screen, Shadow, Sides, Stroke,
+  TextRun,
 } from '@h2d/ir'
 
 const escapeXml = (value: string): string =>
@@ -123,10 +124,37 @@ const FILTER_REGION = 'x="-75%" y="-75%" width="250%" height="250%"'
  *  расхождение накапливается сильнее всего. */
 const FILTER_SPACE = 'color-interpolation-filters="sRGB"'
 
-const shadowFilter = (id: string, shadows: Shadow[]): string => {
+/** Размытие слоя, то есть CSS `filter: blur()`.
+ *
+ *  `stdDeviation` берётся из контракта БЕЗ деления, и это главное отличие
+ *  от теней рядом: CSS `blur(Npx)` задаёт стандартное отклонение НАПРЯМУЮ,
+ *  тогда как радиус `box-shadow` вдвое больше отклонения — отсюда `/ 2` в
+ *  `innerShadowPrimitives` и в цепочке `feDropShadow`. Перепутать легко, а
+ *  ошибка выглядит правдоподобно: размытие просто вдвое сильнее или слабее
+ *  нужного, и без pixel-diff это не отличить от «так и задумано».
+ *
+ *  Примитив ставится в КОНЕЦ цепочки, а не в начало. План предполагал
+ *  начало, но цепочка теней там уже занята: первая `feDropShadow` явно
+ *  берёт `in="SourceGraphic"`, а внутренняя тень — `in="SourceAlpha"`,
+ *  поэтому размытие, поставленное первым, осталось бы НИ КЕМ не
+ *  использованным результатом — то есть молча потерялось бы на узле, где
+ *  есть и тень, и размытие. Конец цепочки вдобавок соответствует CSS: там
+ *  `filter` применяется к УЖЕ отрисованному элементу вместе с его
+ *  `box-shadow`, а не к содержимому под тенью. */
+const layerBlurPrimitive = (blur: Blur | null): string =>
+  blur !== null && blur.layer > 0
+    ? `<feGaussianBlur stdDeviation="${blur.layer}"/>`
+    : ''
+
+const effectsFilter = (id: string, shadows: Shadow[], blur: Blur | null): string => {
   const outer = shadows.filter((shadow) => shadow.kind === 'outer')
   const inner = shadows.filter((shadow) => shadow.kind === 'inner')
-  if (outer.length === 0 && inner.length === 0) return ''
+  const layerBlur = layerBlurPrimitive(blur)
+  if (outer.length === 0 && inner.length === 0) {
+    return layerBlur === ''
+      ? ''
+      : `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>${layerBlur}</filter>`
+  }
 
   /** Внешние тени цепочкой: каждый `feDropShadow` без `in` берёт
    *  результат предыдущего, поэтому тени накладываются одна на другую,
@@ -140,7 +168,10 @@ const shadowFilter = (id: string, shadows: Shadow[]): string => {
   const base = outer.length === 0 ? 'SourceGraphic' : `outer${outer.length - 1}`
 
   if (inner.length === 0) {
-    return `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>${outerParts}</filter>`
+    return (
+      `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>` +
+      `${outerParts}${layerBlur}</filter>`
+    )
   }
 
   const innerParts = inner
@@ -153,7 +184,10 @@ const shadowFilter = (id: string, shadows: Shadow[]): string => {
     inner.map((_, index) => `<feMergeNode in="inner${index}"/>`).join('') +
     `</feMerge>`
 
-  return `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>${outerParts}${innerParts}${merge}</filter>`
+  return (
+    `<filter id="${id}" ${FILTER_REGION} ${FILTER_SPACE}>` +
+    `${outerParts}${innerParts}${merge}${layerBlur}</filter>`
+  )
 }
 
 /** Рамка с РАЗНЫМИ толщинами сторон.
@@ -222,6 +256,9 @@ const renderBox = (node: IrNode, defs: string[]): string => {
   const solid = style.fills.find((fill) => fill.kind === 'solid')
   const gradientFill = style.fills.find((fill) => fill.kind === 'gradient')
   const hasShadow = style.shadows.length > 0
+  /** Фильтр нужен и ради теней, и ради размытия слоя — оба живут в одном
+   *  `<filter>`, потому что SVG допускает только один на элемент. */
+  const needsFilter = hasShadow || style.blur !== null
   if (
     solid === undefined && gradientFill === undefined
     && style.stroke === null && !hasShadow
@@ -274,10 +311,17 @@ const renderBox = (node: IrNode, defs: string[]): string => {
   if (style.blend !== 'normal') {
     attrs.push(`style="mix-blend-mode:${style.blend}"`)
   }
-  if (hasShadow) {
-    const filterId = `shadow-${node.id}`
-    defs.push(shadowFilter(filterId, style.shadows))
-    attrs.push(`filter="url(#${filterId})"`)
+  if (needsFilter) {
+    const filterId = `fx-${node.id}`
+    const filter = effectsFilter(filterId, style.shadows, style.blur)
+    /** Пустая строка означает, что эффектов не оказалось (например
+     *  `blur: { layer: 0, background: 4 }` — фоновое размытие рендерер не
+     *  воспроизводит). Ссылаться на несуществующий фильтр нельзя: браузер
+     *  тогда не рисует элемент вовсе, и узел исчез бы молча. */
+    if (filter !== '') {
+      defs.push(filter)
+      attrs.push(`filter="url(#${filterId})"`)
+    }
   }
 
   const ring = ringed && style.stroke !== null ? borderRing(node, style.stroke) : ''

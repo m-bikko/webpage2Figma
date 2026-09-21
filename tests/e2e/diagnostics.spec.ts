@@ -242,6 +242,50 @@ test('blend: режим наложения доезжает и не диагно
   expect(report.some((i) => i.code === 'deferred.blend')).toBe(false)
 })
 
+test('blur: размытие слоя доезжает и не диагностируется', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('blur'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  // Неразмытый блок обязан приехать с blur === null, а не с нулевым
+  // объектом: пустой `{0,0}` заставил бы инвариант @h2d/ir требовать
+  // диагностику там, где откладывать нечего.
+  const blurs = screen.root.children.map((n) => n.style.blur)
+  expect(blurs).toEqual([
+    null,
+    { layer: 4, background: 0 },
+    { layer: 10, background: 0 },
+  ])
+
+  // Перенесённое размытие диагностировать не нужно — это был бы шум.
+  // Отложено теперь только фоновое, а его в фикстуре нет.
+  expect(report.some((i) => i.code === 'deferred.blur')).toBe(false)
+})
+
+/** Фоновое размытие остаётся отложенным, и молчать о нём нельзя. Фикстуры
+ *  для этого нет намеренно: `backdrop-filter` рендерер воспроизвести не
+ *  может в принципе — он плющит дерево, и «того, что за элементом» у него
+ *  не существует, — поэтому в pixel-diff такая фикстура внесла бы
+ *  заведомое расхождение. Проверяется ровно то, что проверяемо:
+ *  диагностика есть и указывает на нужный узел. */
+test('backdrop-filter остаётся отложенным и объяснён диагностикой', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.setContent(
+    '<!doctype html><body style="margin:0;background:#6366f1">' +
+    '<div id="glass" style="width:200px;height:100px;' +
+    'backdrop-filter:blur(8px);background:rgba(255,255,255,0.2)"></div>' +
+    '</body>',
+  )
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const glass = screen.root.children[0]
+  expect(glass?.style.blur).toEqual({ layer: 0, background: 8 })
+  expect(
+    report.some((i) => i.nodeId === glass?.id && i.code === 'deferred.blur'),
+    'фоновое размытие обязано быть объяснено, иначе оно теряется молча',
+  ).toBe(true)
+})
+
 test('inline-text: конкатенация ранов равна конкатенации строк', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('inline-text'))
