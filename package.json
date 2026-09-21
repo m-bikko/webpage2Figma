@@ -15,7 +15,8 @@
     "capture": "node scripts/capture.mjs",
     "build:bundle": "pnpm --filter @h2d/bundle build",
     "build:plugin": "pnpm --filter @h2d/plugin build",
-    "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin"
+    "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin",
+    "verify-figma": "node scripts/verify-figma.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",
