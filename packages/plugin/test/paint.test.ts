@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { figmaColor, solidPaint, gradientPaint } from '../src/build/paint.js'
-import type { Gradient } from '@w2f/ir'
+import type { LinearGradient } from '@w2f/ir'
 
 describe('figmaColor', () => {
   /** Figma держит цвет в долях 0..1, а альфу ОТДЕЛЬНО в `opacity`
@@ -23,7 +23,9 @@ describe('solidPaint', () => {
   })
 })
 
-const grad = (from: Gradient['from'], to: Gradient['to']): Gradient => ({
+const grad = (
+  from: LinearGradient['from'], to: LinearGradient['to'],
+): LinearGradient => ({
   kind: 'linear', from, to,
   stops: [
     { offset: 0, color: { r: 255, g: 0, b: 0, a: 1 } },

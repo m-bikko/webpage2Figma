@@ -1,4 +1,4 @@
-import type { Gradient, GradientStop } from '@w2f/ir'
+import type { GradientStop, LinearGradient, RadialGradient } from '@w2f/ir'
 import { parseColor } from './color.js'
 
 export type BoxSize = { w: number; h: number }
@@ -181,7 +181,7 @@ const resolveOffsets = (raws: RawStop[]): GradientStop[] => {
 export const parseLinearGradient = (
   value: string,
   box: BoxSize,
-): Gradient | null => {
+): LinearGradient | null => {
   const text = value.trim()
   if (!/^linear-gradient\(/i.test(text)) return null
   if (box.w <= 0 || box.h <= 0) return null
@@ -217,6 +217,215 @@ export const parseLinearGradient = (
     kind: 'linear',
     from: geometry.from,
     to: geometry.to,
+    stops: resolveOffsets(raws),
+  }
+}
+
+
+/** РАЗБОР `radial-gradient`.
+ *
+ *  Вычисленный стиль нормализует запись умеренно, и это измерено, а не
+ *  предположено: `ellipse` и `farthest-corner` опускаются как значения
+ *  по умолчанию, ключевые слова позиции превращаются в проценты
+ *  (`at top left` → `at 0% 0%`), `circle 60px` сводится к `60px`, а
+ *  порядок слов приводится к `circle farthest-side`. Поэтому разбирать
+ *  приходится не одну форму, а несколько — но конечное их число.
+ *
+ *  Форма по умолчанию — ЭЛЛИПС, и это главное, что нельзя упростить:
+ *  `radial-gradient(...)` без слова `circle` растягивается по сторонам
+ *  бокса. Свести его к кругу значило бы испортить самый частый случай
+ *  ради простоты кода. */
+
+type RadialSpec = {
+  shape: 'circle' | 'ellipse'
+  /** Ключевое слово размера либо явные радиусы в пикселях. */
+  size:
+    | { kind: 'keyword'; value: 'closest-side' | 'farthest-side'
+        | 'closest-corner' | 'farthest-corner' }
+    | { kind: 'explicit'; rx: number; ry: number }
+  center: { x: number; y: number }
+}
+
+const SIZE_KEYWORDS = new Set([
+  'closest-side', 'farthest-side', 'closest-corner', 'farthest-corner',
+])
+
+const POSITION_KEYWORDS: Record<string, number> = {
+  left: 0, top: 0, center: 0.5, right: 1, bottom: 1,
+}
+
+/** Одна координата позиции: процент, пиксели или ключевое слово. */
+const positionPart = (raw: string, basis: number): number | null => {
+  const text = raw.trim().toLowerCase()
+  const keyword = POSITION_KEYWORDS[text]
+  if (keyword !== undefined) return keyword
+  const pct = /^(-?[\d.]+)%$/.exec(text)
+  if (pct?.[1] !== undefined) return Number.parseFloat(pct[1]) / 100
+  const px = /^(-?[\d.]+)px$/.exec(text)
+  if (px?.[1] !== undefined) return Number.parseFloat(px[1]) / basis
+  return null
+}
+
+/** Разбирает первый аргумент как описание формы и положения.
+ *
+ *  `null` означает «это не описание, а первая остановка цвета»: в
+ *  `radial-gradient(red, blue)` первый аргумент — именно цвет.
+ *  Различать их по содержимому, а не по позиции, обязательно — иначе
+ *  самая короткая и самая частая запись разбиралась бы неверно. */
+const parseRadialSpec = (raw: string, box: BoxSize): RadialSpec | null => {
+  const text = raw.trim().toLowerCase()
+  if (text === '') return null
+
+  const [before, after] = text.split(/\s+at\s+/)
+  if (before === undefined) return null
+
+  let center = { x: 0.5, y: 0.5 }
+  if (after !== undefined) {
+    const parts = after.trim().split(/\s+/)
+    const first = parts[0]
+    if (first === undefined) return null
+    const x = positionPart(first, box.w)
+    /** Одна координата означает «по горизонтали, по центру
+     *  вертикально» — правило спецификации, а не догадка. */
+    const y = parts[1] === undefined ? 0.5 : positionPart(parts[1], box.h)
+    if (x === null || y === null) return null
+    center = { x, y }
+  }
+
+  const words = before.trim() === '' ? [] : before.trim().split(/\s+/)
+  let shape: 'circle' | 'ellipse' = 'ellipse'
+  const lengths: number[] = []
+  let keyword: RadialSpec['size'] | null = null
+
+  for (const word of words) {
+    if (word === 'circle') { shape = 'circle'; continue }
+    if (word === 'ellipse') { shape = 'ellipse'; continue }
+    if (SIZE_KEYWORDS.has(word)) {
+      keyword = { kind: 'keyword', value: word as 'closest-side' }
+      continue
+    }
+    const px = /^(-?[\d.]+)px$/.exec(word)
+    if (px?.[1] !== undefined) { lengths.push(Number.parseFloat(px[1])); continue }
+    const pct = /^(-?[\d.]+)%$/.exec(word)
+    if (pct?.[1] !== undefined) {
+      /** Процентный радиус считается от соответствующей стороны:
+       *  первый от ширины, второй от высоты. */
+      const basis = lengths.length === 0 ? box.w : box.h
+      lengths.push((Number.parseFloat(pct[1]) / 100) * basis)
+      continue
+    }
+    /** Неизвестное слово: это не описание формы, а цвет. */
+    if (after === undefined) return null
+    return null
+  }
+
+  /** Ни формы, ни размера, ни позиции — описывать нечего. */
+  if (words.length === 0 && after === undefined) return null
+
+  if (lengths.length > 0) {
+    const rx = lengths[0]
+    if (rx === undefined) return null
+    /** Один размер означает круг — так его и нормализует браузер,
+     *  выбрасывая слово `circle`. */
+    const ry = lengths[1] ?? rx
+    return { shape, size: { kind: 'explicit', rx, ry }, center }
+  }
+
+  return {
+    shape,
+    size: keyword ?? { kind: 'keyword', value: 'farthest-corner' },
+    center,
+  }
+}
+
+/** Радиусы в пикселях по ключевому слову размера.
+ *
+ *  Угловые варианты выражены через сторонние намеренно: по
+ *  спецификации эллипс `farthest-corner` имеет ТО ЖЕ отношение сторон,
+ *  что `farthest-side`, и проходит через дальний угол. Отсюда
+ *  масштабирование сторонних радиусов на множитель, приводящий эллипс
+ *  к углу, — а не независимый расчёт по каждой оси, который дал бы
+ *  другую фигуру. */
+const radiiFor = (spec: RadialSpec, box: BoxSize): { rx: number; ry: number } => {
+  if (spec.size.kind === 'explicit') {
+    return { rx: spec.size.rx, ry: spec.size.ry }
+  }
+  const cx = spec.center.x * box.w
+  const cy = spec.center.y * box.h
+  const left = Math.abs(cx)
+  const right = Math.abs(box.w - cx)
+  const top = Math.abs(cy)
+  const bottom = Math.abs(box.h - cy)
+
+  const closestSide = spec.shape === 'circle'
+    ? { rx: Math.min(left, right, top, bottom), ry: Math.min(left, right, top, bottom) }
+    : { rx: Math.min(left, right), ry: Math.min(top, bottom) }
+  const farthestSide = spec.shape === 'circle'
+    ? { rx: Math.max(left, right, top, bottom), ry: Math.max(left, right, top, bottom) }
+    : { rx: Math.max(left, right), ry: Math.max(top, bottom) }
+
+  if (spec.size.value === 'closest-side') return closestSide
+  if (spec.size.value === 'farthest-side') return farthestSide
+
+  const corner = spec.size.value === 'closest-corner'
+    ? { dx: Math.min(left, right), dy: Math.min(top, bottom) }
+    : { dx: Math.max(left, right), dy: Math.max(top, bottom) }
+
+  if (spec.shape === 'circle') {
+    const r = Math.hypot(corner.dx, corner.dy)
+    return { rx: r, ry: r }
+  }
+
+  const base = spec.size.value === 'closest-corner' ? closestSide : farthestSide
+  if (base.rx === 0 || base.ry === 0) return base
+  const scale = Math.hypot(corner.dx / base.rx, corner.dy / base.ry)
+  return { rx: base.rx * scale, ry: base.ry * scale }
+}
+
+export const parseRadialGradient = (
+  value: string,
+  box: BoxSize,
+): RadialGradient | null => {
+  const text = value.trim()
+  if (!/^radial-gradient\(/i.test(text)) return null
+  if (box.w <= 0 || box.h <= 0) return null
+
+  const inner = text.slice(text.indexOf('(') + 1, text.lastIndexOf(')'))
+  const args = splitTopLevel(inner)
+  if (args.length === 0) return null
+
+  const firstArg = args[0]
+  if (firstArg === undefined) return null
+
+  const spec = parseRadialSpec(firstArg, box)
+    ?? { shape: 'ellipse' as const,
+         size: { kind: 'keyword' as const, value: 'farthest-corner' as const },
+         center: { x: 0.5, y: 0.5 } }
+  const stopArgs = parseRadialSpec(firstArg, box) === null ? args : args.slice(1)
+  if (stopArgs.length < 2) return null
+
+  const { rx, ry } = radiiFor(spec, box)
+  /** Вырожденный радиус рисует не градиент, а сплошную заливку
+   *  последним цветом. Выразить это градиентом нельзя — схема требует
+   *  положительных радиусов, — и притворяться, что перенос удался,
+   *  тоже: отказ станет диагностикой у вызывающего. */
+  if (rx <= 0 || ry <= 0) return null
+
+  /** Положения остановок отсчитываются вдоль ГОРИЗОНТАЛЬНОГО радиуса:
+   *  именно он служит единицей длины градиентного луча, а
+   *  вертикальный получается сжатием. */
+  const raws: RawStop[] = []
+  for (const arg of stopArgs) {
+    const { color: colorText, position } = splitStop(arg)
+    const color = parseColor(colorText)
+    if (color === null) return null
+    raws.push({ color, offset: parsePosition(position, rx) })
+  }
+
+  return {
+    kind: 'radial',
+    center: spec.center,
+    radius: { x: rx / box.w, y: ry / box.h },
     stops: resolveOffsets(raws),
   }
 }

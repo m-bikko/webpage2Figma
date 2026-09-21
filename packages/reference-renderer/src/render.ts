@@ -215,19 +215,48 @@ const borderRing = (node: IrNode, stroke: Stroke): string => {
  *  наклонился бы не так, как в браузере. `userSpaceOnUse` от этого свободен,
  *  поэтому нормализованные ручки контракта переводятся здесь в пиксели. */
 const gradientDef = (id: string, gradient: Gradient, rect: Rect): string => {
-  const x1 = rect.x + gradient.from.x * rect.w
-  const y1 = rect.y + gradient.from.y * rect.h
-  const x2 = rect.x + gradient.to.x * rect.w
-  const y2 = rect.y + gradient.to.y * rect.h
   const stops = gradient.stops
     .map((stop) =>
       `<stop offset="${stop.offset}" stop-color="${rgb(stop.color)}" ` +
       `stop-opacity="${stop.color.a}"/>`,
     )
     .join('')
+
+  if (gradient.kind === 'linear') {
+    const x1 = rect.x + gradient.from.x * rect.w
+    const y1 = rect.y + gradient.from.y * rect.h
+    const x2 = rect.x + gradient.to.x * rect.w
+    const y2 = rect.y + gradient.to.y * rect.h
+    return (
+      `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" ` +
+      `x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient>`
+    )
+  }
+
+  /** Эллипс выражается КРУГОМ плюс масштабирование.
+   *
+   *  У `<radialGradient>` радиус один: `r` задаёт окружность. Эллипс
+   *  CSS — форма по умолчанию — получается сжатием этой окружности по
+   *  вертикали, и сжимать надо ОТНОСИТЕЛЬНО ЦЕНТРА, иначе градиент
+   *  уедет тем сильнее, чем дальше центр от нуля координат. Отсюда
+   *  тройка translate-scale-translate: увести центр в ноль, сжать,
+   *  вернуть.
+   *
+   *  Радиусом круга берётся горизонтальный, а вертикальный
+   *  отрабатывает масштабом — выбор безразличен, но он обязан быть
+   *  одним и тем же в обеих ветках, иначе масштаб посчитается от
+   *  другой величины. */
+  const cx = rect.x + gradient.center.x * rect.w
+  const cy = rect.y + gradient.center.y * rect.h
+  const rx = gradient.radius.x * rect.w
+  const ry = gradient.radius.y * rect.h
+  const squeeze = ry / rx
+  const transform =
+    `translate(${cx} ${cy}) scale(1 ${squeeze}) translate(${-cx} ${-cy})`
   return (
-    `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" ` +
-    `x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">${stops}</linearGradient>`
+    `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" ` +
+    `cx="${cx}" cy="${cy}" r="${rx}" ` +
+    `gradientTransform="${transform}">${stops}</radialGradient>`
   )
 }
 

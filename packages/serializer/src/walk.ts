@@ -11,7 +11,7 @@ import { isInvisible, parseColor } from './css/color.js'
 import { clipsAwayEverything } from './css/clip.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { sizeFromDataUrl } from './css/data-url.js'
-import { parseLinearGradient } from './css/gradient.js'
+import { parseLinearGradient, parseRadialGradient } from './css/gradient.js'
 import {
   backgroundPlacementFor, classifyBackgroundImage, placementFor, repeatVerdict,
   type OriginBox,
@@ -258,6 +258,7 @@ const readFills = (
     const verdict = classifyBackgroundImage(cs.backgroundImage)
     if (verdict.kind === 'gradient') {
       const gradient = parseLinearGradient(cs.backgroundImage, box)
+        ?? parseRadialGradient(cs.backgroundImage, box)
       if (gradient !== null) fills.push({ kind: 'gradient', gradient })
     } else if (verdict.kind === 'raster') {
       /** URL из вычисленного стиля уже абсолютен, но `new URL` с базой
@@ -400,17 +401,19 @@ const reportGaps = (
      *  читателя отчёта не туда. */
     switch (verdict.kind) {
       case 'gradient': {
-        const linear = parseLinearGradient(cs.backgroundImage, {
-          w: rect.width, h: rect.height,
-        })
-        if (linear === null) {
+        const box = { w: rect.width, h: rect.height }
+        const parsed = parseLinearGradient(cs.backgroundImage, box)
+          ?? parseRadialGradient(cs.backgroundImage, box)
+        if (parsed === null) {
           const repeating = cs.backgroundImage.includes('repeating-')
           sink.report(
             repeating ? 'warning' : 'info',
             repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient
                       : DIAGNOSTIC_CODES.deferredGradient,
-            `background-image "${cs.backgroundImage.slice(0, 60)}" не переносится: ` +
-            `в этом плане поддержан только linear-gradient.`,
+            `background-image "${cs.backgroundImage.slice(0, 60)}" не ` +
+            `переносится: поддержаны linear-gradient и radial-gradient, ` +
+            `конический — нет, его нечем проверить (в SVG такого ` +
+            `градиента не существует).`,
             id, false,
           )
         }

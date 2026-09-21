@@ -79,6 +79,43 @@ const styleFrom = (base: SceneBase): NodeStyle => ({
         },
       }]
     }
+    if (paint.type === 'GRADIENT_RADIAL') {
+      /** Обращение матрицы обратно в центр и радиусы.
+       *
+       *  Самосогласовано ровно в той же мере, что и линейный случай, и
+       *  по той же причине: соглашение о матрице документацией не
+       *  подтверждено, обе стороны пользуются одним. Ловится потеря
+       *  градиента целиком, перепутанные оси, потерянная альфа, сбитые
+       *  позиции остановок — но не системная ошибка в самом
+       *  соглашении. Для неё есть другой механизм: каждый радиальный
+       *  градиент попадает в список «требует сверки глазами». */
+      const w = base.width === 0 ? 1 : base.width
+      const h = base.height === 0 ? 1 : base.height
+      const [[m00, , m02], [, m11, m12]] = paint.gradientTransform
+      if (m00 === 0 || m11 === 0) return []
+      /** Прямой путь: m00 = w/rx, m02 = -cx/rx, где cx и rx в пикселях.
+       *  Значит rx = w/m00, cx = -m02 · rx, и обратно в доли бокса. */
+      const rxPx = w / m00
+      const ryPx = h / m11
+      const center = { x: (-m02 * rxPx) / w, y: (-m12 * ryPx) / h }
+      const radius = { x: rxPx / w, y: ryPx / h }
+      return [{
+        kind: 'gradient' as const,
+        gradient: {
+          kind: 'radial' as const, center, radius,
+          stops: paint.gradientStops.map((stop) => ({
+            offset: stop.position,
+            color: {
+              r: Math.round(stop.color.r * 255),
+              g: Math.round(stop.color.g * 255),
+              b: Math.round(stop.color.b * 255),
+              a: stop.color.a,
+            },
+          })),
+        },
+      }]
+    }
+
     if (paint.type === 'GRADIENT_LINEAR') {
       /** Обращение матрицы обратно в пару концов.
        *

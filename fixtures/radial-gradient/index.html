@@ -5,5 +5,28 @@
   *{margin:0;padding:0}
   body{background:#fff}
   .r{height:120px;background:radial-gradient(circle,#22c55e,#0f766e)}
+  /* ЭЛЛИПС — форма по умолчанию, и самый частый случай. Браузер
+     выбрасывает слово `ellipse` из вычисленного значения, поэтому
+     разбор обязан считать эллипс умолчанием, а не кругом. */
+  .e{height:120px;background:radial-gradient(#f59e0b,#7c3aed)}
+  /* Смещённый центр: ловит перепутанные оси и потерю позиции. */
+  .off{height:120px;background:radial-gradient(circle at 30% 70%,#0ea5e9,#1e293b)}
+  /* Ключевые слова размера: радиусы считаются от расстояний до сторон,
+     а угловые — через сторонние с тем же отношением сторон. */
+  .cs{height:120px;background:radial-gradient(closest-side,#ef4444,#fbbf24)}
+  .fs{height:120px;background:radial-gradient(farthest-side at 20% 50%,#22c55e,#064e3b)}
+  .cc{height:120px;background:radial-gradient(closest-corner at 70% 30%,#a855f7,#1e1b4b)}
+  /* Явные радиусы в пикселях. */
+  .px{height:120px;background:radial-gradient(200px 60px at 100px 60px,#06b6d4,#0f172a)}
+  /* Промежуточные остановки с процентами. */
+  .stops{height:120px;
+    background:radial-gradient(circle,#ef4444 0%,#fbbf24 40%,#22c55e 100%)}
+  /* Полупрозрачность в остановке: проверяет, что альфа не теряется. */
+  .alpha{height:120px;background-color:#1d4ed8;
+    background-image:radial-gradient(circle,rgba(255,255,255,.85),rgba(255,255,255,0))}
 </style></head>
-<body><div class="r"></div></body></html>
+<body>
+  <div class="r"></div><div class="e"></div><div class="off"></div>
+  <div class="cs"></div><div class="fs"></div><div class="cc"></div>
+  <div class="px"></div><div class="stops"></div><div class="alpha"></div>
+</body></html>

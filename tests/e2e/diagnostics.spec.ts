@@ -233,14 +233,39 @@ test('gradient: линейный градиент переносится и НЕ
     .toBe(false)
 })
 
-test('radial-gradient: радиальный диагностируется, а не теряется молча', async ({ page }) => {
+/** Утверждение ПЕРЕВЁРНУТО: радиальный градиент теперь переносится.
+ *
+ *  Раньше здесь требовалось, чтобы заливки НЕ было, а в отчёте была
+ *  запись `deferred.gradient` — честная проверка признанного пробела.
+ *  Пробел закрыт: `radialGradient` в SVG существует, эллипс CSS
+ *  выражается через него сжатием относительно центра, и pixel-diff на
+ *  той же фикстуре показывает НОЛЬ расходящихся пикселей на всех
+ *  девяти случаях и всех пяти ширинах.
+ *
+ *  Оставить старое утверждение значило бы заморозить пробел: тест
+ *  падал бы именно тогда, когда дело починили. */
+test('radial-gradient переносится заливкой, а не диагностикой', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('radial-gradient'))
   const { screen, report } = await captureScreen(page, 's0', 'Desktop')
-  const node = screen.root.children[0]
-  expect(node?.style.fills.some((f) => f.kind === 'gradient')).toBe(false)
-  expect(report.some((i) => i.nodeId === node?.id && i.code === 'deferred.gradient'))
-    .toBe(true)
+
+  const gradients: string[] = []
+  const visit = (node: typeof screen.root): void => {
+    for (const fill of node.style.fills) {
+      if (fill.kind === 'gradient') gradients.push(fill.gradient.kind)
+    }
+    for (const child of node.children) visit(child)
+  }
+  visit(screen.root)
+
+  /** Девять блоков фикстуры — девять радиальных заливок. Счёт важен:
+   *  проверка «есть хоть один радиальный» прошла бы и тогда, когда
+   *  восемь из девяти форм разбираться перестали. */
+  expect(gradients.filter((kind) => kind === 'radial')).toHaveLength(9)
+  expect(
+    report.filter((item) => item.code === 'deferred.gradient'),
+    'переносимый градиент не должен числиться отложенным',
+  ).toHaveLength(0)
 })
 
 test('group-effects: групповой эффект действует на поддерево, диагностики нет', async ({ page }) => {

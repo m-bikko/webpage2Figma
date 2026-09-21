@@ -3,7 +3,7 @@
     "id": "s-768",
     "name": "Tablet",
     "width": 768,
-    "height": 1024,
+    "height": 1080,
     "dpr": 1,
     "scroll": {
       "x": 0,
@@ -17,7 +17,7 @@
         "x": 0,
         "y": 0,
         "w": 768,
-        "h": 120
+        "h": 1080
       },
       "paintOrder": 0,
       "isStackingContext": false,
@@ -120,7 +120,820 @@
             }
           },
           "style": {
-            "fills": [],
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.5060667106469264,
+                    "y": 3.2388269481403293
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 34,
+                        "g": 197,
+                        "b": 94,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 15,
+                        "g": 118,
+                        "b": 110,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n2",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 120,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 2,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.7071067811865476,
+                    "y": 0.7071067811865476
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 245,
+                        "g": 158,
+                        "b": 11,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 124,
+                        "g": 58,
+                        "b": 237,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n3",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 240,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 3,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.3,
+                    "y": 0.7
+                  },
+                  "radius": {
+                    "x": 0.708493394905697,
+                    "y": 4.53435772739646
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 14,
+                        "g": 165,
+                        "b": 233,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 30,
+                        "g": 41,
+                        "b": 59,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n4",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 360,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 4,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 239,
+                        "g": 68,
+                        "b": 68,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 251,
+                        "g": 191,
+                        "b": 36,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n5",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 480,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 5,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.2,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.7999999999999999,
+                    "y": 0.5
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 34,
+                        "g": 197,
+                        "b": 94,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 6,
+                        "g": 78,
+                        "b": 59,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n6",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 600,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 6,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.7,
+                    "y": 0.3
+                  },
+                  "radius": {
+                    "x": 0.42426406871192873,
+                    "y": 0.42426406871192857
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 168,
+                        "g": 85,
+                        "b": 247,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 30,
+                        "g": 27,
+                        "b": 75,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n7",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 720,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 7,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.13020833333333334,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.2604166666666667,
+                    "y": 0.5
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 6,
+                        "g": 182,
+                        "b": 212,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 15,
+                        "g": 23,
+                        "b": 42,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n8",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 840,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 8,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.5060667106469264,
+                    "y": 3.2388269481403293
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 239,
+                        "g": 68,
+                        "b": 68,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 0.4,
+                      "color": {
+                        "r": 251,
+                        "g": 191,
+                        "b": 36,
+                        "a": 1
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 34,
+                        "g": 197,
+                        "b": 94,
+                        "a": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "stroke": null,
+            "corner": {
+              "tl": 0,
+              "tr": 0,
+              "br": 0,
+              "bl": 0
+            },
+            "shadows": [],
+            "opacity": 1,
+            "blend": "normal",
+            "blur": null,
+            "clip": false
+          },
+          "children": [],
+          "kind": "frame"
+        },
+        {
+          "id": "n9",
+          "sourceTag": "div",
+          "name": "div",
+          "rect": {
+            "x": 0,
+            "y": 960,
+            "w": 768,
+            "h": 120
+          },
+          "paintOrder": 9,
+          "isStackingContext": false,
+          "transform": null,
+          "layout": {
+            "mode": "none",
+            "gap": 0,
+            "padding": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "align": "start",
+            "justify": "start",
+            "wrap": false
+          },
+          "selfLayout": {
+            "positioning": "flow",
+            "align": null,
+            "grow": 0,
+            "shrink": 1,
+            "margin": {
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "marginAuto": {
+              "horizontal": false,
+              "vertical": false
+            }
+          },
+          "style": {
+            "fills": [
+              {
+                "kind": "solid",
+                "color": {
+                  "r": 29,
+                  "g": 78,
+                  "b": 216,
+                  "a": 1
+                }
+              },
+              {
+                "kind": "gradient",
+                "gradient": {
+                  "kind": "radial",
+                  "center": {
+                    "x": 0.5,
+                    "y": 0.5
+                  },
+                  "radius": {
+                    "x": 0.5060667106469264,
+                    "y": 3.2388269481403293
+                  },
+                  "stops": [
+                    {
+                      "offset": 0,
+                      "color": {
+                        "r": 255,
+                        "g": 255,
+                        "b": 255,
+                        "a": 0.85
+                      }
+                    },
+                    {
+                      "offset": 1,
+                      "color": {
+                        "r": 255,
+                        "g": 255,
+                        "b": 255,
+                        "a": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
             "stroke": null,
             "corner": {
               "tl": 0,
@@ -142,14 +955,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "info",
-      "code": "deferred.gradient",
-      "message": "background-image \"radial-gradient(circle, rgb(34, 197, 94), rgb(15, 118, 110))\" не переносится: в этом плане поддержан только linear-gradient.",
-      "nodeId": "n1",
-      "screenId": "s-768",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

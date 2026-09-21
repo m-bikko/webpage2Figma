@@ -10,7 +10,9 @@ import type {
 import {
   figmaRotation, originOffset, scaleSubtree, sizeUnderTransform,
 } from './geometry.js'
-import { figmaRgba, gradientPaint, solidPaint } from './paint.js'
+import {
+  figmaRgba, gradientPaint, radialGradientPaint, solidPaint,
+} from './paint.js'
 import { imageNodeFor } from './image.js'
 import { autoLayoutVerdict } from '../layout/verdict.js'
 
@@ -105,11 +107,36 @@ const paintsFor = (
    *  нормализованных координатах, и на неквадратном боксе без поправки
    *  диагональный градиент уезжает. Найдено замером в Figma. */
   box: { w: number; h: number },
+  nodeId: string,
+  ctx: BuildCtx,
 ): ScenePaint[] => {
   const paints: ScenePaint[] = []
   for (const fill of fills) {
     if (fill.kind === 'solid') paints.push(solidPaint(fill.color))
-    else if (fill.kind === 'gradient') paints.push(gradientPaint(fill.gradient, box))
+    else if (fill.kind === 'gradient') {
+      /** Ветвление по виду градиента, а не общая функция: краски у
+       *  Figma разные (`GRADIENT_LINEAR` против `GRADIENT_RADIAL`), и
+       *  матрицы строятся из разных величин. */
+      if (fill.gradient.kind === 'linear') {
+        paints.push(gradientPaint(fill.gradient, box))
+      } else {
+        paints.push(radialGradientPaint(fill.gradient, box))
+        /** Соглашение о матрице для РАДИАЛЬНОГО градиента выведено, а
+         *  не измерено: для линейного оно подтверждено экспортом из
+         *  настоящей Figma, для радиального такого замера нет.
+         *  Выдавать вывод за измерение нельзя — на то и заведён
+         *  список «требует сверки глазами». */
+        ctx.needsVerification.push({
+          code: 'fidelity.gradient-unverified',
+          nodeId,
+          message:
+            'Радиальный градиент: матрица построена по тому же ' +
+            'соглашению, что у линейного, но для радиального оно ' +
+            'замером не подтверждено. Сверьте центр и радиусы с ' +
+            'оригиналом.',
+        })
+      }
+    }
     else if (fill.kind === 'image' && fill.ref.placement.mode === 'tile') {
       /** Плитка — единственный случай, когда краска ложится на САМ
        *  узел: повторение геометрией прямоугольника не выражается.
@@ -281,7 +308,9 @@ const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
     rotation: figmaRotation(node.transform),
     opacity: node.style.opacity,
     blendMode: BLEND[node.style.blend] ?? 'NORMAL',
-    fills: paintsFor(node.style.fills, { w: node.rect.w, h: node.rect.h }),
+    fills: paintsFor(
+      node.style.fills, { w: node.rect.w, h: node.rect.h }, node.id, ctx,
+    ),
     stroke: strokeFor(node.style),
     corner: node.style.corner,
     effects: effectsFor(node.style),

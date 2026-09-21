@@ -42,15 +42,32 @@ const gradientStop = z.object({
   color: rgba8,
 })
 
-const gradient = z.object({
+/** Минимум две остановки у обоих видов: градиент из одной — это
+ *  сплошная заливка, и такой Fill обязан быть solid, иначе потребители
+ *  разойдутся в том, что рисовать. */
+const stops = z.array(gradientStop).min(2)
+
+const linearGradient = z.object({
   kind: z.literal('linear'),
   from: z.object({ x: z.number(), y: z.number() }),
   to: z.object({ x: z.number(), y: z.number() }),
-  /** Минимум две остановки: градиент из одной — это сплошная заливка,
-   *  и такой Fill обязан быть solid, иначе потребители разойдутся в том,
-   *  что рисовать. */
-  stops: z.array(gradientStop).min(2),
+  stops,
 })
+
+const radialGradient = z.object({
+  kind: z.literal('radial'),
+  center: z.object({ x: z.number(), y: z.number() }),
+  /** Радиусы положительные: нулевой или отрицательный радиус рисует
+   *  не градиент, а сплошную заливку последним цветом, и выражать
+   *  такое градиентом значило бы разводить потребителей. */
+  radius: z.object({ x: z.number().positive(), y: z.number().positive() }),
+  stops,
+})
+
+/** Размеченное объединение, а не `z.union` по форме: неизвестный
+ *  `kind` обязан падать громко и с внятным сообщением, а не подбирать
+ *  «ближайший подходящий» вариант, перечисляя все ошибки сразу. */
+const gradient = z.discriminatedUnion('kind', [linearGradient, radialGradient])
 
 const blendMode = z.enum([
   'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',

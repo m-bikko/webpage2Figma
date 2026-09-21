@@ -56,8 +56,64 @@ type Matrix2x3 = [[number, number, number], [number, number, number]]
  *  размещению, документацией по-прежнему не подтверждено — но теперь
  *  подтверждено замером на горизонтальном, вертикальном и угловом
  *  градиентах, которые сошлись пиксель в пиксель. */
+/** Радиальная краска.
+ *
+ *  Соглашение о матрице то же, что у линейного: она ОБРАТНА
+ *  размещению и умножена на `diag(w, h, 1)`. Размещение здесь
+ *  отправляет единичный круг в эллипс градиента — (0,0) в центр,
+ *  (1,0) на горизонтальный радиус, (0,1) на вертикальный:
+ *
+ *      P = [[rx, 0, cx], [0, ry, cy]]
+ *      M = P⁻¹ · diag(w, h, 1) = [[w/rx, 0, -cx/rx], [0, h/ry, -cy/ry]]
+ *
+ *  ВАЖНОЕ ОТЛИЧИЕ ОТ ЛИНЕЙНОГО: для линейного это соглашение
+ *  подтверждено замером — экспортом из настоящей Figma, где
+ *  горизонтальный, вертикальный и угловой градиенты сошлись пиксель в
+ *  пиксель. Для радиального такого замера НЕТ. Матрица выведена из той
+ *  же документированной формы, но выведена, а не проверена, поэтому
+ *  каждый радиальный градиент попадает в список «требует сверки
+ *  глазами». Выдать вывод за измерение значило бы ровно ту ошибку,
+ *  против которой в этом проекте заведён весь механизм сверки. */
+export const radialGradientPaint = (
+  gradient: Extract<Gradient, { kind: 'radial' }>,
+  box: { w: number; h: number },
+): Extract<ScenePaint, { type: 'GRADIENT_RADIAL' }> => {
+  const stops = gradient.stops.map((stop) => ({
+    position: stop.offset,
+    color: figmaRgba(stop.color),
+  }))
+
+  const cx = gradient.center.x * box.w
+  const cy = gradient.center.y * box.h
+  const rx = gradient.radius.x * box.w
+  const ry = gradient.radius.y * box.h
+
+  /** Вырожденный радиус: делить не на что. Схема требует radius > 0,
+   *  но строитель не вправе полагаться на то, что его позвали только с
+   *  проверенным бандлом — а деление на ноль дало бы матрицу из NaN,
+   *  которую Figma примет и нарисует неизвестно что. */
+  if (rx === 0 || ry === 0) {
+    return {
+      type: 'GRADIENT_RADIAL',
+      gradientTransform: [[1, 0, 0], [0, 1, 0]],
+      gradientStops: stops,
+    }
+  }
+
+  const matrix: Matrix2x3 = [
+    [box.w / rx, 0, -cx / rx],
+    [0, box.h / ry, -cy / ry],
+  ]
+
+  return {
+    type: 'GRADIENT_RADIAL',
+    gradientTransform: matrix,
+    gradientStops: stops,
+  }
+}
+
 export const gradientPaint = (
-  gradient: Gradient,
+  gradient: Extract<Gradient, { kind: 'linear' }>,
   /** Размер бокса в пикселях. Без него матрица неверна на любом
    *  неквадратном боксе с диагональным градиентом. */
   box: { w: number; h: number },

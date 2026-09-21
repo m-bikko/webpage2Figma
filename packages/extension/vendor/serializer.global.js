@@ -113,6 +113,11 @@ var H2DSerializer = (() => {
      *  этом нельзя: дизайнер вправе знать, почему слой лежит не там,
      *  где элемент в разметке. */
     paintOrderHoisted: "fidelity.paint-order-hoisted",
+    /** Радиальный градиент построен по соглашению, выведенному из
+     *  линейного, но для радиального замером не подтверждённому.
+     *  Попадает в список «требует сверки глазами»: выдавать вывод за
+     *  измерение в этом проекте нельзя. */
+    gradientUnverified: "fidelity.gradient-unverified",
     /** Auto-layout не применён, и названа причина. Молчать нельзя: без
      *  него узел приезжает набором коробок с абсолютными координатами,
      *  и дизайнер вправе знать, что именно в вёрстке этому помешало. */
@@ -540,6 +545,144 @@ var H2DSerializer = (() => {
       kind: "linear",
       from: geometry.from,
       to: geometry.to,
+      stops: resolveOffsets(raws)
+    };
+  };
+  var SIZE_KEYWORDS = /* @__PURE__ */ new Set([
+    "closest-side",
+    "farthest-side",
+    "closest-corner",
+    "farthest-corner"
+  ]);
+  var POSITION_KEYWORDS = {
+    left: 0,
+    top: 0,
+    center: 0.5,
+    right: 1,
+    bottom: 1
+  };
+  var positionPart = (raw, basis) => {
+    const text = raw.trim().toLowerCase();
+    const keyword = POSITION_KEYWORDS[text];
+    if (keyword !== void 0) return keyword;
+    const pct = /^(-?[\d.]+)%$/.exec(text);
+    if (pct?.[1] !== void 0) return Number.parseFloat(pct[1]) / 100;
+    const px2 = /^(-?[\d.]+)px$/.exec(text);
+    if (px2?.[1] !== void 0) return Number.parseFloat(px2[1]) / basis;
+    return null;
+  };
+  var parseRadialSpec = (raw, box) => {
+    const text = raw.trim().toLowerCase();
+    if (text === "") return null;
+    const [before, after] = text.split(/\s+at\s+/);
+    if (before === void 0) return null;
+    let center = { x: 0.5, y: 0.5 };
+    if (after !== void 0) {
+      const parts = after.trim().split(/\s+/);
+      const first = parts[0];
+      if (first === void 0) return null;
+      const x = positionPart(first, box.w);
+      const y = parts[1] === void 0 ? 0.5 : positionPart(parts[1], box.h);
+      if (x === null || y === null) return null;
+      center = { x, y };
+    }
+    const words = before.trim() === "" ? [] : before.trim().split(/\s+/);
+    let shape = "ellipse";
+    const lengths = [];
+    let keyword = null;
+    for (const word of words) {
+      if (word === "circle") {
+        shape = "circle";
+        continue;
+      }
+      if (word === "ellipse") {
+        shape = "ellipse";
+        continue;
+      }
+      if (SIZE_KEYWORDS.has(word)) {
+        keyword = { kind: "keyword", value: word };
+        continue;
+      }
+      const px2 = /^(-?[\d.]+)px$/.exec(word);
+      if (px2?.[1] !== void 0) {
+        lengths.push(Number.parseFloat(px2[1]));
+        continue;
+      }
+      const pct = /^(-?[\d.]+)%$/.exec(word);
+      if (pct?.[1] !== void 0) {
+        const basis = lengths.length === 0 ? box.w : box.h;
+        lengths.push(Number.parseFloat(pct[1]) / 100 * basis);
+        continue;
+      }
+      if (after === void 0) return null;
+      return null;
+    }
+    if (words.length === 0 && after === void 0) return null;
+    if (lengths.length > 0) {
+      const rx = lengths[0];
+      if (rx === void 0) return null;
+      const ry = lengths[1] ?? rx;
+      return { shape, size: { kind: "explicit", rx, ry }, center };
+    }
+    return {
+      shape,
+      size: keyword ?? { kind: "keyword", value: "farthest-corner" },
+      center
+    };
+  };
+  var radiiFor = (spec, box) => {
+    if (spec.size.kind === "explicit") {
+      return { rx: spec.size.rx, ry: spec.size.ry };
+    }
+    const cx = spec.center.x * box.w;
+    const cy = spec.center.y * box.h;
+    const left = Math.abs(cx);
+    const right = Math.abs(box.w - cx);
+    const top = Math.abs(cy);
+    const bottom = Math.abs(box.h - cy);
+    const closestSide = spec.shape === "circle" ? { rx: Math.min(left, right, top, bottom), ry: Math.min(left, right, top, bottom) } : { rx: Math.min(left, right), ry: Math.min(top, bottom) };
+    const farthestSide = spec.shape === "circle" ? { rx: Math.max(left, right, top, bottom), ry: Math.max(left, right, top, bottom) } : { rx: Math.max(left, right), ry: Math.max(top, bottom) };
+    if (spec.size.value === "closest-side") return closestSide;
+    if (spec.size.value === "farthest-side") return farthestSide;
+    const corner = spec.size.value === "closest-corner" ? { dx: Math.min(left, right), dy: Math.min(top, bottom) } : { dx: Math.max(left, right), dy: Math.max(top, bottom) };
+    if (spec.shape === "circle") {
+      const r = Math.hypot(corner.dx, corner.dy);
+      return { rx: r, ry: r };
+    }
+    const base = spec.size.value === "closest-corner" ? closestSide : farthestSide;
+    if (base.rx === 0 || base.ry === 0) return base;
+    const scale = Math.hypot(corner.dx / base.rx, corner.dy / base.ry);
+    return { rx: base.rx * scale, ry: base.ry * scale };
+  };
+  var parseRadialGradient = (value, box) => {
+    const text = value.trim();
+    if (!/^radial-gradient\(/i.test(text)) return null;
+    if (box.w <= 0 || box.h <= 0) return null;
+    const inner = text.slice(text.indexOf("(") + 1, text.lastIndexOf(")"));
+    const args = splitTopLevel(inner);
+    if (args.length === 0) return null;
+    const firstArg = args[0];
+    if (firstArg === void 0) return null;
+    const spec = parseRadialSpec(firstArg, box) ?? {
+      shape: "ellipse",
+      size: { kind: "keyword", value: "farthest-corner" },
+      center: { x: 0.5, y: 0.5 }
+    };
+    const stopArgs = parseRadialSpec(firstArg, box) === null ? args : args.slice(1);
+    if (stopArgs.length < 2) return null;
+    const { rx, ry } = radiiFor(spec, box);
+    if (rx <= 0 || ry <= 0) return null;
+    const raws = [];
+    for (const arg of stopArgs) {
+      const { color: colorText, position } = splitStop(arg);
+      const color = parseColor(colorText);
+      if (color === null) return null;
+      raws.push({ color, offset: parsePosition(position, rx) });
+    }
+    return {
+      kind: "radial",
+      center: spec.center,
+      radius: { x: rx / box.w, y: ry / box.h },
       stops: resolveOffsets(raws)
     };
   };
@@ -1788,7 +1931,7 @@ var H2DSerializer = (() => {
     if (cs.backgroundImage !== "none") {
       const verdict = classifyBackgroundImage(cs.backgroundImage);
       if (verdict.kind === "gradient") {
-        const gradient = parseLinearGradient(cs.backgroundImage, box);
+        const gradient = parseLinearGradient(cs.backgroundImage, box) ?? parseRadialGradient(cs.backgroundImage, box);
         if (gradient !== null) fills.push({ kind: "gradient", gradient });
       } else if (verdict.kind === "raster") {
         const resolved = new URL(verdict.url, document.baseURI).href;
@@ -1912,16 +2055,14 @@ var H2DSerializer = (() => {
       const verdict = classifyBackgroundImage(cs.backgroundImage);
       switch (verdict.kind) {
         case "gradient": {
-          const linear = parseLinearGradient(cs.backgroundImage, {
-            w: rect.width,
-            h: rect.height
-          });
-          if (linear === null) {
+          const box = { w: rect.width, h: rect.height };
+          const parsed = parseLinearGradient(cs.backgroundImage, box) ?? parseRadialGradient(cs.backgroundImage, box);
+          if (parsed === null) {
             const repeating = cs.backgroundImage.includes("repeating-");
             sink.report(
               repeating ? "warning" : "info",
               repeating ? DIAGNOSTIC_CODES.unsupportedRepeatingGradient : DIAGNOSTIC_CODES.deferredGradient,
-              `background-image "${cs.backgroundImage.slice(0, 60)}" \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u0432 \u044D\u0442\u043E\u043C \u043F\u043B\u0430\u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0430\u043D \u0442\u043E\u043B\u044C\u043A\u043E linear-gradient.`,
+              `background-image "${cs.backgroundImage.slice(0, 60)}" \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0430\u043D\u044B linear-gradient \u0438 radial-gradient, \u043A\u043E\u043D\u0438\u0447\u0435\u0441\u043A\u0438\u0439 \u2014 \u043D\u0435\u0442, \u0435\u0433\u043E \u043D\u0435\u0447\u0435\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C (\u0432 SVG \u0442\u0430\u043A\u043E\u0433\u043E \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u0430 \u043D\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442).`,
               id,
               false
             );

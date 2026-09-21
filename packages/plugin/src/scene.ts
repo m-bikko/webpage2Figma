@@ -42,6 +42,14 @@ export type ScenePaint =
       gradientStops: { position: number; color: FigmaRgba }[]
     }
   | {
+      /** Радиальный. Форма та же, что у линейного, и это не совпадение:
+       *  Figma задаёт оба одной матрицей, отличается лишь то, что она
+       *  размещает — отрезок или единичный круг. */
+      type: 'GRADIENT_RADIAL'
+      gradientTransform: [[number, number, number], [number, number, number]]
+      gradientStops: { position: number; color: FigmaRgba }[]
+    }
+  | {
       type: 'IMAGE'
       assetId: string
       scaleMode: 'FILL' | 'FIT' | 'CROP' | 'TILE'
