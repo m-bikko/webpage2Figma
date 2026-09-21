@@ -8,6 +8,8 @@
   p{margin:0 0 12px;opacity:.75}
   button{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid #6366f1;
     background:#6366f1;color:#fff;cursor:pointer}
+  #copy{margin-top:8px;background:transparent;color:inherit;
+    border-color:rgba(128,128,128,.55)}
   button:disabled{opacity:.5;cursor:default}
   fieldset{border:1px solid rgba(128,128,128,.35);border-radius:6px;
     padding:8px 10px;margin:0 0 12px}
@@ -24,13 +26,15 @@
 </style></head>
 <body>
   <h1>webpage2figma</h1>
-  <p>Снимет открытую вкладку в пяти размерах и скачает файл <code>.w2f</code>
-     для плагина Figma.</p>
+  <p>Снимет открытую вкладку в выбранных размерах и скачает файл
+     <code>.w2f</code> для плагина Figma. Небольшой захват можно вместо
+     этого положить в буфер и вставить прямо в окне плагина.</p>
   <fieldset id="sizes">
     <legend>Какие размеры снимать</legend>
   </fieldset>
 
   <button id="go">Снять страницу</button>
+  <button id="copy" hidden>Скопировать для Figma</button>
 
   <!-- Плашка объясняется ДО нажатия, а не после. Пользователь не должен
        гадать, почему браузер вдруг говорит, что его отлаживают. -->

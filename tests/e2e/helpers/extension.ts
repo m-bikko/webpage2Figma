@@ -71,5 +71,6 @@ declare global {
     captureShot: (tabId: number, size: { name: string; width: number; height: number })
       => Promise<{ contentHeight: number; imageHeight: number }>
     captureToFile: (tabId: number) => Promise<{ zip: number[]; name: string }>
+    encodeBundleText: (zip: Uint8Array) => string
   }
 }

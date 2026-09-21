@@ -6,7 +6,11 @@
   body{font:13px/1.5 Inter,system-ui,sans-serif;margin:0;padding:16px}
   h1{font-size:14px;margin:0 0 4px}
   p{margin:0 0 12px;opacity:.7}
-  input{display:block;margin-bottom:12px}
+  input{display:block;margin-bottom:8px}
+  textarea{display:block;width:100%;box-sizing:border-box;height:56px;
+    font:12px/1.4 ui-monospace,Menlo,monospace;resize:vertical;
+    border:1px solid rgba(128,128,128,.45);border-radius:4px;padding:6px}
+  .or{margin:8px 0 6px;opacity:.55;font-size:12px}
   .row{display:flex;gap:6px;padding:4px 0;border-top:1px solid rgba(128,128,128,.25)}
   .lvl{flex:0 0 64px;font-weight:600}
   .error{color:#dc2626}.warning{color:#d97706}.info{opacity:.7}
@@ -17,6 +21,11 @@
   <h1>webpage2figma</h1>
   <p>Выбери файл <code>.w2f</code>, собранный расширением.</p>
   <input type="file" id="file" accept=".w2f,application/zip">
+
+  <p class="or">…или вставь сюда то, что скопировала кнопка
+     «Скопировать для Figma» — файл тогда не нужен.</p>
+  <textarea id="paste" placeholder="w2f1:… (Ctrl+V / ⌘V)"></textarea>
+
   <div id="out"></div>
 <script>
   const out = document.getElementById('out')
@@ -29,6 +38,33 @@
     // что сериализуется как JSON.
     parent.postMessage({ pluginMessage: { kind: 'bundle', bytes: Array.from(bytes) } }, '*')
   })
+
+  // Разбор строки здесь НЕ делается: она уходит в код плагина целиком.
+  // Окно намеренно глупое — декодер в нём стал бы вторым экземпляром
+  // той же логики, а второй экземпляр расходится с первым молча.
+  const paste = document.getElementById('paste')
+  const send = (text) => {
+    if (!text || !text.trim()) return
+    out.textContent = 'Читаю…'
+    parent.postMessage(
+      { pluginMessage: { kind: 'bundle-text', text: text } }, '*')
+    // Поле очищается СРАЗУ: строка длиной в мегабайты, оставленная в
+    // textarea, заметно тормозит окно при каждой перерисовке отчёта.
+    paste.value = ''
+  }
+
+  // Слушается именно `paste`, а не `change`: вставка обязана сработать
+  // от самого Ctrl+V, без ухода фокуса. Значение в событии приходит
+  // раньше, чем попадает в поле, поэтому берётся из буфера события.
+  paste.addEventListener('paste', (event) => {
+    const text = event.clipboardData && event.clipboardData.getData('text')
+    if (!text) return
+    event.preventDefault()
+    send(text)
+  })
+  // Запасной путь: перетаскивание текста или ручной ввод. Без него
+  // поле, заполненное не вставкой, молча ничего бы не делало.
+  paste.addEventListener('change', () => send(paste.value))
 
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage

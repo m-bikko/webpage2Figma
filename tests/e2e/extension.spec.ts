@@ -1,6 +1,6 @@
 import { expect, test, type Worker } from '@playwright/test'
 import type { IrNode } from '@w2f/ir'
-import { unpackBundle } from '@w2f/bundle'
+import { decodeBundleText, unpackBundle } from '@w2f/bundle'
 import { captureScreen, fixtureUrl } from './helpers/capture.js'
 import { launchWithExtension } from './helpers/extension.js'
 
@@ -328,6 +328,45 @@ test('повторный захват впрыскивает сериализа�
 
     expect(stale, 'метка выжила — значит старый сериализатор остался в странице')
       .toBe(false)
+  } finally {
+    await context.close()
+  }
+})
+
+/** Путь через буфер обмена обязан приводить к ТОМУ ЖЕ бандлу.
+ *
+ *  Проверяется здесь, а не юнит-тестом кодека, потому что ломается не
+ *  кодек: он тривиален и проверен отдельно. Ломается СТЫК — воркер
+ *  считает текст из одного архива, а файл скачивает из другого, и
+ *  вставленное тогда отличается от скачанного, причём незаметно:
+ *  оба откроются, оба покажут отчёт, и разойдутся только
+ *  идентификаторы узлов, на которые отчёт ссылается. Ровно этот дефект
+ *  уже был, когда захват делался дважды.
+ *
+ *  Утверждение поэтому одно и точное: байты текста равны байтам
+ *  файла. */
+test('текст для буфера — тот же самый архив, что и скачиваемый файл', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('boxes'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    const both = await worker.evaluate(async (tabId) => {
+      const packed = await globalThis.w2f.captureToFile(tabId)
+      return { zip: packed.zip, text: globalThis.w2f.encodeBundleText(
+        Uint8Array.from(packed.zip)) }
+    }, tabId)
+
+    expect(both.text.startsWith('w2f1:')).toBe(true)
+    const decoded = decodeBundleText(both.text)
+    expect(Array.from(decoded)).toEqual(both.zip)
+
+    /** И распаковывается как бандл, а не только совпадает побайтно:
+     *  равенство байтов не доказывает, что распаковщик их примет. */
+    const back = await unpackBundle(decoded)
+    expect(back.bundle.format).toBe('w2f')
+    expect(back.bundle.screens).toHaveLength(5)
   } finally {
     await context.close()
   }

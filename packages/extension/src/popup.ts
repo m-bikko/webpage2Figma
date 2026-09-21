@@ -6,12 +6,37 @@
 
 type Progress =
   | { kind: 'progress'; done: number; total: number; label: string }
-  | { kind: 'done'; file: string; report: { level: string; code: string; message: string }[] }
+  | { kind: 'done'; file: string; text: string
+      report: { level: string; code: string; message: string }[] }
   | { kind: 'error'; text: string }
 
 const out = document.getElementById('out')
 const button = document.getElementById('go')
 const sizesBox = document.getElementById('sizes')
+const copyButton = document.getElementById('copy')
+
+/** Предел, за которым буфер перестаёт предлагаться как короткий путь.
+ *
+ *  Ограничивает не Chrome: он кладёт в буфер и больше. Ограничивает та
+ *  сторона — окно плагина Figma, где строка проходит через вставку в
+ *  поле, границу плагина и разбор base64.
+ *
+ *  Где именно у Figma край, НЕ ИЗМЕРЕНО, и число это не изображает
+ *  измеренное. Оно выведено из другого, измеренного факта: захват
+ *  figma.com в пять размеров — 5907 узлов, 148 изображений — дал
+ *  архив 4,97 МБ, то есть 6,6 МБ в base64. Предел поставлен заметно
+ *  выше него, чтобы страницы такого веса проходили, и заметно ниже
+ *  тех десятков мегабайт, на которых поведение окна неизвестно.
+ *
+ *  Отказ выдаётся ЗДЕСЬ, до ухода в Figma, и называет число: зависшее
+ *  окно плагина человеку не объяснит ничего, а файл к этому моменту
+ *  уже скачан и остаётся рабочим путём. */
+const CLIPBOARD_LIMIT = 12 * 1024 * 1024
+
+/** Текст последнего захвата. Живёт в памяти окна намеренно: буфер —
+ *  короткий путь, а не хранилище. Закрыли окно — остаётся файл,
+ *  который скачивается всегда. */
+let pending: string | null = null
 
 const BREAKPOINTS = [
   { key: '1920', label: 'Desktop XL — 1920×1080' },
@@ -100,12 +125,55 @@ chrome.runtime.onMessage.addListener((message: Progress) => {
     : message.report.map((entry) =>
         `<div class="row"><span class="lvl ${entry.level}">${entry.level}</span>` +
         `<span>${escapeHtml(entry.message)}</span></div>`).join('')
+  /** Кнопка копирования включается ТОЛЬКО когда есть что копировать и
+   *  оно пролезает. Включённая кнопка, которая потом отказывает, —
+   *  худший из вариантов: человек уже ушёл в Figma и узнаёт об отказе
+   *  там, где сделать с ним ничего нельзя. */
+  pending = message.text
+  if (copyButton instanceof HTMLButtonElement) {
+    const size = message.text.length
+    const tooBig = size > CLIPBOARD_LIMIT
+    copyButton.disabled = tooBig
+    copyButton.textContent = tooBig
+      ? `Слишком велик для буфера (${Math.round(size / 1024 / 1024)} МБ)`
+      : `Скопировать для Figma (${Math.round(size / 1024 / 1024 * 10) / 10} МБ)`
+    copyButton.hidden = false
+    if (tooBig) pending = null
+  }
+
   show(`<div class="row"><b>Скачано: ${escapeHtml(message.file)}</b></div>` +
        `${summary}${rows}`)
 })
 
+/** Копирование идёт по нажатию, а не само собой после захвата.
+ *
+ *  Так требует браузер — запись в буфер разрешена только по действию
+ *  человека, — и так правильнее по сути: захват не должен молча
+ *  затирать то, что человек скопировал до него. */
+copyButton?.addEventListener('click', () => {
+  if (pending === null) return
+  void navigator.clipboard.writeText(pending).then(
+    () => {
+      if (copyButton instanceof HTMLButtonElement) {
+        copyButton.textContent = 'Скопировано — вставь в окне плагина'
+      }
+    },
+    (error: unknown) => {
+      /** Отказ буфера показывается ТЕКСТОМ. Молчащая кнопка
+       *  неотличима от сработавшей, и человек уйдёт вставлять пустоту. */
+      show('<div class="row error">Не удалось положить в буфер: ' +
+           `${escapeHtml(error instanceof Error ? error.message : String(error))}. ` +
+           'Файл уже скачан — открой его в плагине.</div>')
+    },
+  )
+})
+
 button?.addEventListener('click', () => {
   if (button instanceof HTMLButtonElement) button.disabled = true
+  /** Кнопка копирования прячется на время съёмки: иначе она копирует
+   *  ПРЕДЫДУЩИЙ захват, а человек уверен, что копирует этот. */
+  if (copyButton instanceof HTMLButtonElement) copyButton.hidden = true
+  pending = null
   show('<div class="row info">Снимаю…</div>')
   void chrome.runtime.sendMessage({ kind: 'capture' })
 })

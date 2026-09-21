@@ -1,4 +1,4 @@
-import { unpackBundle } from '@w2f/bundle'
+import { decodeBundleText, unpackBundle } from '@w2f/bundle'
 import { buildScene, layOutScreens } from './build/index.js'
 import { applyScreen, type FigmaSurface } from './apply.js'
 import type { Diagnostic } from '@w2f/ir'
@@ -22,14 +22,28 @@ declare const figma: FigmaSurface & {
 }
 declare const __html__: string
 
-figma.showUI(__html__, { width: 420, height: 320 })
+/** Высота с запасом на поле вставки: при 320 оно оказывалось ниже
+ *  края окна, и второй способ загрузки был не виден вовсе. */
+figma.showUI(__html__, { width: 420, height: 420 })
 
-type IncomingMessage = { kind: 'bundle'; bytes: number[] }
+type IncomingMessage =
+  | { kind: 'bundle'; bytes: number[] }
+  /** Вставленное из буфера приходит СТРОКОЙ и разбирается здесь.
+   *
+   *  Окно плагина — отдельный HTML без сборки; декодер в нём стал бы
+   *  вторым экземпляром той же логики, а второй экземпляр расходится
+   *  с первым молча. */
+  | { kind: 'bundle-text'; text: string }
 
-const isBundleMessage = (message: unknown): message is IncomingMessage =>
-  typeof message === 'object' && message !== null
-  && (message as { kind?: unknown }).kind === 'bundle'
-  && Array.isArray((message as { bytes?: unknown }).bytes)
+const isBundleMessage = (message: unknown): message is IncomingMessage => {
+  if (typeof message !== 'object' || message === null) return false
+  const kind = (message as { kind?: unknown }).kind
+  if (kind === 'bundle') return Array.isArray((message as { bytes?: unknown }).bytes)
+  if (kind === 'bundle-text') {
+    return typeof (message as { text?: unknown }).text === 'string'
+  }
+  return false
+}
 
 /** Всё тело обёрнуто в перехват намеренно.
  *
@@ -54,9 +68,29 @@ figma.ui.onmessage = async (message: unknown): Promise<void> => {
 const handleMessage = async (message: unknown): Promise<void> => {
   if (!isBundleMessage(message)) return
 
+  /** Декодирование вставленного отделено от распаковки намеренно:
+   *  отказы у них разные, и разными должны остаться. «Вставил не то»
+   *  и «файл другой версии» требуют от человека разных действий, и
+   *  свести их в одно «ошибка импорта» значило бы отнять у него
+   *  единственную подсказку. */
+  let raw: Uint8Array
+  if (message.kind === 'bundle-text') {
+    try {
+      raw = decodeBundleText(message.text)
+    } catch (error) {
+      figma.ui.postMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : String(error),
+      })
+      return
+    }
+  } else {
+    raw = new Uint8Array(message.bytes)
+  }
+
   let unpacked
   try {
-    unpacked = await unpackBundle(new Uint8Array(message.bytes))
+    unpacked = await unpackBundle(raw)
   } catch (error) {
     /** Отказ показывается ПОЛНЫМ текстом. Сообщения `unpackBundle`
      *  написаны так, чтобы человек понял, что делать: «выбран не тот

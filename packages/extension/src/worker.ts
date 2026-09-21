@@ -5,7 +5,7 @@ import {
   BREAKPOINTS, captureFullPage, selectedBreakpoints, waitForImages, withViewport,
   type Breakpoint,
 } from './breakpoints.js'
-import { packBundle } from '@w2f/bundle'
+import { encodeBundleText, packBundle } from '@w2f/bundle'
 import { resolveAssets, type AssetRequest } from './assets.js'
 
 /** Оркестровка, и только она.
@@ -371,6 +371,10 @@ export const downloadCapture = async (
 ;(self as unknown as { w2f: unknown }).w2f = {
   captureAt, captureAll, captureBundle, captureShot, captureToFile,
   downloadCapture, BREAKPOINTS, selectedBreakpoints,
+  /** Выставлено ради теста стыка: он обязан получить текст ИЗ ТОГО ЖЕ
+   *  архива, что уходит в файл, и потому зовёт кодек здесь, а не
+   *  повторяет его у себя. */
+  encodeBundleText,
 }
 
 /** Приём команды из окна расширения.
@@ -394,8 +398,21 @@ chrome.runtime.onMessage.addListener((message: { kind?: string }) => {
       const { bundle, bytes } = await captureBundle(tab.id)
       const zip = await packBundle(bundle, { assets: bytes })
       const name = await downloadCapture(Array.from(zip), fileNameFor(bundle))
+
+      /** Текст для буфера считается ЗДЕСЬ, вместе с файлом, из того же
+       *  архива. Второй захват ради него дал бы узлам новые
+       *  идентификаторы, и отчёт в окне ссылался бы на узлы, которых
+       *  во вставленном нет — та же ошибка, из-за которой захват уже
+       *  сведён к одному.
+       *
+       *  Файл скачивается В ЛЮБОМ СЛУЧАЕ, даже когда пользуются
+       *  буфером. Буфер — путь короче, но и ненадёжнее: его затирает
+       *  любое следующее копирование. Терять захват из-за этого
+       *  нельзя. */
+      const text = encodeBundleText(zip)
+
       await chrome.runtime.sendMessage({
-        kind: 'done', file: name,
+        kind: 'done', file: name, text,
         report: bundle.report.map((entry) => ({
           level: entry.level, code: entry.code, message: entry.message,
         })),
