@@ -105,12 +105,24 @@ describe('imageNodeFor: неравномерное растяжение', () => 
     expect(node.needsVerification).toEqual([])
   })
 
-  /** Плитка выражается только режимом TILE, и поведение
-   *  `scalingFactor` при неквадратной плитке не документировано. */
-  it('плитка едет TILE и тоже требует сверки', () => {
+  /** Плитка выражается только режимом TILE. Отметки «требует сверки»
+   *  про `scalingFactor` здесь БОЛЬШЕ НЕТ: закрыто замером в Figma на
+   *  неквадратном источнике 64×32, при масштабе 1 и 0.5. */
+  it('плитка едет TILE и отметки не требует', () => {
     const node = imageNodeFor('n1', rect, place({ mode: 'tile', scaleX: 1, scaleY: 1 }), 'a0', natural)
     const fill = node.base.fills[0]
     expect(fill?.type === 'IMAGE' && fill.scaleMode).toBe('TILE')
+    expect(node.needsVerification).toEqual([])
+  })
+
+  /** А вот потеря СМЕЩЕНИЯ плитки — настоящая и остаётся: у режима
+   *  TILE в Figma смещения нет вовсе. Молчать нельзя, сетка сдвинется
+   *  и будет выглядеть как своя, тоже правдоподобная раскладка. */
+  it('смещённая плитка помечается потерей смещения', () => {
+    const node = imageNodeFor(
+      'n1', rect, place({ mode: 'tile', offsetX: 7, offsetY: 3 }), 'a0', natural,
+    )
     expect(node.needsVerification).toHaveLength(1)
+    expect(node.needsVerification[0]?.code).toBe('deferred.repeat-mode')
   })
 })
