@@ -363,14 +363,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "warning",
-      "code": "fidelity.paint-order-approximated",
-      "message": "Порядок отрисовки приближён: у этого узла position задан, а z-index равен auto, поэтому по CSS его позиционированные потомки должны участвовать в стекинге предка, а не его собственном. Резолвер считает узел атомарным — порядок может отличаться.",
-      "nodeId": "n1",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

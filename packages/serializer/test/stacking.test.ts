@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   establishesStackingContext,
-  findInterleaved,
   resolvePaintOrder,
 } from '../src/stacking.js'
 import type { LayoutProbe } from '../src/probe.js'
@@ -260,31 +259,5 @@ describe('resolvePaintOrder', () => {
       ],
     })
     expect(orderOf(root)).toEqual(['root', 'wrapper', 'sib', 'fc'])
-  })
-})
-
-describe('findInterleaved', () => {
-  it('на непереплетённом дереве не находит ничего', () => {
-    const root = probe('root', {
-      children: [probe('a', { children: [probe('b')] }), probe('c')],
-    })
-    expect(findInterleaved(root, resolvePaintOrder(root))).toEqual([])
-  })
-
-  it('находит поддерево, чей диапазон влез внутрь чужого', () => {
-    // P поднят из wrapper и красится после B, из-за чего диапазон
-    // поддерева wrapper разрывается диапазоном B. Дерево Figma такой
-    // порядок выразить не может: там z-порядок задаётся порядком
-    // среди сиблингов.
-    const root = probe('root', {
-      children: [
-        probe('wrapper', {
-          children: [probe('P', { position: 'relative', zIndex: 5 })],
-        }),
-        probe('B', { position: 'relative', zIndex: 3 }),
-      ],
-    })
-    const found = findInterleaved(root, resolvePaintOrder(root))
-    expect(found.length).toBeGreaterThan(0)
   })
 })

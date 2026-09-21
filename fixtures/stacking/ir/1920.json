@@ -87,7 +87,7 @@
             "w": 1920,
             "h": 320
           },
-          "paintOrder": 2,
+          "paintOrder": 3,
           "isStackingContext": false,
           "transform": null,
           "layout": {
@@ -355,7 +355,7 @@
                 "w": 140,
                 "h": 140
               },
-              "paintOrder": 3,
+              "paintOrder": 1,
               "isStackingContext": true,
               "transform": null,
               "layout": {
@@ -639,7 +639,7 @@
             "w": 1920,
             "h": 40
           },
-          "paintOrder": 1,
+          "paintOrder": 2,
           "isStackingContext": false,
           "transform": null,
           "layout": {
@@ -704,14 +704,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "warning",
-      "code": "fidelity.paint-order-approximated",
-      "message": "Порядок отрисовки приближён: у этого узла position задан, а z-index равен auto, поэтому по CSS его позиционированные потомки должны участвовать в стекинге предка, а не его собственном. Резолвер считает узел атомарным — порядок может отличаться.",
-      "nodeId": "n1",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

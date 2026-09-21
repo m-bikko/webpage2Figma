@@ -20,14 +20,31 @@ export const establishesStackingContext = (p: LayoutProbe): boolean => {
 
 /** Узел участвует в стекинге контекста как самостоятельная единица,
  *  а не как часть потока. Сюда попадают позиционированные с `z-index: auto`:
- *  контекста они не создают, но красятся атомарно в бакете z=0.
- *
- *  Упрощение зафиксировано сознательно: по спецификации позиционированные
- *  потомки такого узла могут «убежать» в предка-контекст. Случай редкий,
- *  и вместо его моделирования вызывающий обязан породить Diagnostic —
- *  молчаливо неверный порядок недопустим, честное «не умеем» допустимо. */
+ *  контекста они не создают, но красятся атомарно в бакете z=0. */
 const isStackingParticipant = (p: LayoutProbe): boolean =>
   isPositioned(p) || (p.parentIsFlexOrGrid && p.zIndex !== 'auto')
+
+/** ПСЕВДОКОНТЕКСТ: позиционированный узел с `z-index: auto`.
+ *
+ *  CSS 2.1 Appendix E, шаг 8, формулирует его двойственно: такой узел
+ *  красится так, КАК ЕСЛИ БЫ создавал контекст, но его
+ *  позиционированные потомки и потомки, создающие контекст,
+ *  принадлежат РОДИТЕЛЬСКОМУ контексту, а не этому.
+ *
+ *  Двойственность и есть вся трудность: поддерево приходится делить
+ *  надвое. Потоковая часть красится вместе с узлом, на его месте;
+ *  позиционированная — всплывает к предку и встаёт там среди его
+ *  бакетов, то есть чаще всего ПОЗЖЕ.
+ *
+ *  До этого места подъём не делался: узел считался обычной атомарной
+ *  единицей, и всё поддерево красилось вместе с ним. На
+ *  `fixtures/pseudo-stacking` это давало 9600 расходящихся пикселей —
+ *  всплывающий блок уходил под соседа, который обязан быть под ним.
+ *  Упрощение было признано в коде и помечено диагностикой
+ *  `fidelity.paint-order-approximated`; на захвате figma.com таких
+ *  записей было 431. */
+const isPseudoContext = (p: LayoutProbe): boolean =>
+  isStackingParticipant(p) && !establishesStackingContext(p)
 
 /** Тот же предикат под экспортируемым именем: нужен детектору
  *  приближения, а дублировать логику нельзя. */
@@ -96,10 +113,49 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
     for (const child of node.children) {
       if (establishesStackingContext(child) || isStackingParticipant(child)) {
         groups[bucketOf(child)].push(child)
+        /** Псевдоконтекст отдаёт наверх свою позиционированную часть:
+         *  по шагу 8 она принадлежит ЭТОМУ контексту, а не ему. */
+        if (isPseudoContext(child)) collectEscaping(child, groups)
         continue
       }
       groups[bucketOf(child)].push(child)
       collectInto(child, groups)
+    }
+  }
+
+  /** Всплывающая часть поддерева псевдоконтекста.
+   *
+   *  Берутся только те потомки, которые позиционированы или создают
+   *  контекст: остальные красятся вместе с узлом и наверх не идут.
+   *  Сквозь потоковые обёртки обход продолжается — позиционированный
+   *  внук всплывает так же, как позиционированный сын.
+   *
+   *  Всплывший псевдоконтекст отдаёт СВОЮ позиционированную часть в те
+   *  же группы, на уровень выше. Без этой рекурсии цепочка из двух
+   *  обёрток `position: relative` — самая обычная вёрстка — поднимала
+   *  бы содержимое лишь на один уровень. */
+  const collectEscaping = (node: LayoutProbe, groups: Groups): void => {
+    for (const child of node.children) {
+      if (establishesStackingContext(child) || isStackingParticipant(child)) {
+        groups[bucketOf(child)].push(child)
+        if (isPseudoContext(child)) collectEscaping(child, groups)
+        continue
+      }
+      collectEscaping(child, groups)
+    }
+  }
+
+  /** Часть поддерева псевдоконтекста, которая остаётся при нём.
+   *
+   *  Зеркало `collectEscaping`: всё, что всплыло, здесь пропускается, —
+   *  иначе узел покрасился бы дважды, и инвариант плотности в `@w2f/ir`
+   *  отверг бы бандл. Именно это разделение и делает шаг 8 спеки
+   *  выполнимым: одно поддерево, две половины, два разных места. */
+  const collectLocal = (node: LayoutProbe, groups: Groups): void => {
+    for (const child of node.children) {
+      if (establishesStackingContext(child) || isStackingParticipant(child)) continue
+      groups[bucketOf(child)].push(child)
+      collectLocal(child, groups)
     }
   }
 
@@ -115,7 +171,11 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
   const paintUnit = (p: LayoutProbe): void => {
     emit(p)
     const groups = emptyGroups()
-    collectInto(p, groups)
+    /** У псевдоконтекста красится ТОЛЬКО оставшаяся половина:
+     *  всплывшую уже забрал предок, и собрать её здесь заново значило
+     *  бы покрасить одни и те же узлы дважды. */
+    if (isPseudoContext(p)) collectLocal(p, groups)
+    else collectInto(p, groups)
     paintGroups(groups)
   }
 
@@ -152,50 +212,20 @@ export const resolvePaintOrder = (root: LayoutProbe): Map<string, number> => {
   return order
 }
 
-/** Находит узлы, для которых порядок отрисовки ПРИБЛИЖЁН.
+/** `findApproximatedOrder` и `findInterleaved` УДАЛЕНЫ.
  *
- *  `isStackingParticipant` считает атомарным любой позиционированный узел,
- *  включая `z-index: auto`. По CSS 2.1 Appendix E шаг 8 такой узел
- *  красится как если бы создавал контекст, **но его позиционированные
- *  потомки и потомки, создающие контекст, принадлежат РОДИТЕЛЬСКОМУ
- *  контексту**, то есть должны подниматься сквозь него. Резолвер этого не
- *  делает — сознательное упрощение, подтверждённое в настоящем Chrome.
+ *  Обе отвечали на вопрос «где наш порядок может быть неверен», пока
+ *  ответ приходилось угадывать по форме дерева. Теперь его не надо
+ *  угадывать: перенос всплывших узлов (`hoist.ts`) сравнивает то, что
+ *  нарисует вложенное дерево, с тем, что предписывает `paintOrder`, и
+ *  называет оставшиеся расхождения поимённо.
  *
- *  Упрощение допустимо, молчание о нём — нет. Функция находит ровно те
- *  случаи, где оно могло сказаться: позиционированный узел с
- *  `z-index: auto`, в поддереве которого есть участник стекинга.
- *  Там, где таких потомков нет, приближение ни на что не влияет и
- *  диагностика была бы шумом.
- *
- *  Замену упрощения настоящим подъёмом ведёт план 2: у этого алгоритма
- *  уже три раунда исправлений, каждый вносил новый дефект, и четвёртый
- *  без падающего pixel-diff в качестве ориентира делать не стоит. */
-export const findApproximatedOrder = (root: LayoutProbe): string[] => {
-  const approximated: string[] = []
-
-  const hasParticipantInside = (p: LayoutProbe): boolean =>
-    p.children.some(
-      (child) =>
-        establishesStackingContext(child) ||
-        isStackingParticipantExported(child) ||
-        hasParticipantInside(child),
-    )
-
-  const visit = (p: LayoutProbe): void => {
-    if (
-      p.position !== 'static' &&
-      p.zIndex === 'auto' &&
-      !establishesStackingContext(p) &&
-      hasParticipantInside(p)
-    ) {
-      approximated.push(p.id)
-    }
-    for (const child of p.children) visit(child)
-  }
-
-  visit(root)
-  return approximated
-}
+ *  Держать их рядом было бы вредно, а не просто лишне. Обе считали по
+ *  дереву ДО переноса и после него начали сообщать об изъянах, которых
+ *  в результате нет: на `fixtures/pseudo-stacking` — о четырёх
+ *  разрывах при нулевом расхождении пикселей. Предупреждение о том,
+ *  что уже исправлено, учит не верить отчёту, а отчёт здесь —
+ *  единственное, что отличает признанное упрощение от тихой ошибки. */
 
 /** Позиционированные потомки узла, который сам не создаёт контекст,
  *  подняты в предка-контекст. Это правильно по CSS, но означает, что

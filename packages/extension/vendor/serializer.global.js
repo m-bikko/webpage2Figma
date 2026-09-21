@@ -108,6 +108,11 @@ var H2DSerializer = (() => {
      *  Figma векторных узлов из HTML не делает, и содержимое пропадёт
      *  именно на той стороне, где результат некому сверить. */
     deferredForeignObject: "deferred.foreign-object",
+    /** Узел перенесён к предку, потому что по CSS он участвует в
+     *  стекинге предка, а не родителя. Меняется ИЕРАРХИЯ, и молчать об
+     *  этом нельзя: дизайнер вправе знать, почему слой лежит не там,
+     *  где элемент в разметке. */
+    paintOrderHoisted: "fidelity.paint-order-hoisted",
     /** Auto-layout не применён, и названа причина. Молчать нельзя: без
      *  него узел приезжает набором коробок с абсолютными координатами,
      *  и дизайнер вправе знать, что именно в вёрстке этому помешало. */
@@ -434,21 +439,21 @@ var H2DSerializer = (() => {
     if (offsets[0] === null) offsets[0] = 0;
     const last = offsets.length - 1;
     if (offsets[last] === null) offsets[last] = 1;
-    let index = 0;
-    while (index < offsets.length) {
-      if (offsets[index] !== null) {
-        index += 1;
+    let index2 = 0;
+    while (index2 < offsets.length) {
+      if (offsets[index2] !== null) {
+        index2 += 1;
         continue;
       }
-      let end = index;
+      let end = index2;
       while (end < offsets.length && offsets[end] === null) end += 1;
-      const before = offsets[index - 1] ?? 0;
+      const before = offsets[index2 - 1] ?? 0;
       const after = offsets[end] ?? 1;
-      const gapCount = end - index + 1;
-      for (let step = 0; step < end - index; step += 1) {
-        offsets[index + step] = before + (after - before) * (step + 1) / gapCount;
+      const gapCount = end - index2 + 1;
+      for (let step = 0; step < end - index2; step += 1) {
+        offsets[index2 + step] = before + (after - before) * (step + 1) / gapCount;
       }
-      index = end;
+      index2 = end;
     }
     const result = [];
     let previous = 0;
@@ -888,6 +893,124 @@ var H2DSerializer = (() => {
     };
   };
 
+  // src/hoist.ts
+  var overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  var index = (root) => {
+    const map = /* @__PURE__ */ new Map();
+    const visit = (node, at, path) => {
+      const abs = {
+        x: at.x + node.rect.x,
+        y: at.y + node.rect.y,
+        w: node.rect.w,
+        h: node.rect.h
+      };
+      map.set(node.id, { node, abs, path });
+      const next = [...path, node];
+      for (const child of node.children) visit(child, { x: abs.x, y: abs.y }, next);
+    };
+    visit(root, { x: 0, y: 0 }, []);
+    return map;
+  };
+  var descendantsOf = (node) => {
+    const out = [];
+    const visit = (current) => {
+      for (const child of current.children) {
+        out.push(child);
+        visit(child);
+      }
+    };
+    visit(node);
+    return out;
+  };
+  var nestedOrder = (root) => {
+    const out = /* @__PURE__ */ new Map();
+    let counter = 0;
+    const visit = (node) => {
+      out.set(node.id, counter);
+      counter += 1;
+      for (const child of [...node.children].sort(
+        (a, b) => a.paintOrder - b.paintOrder
+      )) visit(child);
+    };
+    visit(root);
+    return out;
+  };
+  var needsHoist = (subject, nested, all) => {
+    const mine = nested.get(subject.node.id);
+    if (mine === void 0) return false;
+    const inside = new Set(
+      [subject.node, ...descendantsOf(subject.node)].map((node) => node.id)
+    );
+    return all.some((other) => {
+      if (inside.has(other.node.id)) return false;
+      const theirs = nested.get(other.node.id);
+      if (theirs === void 0) return false;
+      if (theirs <= mine) return false;
+      if (other.node.paintOrder >= subject.node.paintOrder) return false;
+      return overlaps(other.abs, subject.abs);
+    });
+  };
+  var targetFor = (path) => {
+    for (let i = path.length - 1; i >= 0; i -= 1) {
+      const candidate = path[i];
+      if (candidate === void 0) continue;
+      if (candidate.isStackingContext || i === 0) return candidate;
+    }
+    return null;
+  };
+  var hoistEscaped = (root) => {
+    const hoisted = [];
+    const blocked = /* @__PURE__ */ new Set();
+    for (let pass = 0; pass < 4; pass += 1) {
+      const placed = index(root);
+      const all = [...placed.values()];
+      const nested = nestedOrder(root);
+      const moves = [];
+      for (const entry of all) {
+        const parent = entry.path[entry.path.length - 1];
+        if (parent === void 0) continue;
+        if (blocked.has(entry.node.id)) continue;
+        if (!needsHoist(entry, nested, all)) continue;
+        const target = targetFor(entry.path);
+        if (target === null || target.id === parent.id) continue;
+        const fromIndex = entry.path.findIndex((node) => node.id === target.id);
+        if (fromIndex < 0) continue;
+        const between = entry.path.slice(fromIndex + 1);
+        if (between.some((node) => node.transform !== null)) {
+          blocked.add(entry.node.id);
+          continue;
+        }
+        const offset = between.reduce(
+          (acc, node) => ({ x: acc.x + node.rect.x, y: acc.y + node.rect.y }),
+          { x: 0, y: 0 }
+        );
+        moves.push({ node: entry.node, from: parent, to: target, offset });
+      }
+      if (moves.length === 0) break;
+      for (const move of moves) {
+        const at = move.from.children.indexOf(move.node);
+        if (at < 0) continue;
+        move.from.children.splice(at, 1);
+        move.node.rect = {
+          ...move.node.rect,
+          x: move.node.rect.x + move.offset.x,
+          y: move.node.rect.y + move.offset.y
+        };
+        move.to.children.push(move.node);
+        hoisted.push({ id: move.node.id, toId: move.to.id });
+      }
+    }
+    const finalPlaced = index(root);
+    const finalNested = nestedOrder(root);
+    const finalAll = [...finalPlaced.values()];
+    const stillWrong = [];
+    for (const entry of finalAll) {
+      if (blocked.has(entry.node.id)) continue;
+      if (needsHoist(entry, finalNested, finalAll)) stillWrong.push(entry.node.id);
+    }
+    return { root, hoisted, blockedByTransform: [...blocked], stillWrong };
+  };
+
   // src/vector.ts
   var SVG_NS = "http://www.w3.org/2000/svg";
   var PRESENTATION = [
@@ -1114,7 +1237,7 @@ var H2DSerializer = (() => {
     return false;
   };
   var isStackingParticipant = (p) => isPositioned(p) || p.parentIsFlexOrGrid && p.zIndex !== "auto";
-  var isStackingParticipantExported = isStackingParticipant;
+  var isPseudoContext = (p) => isStackingParticipant(p) && !establishesStackingContext(p);
   var emptyGroups = () => ({
     negative: [],
     flow: [],
@@ -1135,7 +1258,7 @@ var H2DSerializer = (() => {
     return "flow";
   };
   var zValue = (p) => p.zIndex === "auto" ? 0 : p.zIndex;
-  var byZIndex = (items) => items.map((item, index) => ({ item, index })).sort((a, b) => zValue(a.item) - zValue(b.item) || a.index - b.index).map(({ item }) => item);
+  var byZIndex = (items) => items.map((item, index2) => ({ item, index: index2 })).sort((a, b) => zValue(a.item) - zValue(b.item) || a.index - b.index).map(({ item }) => item);
   var resolvePaintOrder = (root) => {
     const order = /* @__PURE__ */ new Map();
     let counter = 0;
@@ -1147,10 +1270,28 @@ var H2DSerializer = (() => {
       for (const child of node.children) {
         if (establishesStackingContext(child) || isStackingParticipant(child)) {
           groups[bucketOf(child)].push(child);
+          if (isPseudoContext(child)) collectEscaping(child, groups);
           continue;
         }
         groups[bucketOf(child)].push(child);
         collectInto(child, groups);
+      }
+    };
+    const collectEscaping = (node, groups) => {
+      for (const child of node.children) {
+        if (establishesStackingContext(child) || isStackingParticipant(child)) {
+          groups[bucketOf(child)].push(child);
+          if (isPseudoContext(child)) collectEscaping(child, groups);
+          continue;
+        }
+        collectEscaping(child, groups);
+      }
+    };
+    const collectLocal = (node, groups) => {
+      for (const child of node.children) {
+        if (establishesStackingContext(child) || isStackingParticipant(child)) continue;
+        groups[bucketOf(child)].push(child);
+        collectLocal(child, groups);
       }
     };
     const paintFlowNode = (p) => {
@@ -1159,7 +1300,8 @@ var H2DSerializer = (() => {
     const paintUnit = (p) => {
       emit(p);
       const groups = emptyGroups();
-      collectInto(p, groups);
+      if (isPseudoContext(p)) collectLocal(p, groups);
+      else collectInto(p, groups);
       paintGroups(groups);
     };
     const paintInFlow = (p) => {
@@ -1176,57 +1318,6 @@ var H2DSerializer = (() => {
     };
     paintUnit(root);
     return order;
-  };
-  var findApproximatedOrder = (root) => {
-    const approximated = [];
-    const hasParticipantInside = (p) => p.children.some(
-      (child) => establishesStackingContext(child) || isStackingParticipantExported(child) || hasParticipantInside(child)
-    );
-    const visit = (p) => {
-      if (p.position !== "static" && p.zIndex === "auto" && !establishesStackingContext(p) && hasParticipantInside(p)) {
-        approximated.push(p.id);
-      }
-      for (const child of p.children) visit(child);
-    };
-    visit(root);
-    return approximated;
-  };
-  var findInterleaved = (root, order) => {
-    const interleaved = [];
-    const subtreeIds = (p, out) => {
-      out.add(p.id);
-      for (const child of p.children) subtreeIds(child, out);
-      return out;
-    };
-    const all = [];
-    const flatten = (p) => {
-      all.push(p);
-      for (const child of p.children) flatten(child);
-    };
-    flatten(root);
-    const canOverlap = (p) => establishesStackingContext(p) || isStackingParticipantExported(p);
-    for (const node of all) {
-      const own = order.get(node.id);
-      if (own === void 0) continue;
-      const ids = subtreeIds(node, /* @__PURE__ */ new Set());
-      let min = own;
-      let max = own;
-      for (const id of ids) {
-        const value = order.get(id);
-        if (value === void 0) continue;
-        min = Math.min(min, value);
-        max = Math.max(max, value);
-      }
-      if (max - min + 1 === ids.size) continue;
-      const intruder = all.find((other) => {
-        if (ids.has(other.id)) return false;
-        const value = order.get(other.id);
-        if (value === void 0) return false;
-        return value > min && value < max && canOverlap(other);
-      });
-      if (intruder !== void 0) interleaved.push(node.id);
-    }
-    return [...new Set(interleaved)];
   };
 
   // src/text.ts
@@ -1365,14 +1456,14 @@ var H2DSerializer = (() => {
         (rect) => rect.width > 0 && rect.height > 0
       );
       let cursor = 0;
-      for (const [index, rect] of rects.entries()) {
+      for (const [index2, rect] of rects.entries()) {
         const raw = sliceForRect(node, rect, cursor);
         cursor += raw.length;
         const visible = trimAtLineBreaks(
           collapseWhiteSpace(raw, cs),
           cs,
-          index > 0,
-          index < rects.length - 1
+          index2 > 0,
+          index2 < rects.length - 1
         );
         lines.push({
           x: rect.left - origin.x,
@@ -2069,20 +2160,30 @@ var H2DSerializer = (() => {
     const contexts = /* @__PURE__ */ new Set();
     collectStackingContexts(built.probe, contexts);
     applyPaintOrder(built.node, order, contexts);
-    for (const id of findApproximatedOrder(built.probe)) {
+    const lifted = hoistEscaped(built.node);
+    for (const move of lifted.hoisted) {
+      sink.report(
+        "info",
+        DIAGNOSTIC_CODES.paintOrderHoisted,
+        `\u0423\u0437\u0435\u043B \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u043A \u043F\u0440\u0435\u0434\u043A\u0443 "${move.toId}": \u043F\u043E CSS \u0443 \u0435\u0433\u043E \u0440\u043E\u0434\u0438\u0442\u0435\u043B\u044F position \u0437\u0430\u0434\u0430\u043D, \u0430 z-index \u0440\u0430\u0432\u0435\u043D auto, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u0443\u0437\u0435\u043B \u0443\u0447\u0430\u0441\u0442\u0432\u0443\u0435\u0442 \u0432 \u0441\u0442\u0435\u043A\u0438\u043D\u0433\u0435 \u043F\u0440\u0435\u0434\u043A\u0430 \u0438 \u043A\u0440\u0430\u0441\u0438\u0442\u0441\u044F \u043F\u043E\u0437\u0436\u0435 \u0441\u043E\u0441\u0435\u0434\u0435\u0439 \u0440\u043E\u0434\u0438\u0442\u0435\u043B\u044F. \u0412\u044B\u0440\u0430\u0437\u0438\u0442\u044C \u044D\u0442\u043E \u0432\u043B\u043E\u0436\u0435\u043D\u043D\u043E\u0441\u0442\u044C\u044E \u043D\u0435\u043B\u044C\u0437\u044F \u2014 \u043D\u0438 \u0432 SVG, \u043D\u0438 \u0432 Figma, \u2014 \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0430\u0441\u044C \u0438\u0435\u0440\u0430\u0440\u0445\u0438\u044F \u0441\u043B\u043E\u0451\u0432, \u0430 \u043D\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E\u0440\u044F\u0434\u043E\u043A.`,
+        move.id,
+        false
+      );
+    }
+    for (const id of lifted.blockedByTransform) {
       sink.report(
         "warning",
         DIAGNOSTIC_CODES.paintOrderApproximated,
-        "\u041F\u043E\u0440\u044F\u0434\u043E\u043A \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u043A\u0438 \u043F\u0440\u0438\u0431\u043B\u0438\u0436\u0451\u043D: \u0443 \u044D\u0442\u043E\u0433\u043E \u0443\u0437\u043B\u0430 position \u0437\u0430\u0434\u0430\u043D, \u0430 z-index \u0440\u0430\u0432\u0435\u043D auto, \u043F\u043E\u044D\u0442\u043E\u043C\u0443 \u043F\u043E CSS \u0435\u0433\u043E \u043F\u043E\u0437\u0438\u0446\u0438\u043E\u043D\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u043F\u043E\u0442\u043E\u043C\u043A\u0438 \u0434\u043E\u043B\u0436\u043D\u044B \u0443\u0447\u0430\u0441\u0442\u0432\u043E\u0432\u0430\u0442\u044C \u0432 \u0441\u0442\u0435\u043A\u0438\u043D\u0433\u0435 \u043F\u0440\u0435\u0434\u043A\u0430, \u0430 \u043D\u0435 \u0435\u0433\u043E \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u043E\u043C. \u0420\u0435\u0437\u043E\u043B\u0432\u0435\u0440 \u0441\u0447\u0438\u0442\u0430\u0435\u0442 \u0443\u0437\u0435\u043B \u0430\u0442\u043E\u043C\u0430\u0440\u043D\u044B\u043C \u2014 \u043F\u043E\u0440\u044F\u0434\u043E\u043A \u043C\u043E\u0436\u0435\u0442 \u043E\u0442\u043B\u0438\u0447\u0430\u0442\u044C\u0441\u044F.",
+        "\u041F\u043E\u0440\u044F\u0434\u043E\u043A \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u043A\u0438 \u043F\u0440\u0438\u0431\u043B\u0438\u0436\u0451\u043D: \u0443\u0437\u0435\u043B \u0434\u043E\u043B\u0436\u0435\u043D \u0443\u0447\u0430\u0441\u0442\u0432\u043E\u0432\u0430\u0442\u044C \u0432 \u0441\u0442\u0435\u043A\u0438\u043D\u0433\u0435 \u043F\u0440\u0435\u0434\u043A\u0430, \u043D\u043E \u043D\u0430 \u043F\u0443\u0442\u0438 \u043A \u043D\u0435\u043C\u0443 \u0435\u0441\u0442\u044C \u0442\u0440\u0430\u043D\u0441\u0444\u043E\u0440\u043C\u0430, \u0438 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0442\u0438 \u0443\u0437\u0435\u043B \u0431\u0435\u0437 \u0438\u0441\u043A\u0430\u0436\u0435\u043D\u0438\u044F \u043A\u043E\u043E\u0440\u0434\u0438\u043D\u0430\u0442 \u043D\u0435\u043B\u044C\u0437\u044F. \u041E\u043D \u043E\u0441\u0442\u0430\u043B\u0441\u044F \u043D\u0430 \u043C\u0435\u0441\u0442\u0435 \u2014 \u043F\u043E\u0440\u044F\u0434\u043E\u043A \u043C\u043E\u0436\u0435\u0442 \u043E\u0442\u043B\u0438\u0447\u0430\u0442\u044C\u0441\u044F.",
         id,
         false
       );
     }
-    for (const id of findInterleaved(built.probe, order)) {
+    for (const id of lifted.stillWrong) {
       sink.report(
         "warning",
         DIAGNOSTIC_CODES.paintOrderInterleaved,
-        "\u041F\u043E\u0434\u0434\u0435\u0440\u0435\u0432\u043E \u043A\u0440\u0430\u0441\u0438\u0442\u0441\u044F \u0441 \u0440\u0430\u0437\u0440\u044B\u0432\u043E\u043C: \u0434\u0435\u0440\u0435\u0432\u043E Figma \u0442\u0430\u043A\u043E\u0439 \u043F\u043E\u0440\u044F\u0434\u043E\u043A \u0432\u044B\u0440\u0430\u0437\u0438\u0442\u044C \u043D\u0435 \u043C\u043E\u0436\u0435\u0442, \u043F\u043E\u0442\u043E\u043C\u0443 \u0447\u0442\u043E \u0442\u0430\u043C z-\u043F\u043E\u0440\u044F\u0434\u043E\u043A \u0437\u0430\u0434\u0430\u0451\u0442\u0441\u044F \u043F\u043E\u0440\u044F\u0434\u043A\u043E\u043C \u0441\u0440\u0435\u0434\u0438 \u0441\u0438\u0431\u043B\u0438\u043D\u0433\u043E\u0432.",
+        "\u041F\u043E\u0440\u044F\u0434\u043E\u043A \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u043A\u0438 \u043E\u0441\u0442\u0430\u043B\u0441\u044F \u043D\u0435\u0432\u0435\u0440\u043D\u044B\u043C: \u044D\u0442\u043E\u0442 \u0443\u0437\u0435\u043B \u043E\u0431\u044F\u0437\u0430\u043D \u043A\u0440\u0430\u0441\u0438\u0442\u044C\u0441\u044F \u0438\u043D\u0430\u0447\u0435, \u0447\u0435\u043C \u0435\u0433\u043E \u043D\u0430\u0440\u0438\u0441\u0443\u0435\u0442 \u0432\u043B\u043E\u0436\u0435\u043D\u043D\u043E\u0435 \u0434\u0435\u0440\u0435\u0432\u043E, \u0430 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0442\u0438 \u0435\u0433\u043E \u043D\u0435\u043A\u0443\u0434\u0430 \u2014 \u0432 Figma z-\u043F\u043E\u0440\u044F\u0434\u043E\u043A \u0437\u0430\u0434\u0430\u0451\u0442\u0441\u044F \u043F\u043E\u0440\u044F\u0434\u043A\u043E\u043C \u0441\u0440\u0435\u0434\u0438 \u0441\u0438\u0431\u043B\u0438\u043D\u0433\u043E\u0432, \u0438 \u0442\u0430\u043A\u043E\u0435 \u0440\u0430\u0441\u043F\u043E\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u0432\u043B\u043E\u0436\u0435\u043D\u043D\u043E\u0441\u0442\u044C\u044E \u043D\u0435 \u0432\u044B\u0440\u0430\u0436\u0430\u0435\u0442\u0441\u044F.",
         id,
         false
       );

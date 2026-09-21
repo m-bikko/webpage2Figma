@@ -23,12 +23,13 @@ import {
   parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
+import { hoistEscaped } from './hoist.js'
 import { readVector } from './vector.js'
 import type { AssetRequests } from './assets.js'
 import { isReversed, readLayout } from './layout.js'
 import { readProbe, type LayoutProbe } from './probe.js'
 import {
-  establishesStackingContext, findApproximatedOrder, findInterleaved,
+  establishesStackingContext,
   resolvePaintOrder,
 } from './stacking.js'
 import { hasFontFallback, parseFontStack, readText } from './text.js'
@@ -946,22 +947,56 @@ export const walkDocument = (
   collectStackingContexts(built.probe, contexts)
   applyPaintOrder(built.node, order, contexts)
 
-  for (const id of findApproximatedOrder(built.probe)) {
+  /** Перенос всплывших — ПОСЛЕ нумерации и по ней.
+   *
+   *  Резолвер уже сказал, что красится позже родителя; здесь это
+   *  становится фактом дерева, потому что иначе исполнить его некому:
+   *  и SVG, и Figma рисуют потомка внутри родителя. */
+  const lifted = hoistEscaped(built.node)
+
+  for (const move of lifted.hoisted) {
+    sink.report(
+      'info', DIAGNOSTIC_CODES.paintOrderHoisted,
+      `Узел перенесён к предку "${move.toId}": по CSS у его родителя ` +
+      `position задан, а z-index равен auto, поэтому узел участвует в ` +
+      `стекинге предка и красится позже соседей родителя. Выразить это ` +
+      `вложенностью нельзя — ни в SVG, ни в Figma, — поэтому изменилась ` +
+      `иерархия слоёв, а не только порядок.`,
+      move.id, false,
+    )
+  }
+
+  /** Диагностика приближения выдаётся ТОЛЬКО там, где перенос не
+   *  удался. Выдавать её везде, где есть псевдоконтекст, теперь было
+   *  бы шумом: порядок там верен. На захвате figma.com таких записей
+   *  было 431 — и почти все про места, где всплытие ни на что не
+   *  влияло. */
+  for (const id of lifted.blockedByTransform) {
     sink.report(
       'warning', DIAGNOSTIC_CODES.paintOrderApproximated,
-      'Порядок отрисовки приближён: у этого узла position задан, а ' +
-      'z-index равен auto, поэтому по CSS его позиционированные потомки ' +
-      'должны участвовать в стекинге предка, а не его собственном. ' +
-      'Резолвер считает узел атомарным — порядок может отличаться.',
+      'Порядок отрисовки приближён: узел должен участвовать в стекинге ' +
+      'предка, но на пути к нему есть трансформа, и перенести узел без ' +
+      'искажения координат нельзя. Он остался на месте — порядок может ' +
+      'отличаться.',
       id, false,
     )
   }
 
-  for (const id of findInterleaved(built.probe, order)) {
+  /** Разрыв считается по ФАКТИЧЕСКОМУ дереву — тому, что поедет в
+   *  Figma, — и после переноса.
+   *
+   *  Прежняя редакция считала его по дереву ДО переноса и потому
+   *  сообщала о разрывах, которых в результате не осталось: на
+   *  `fixtures/pseudo-stacking` — о четырёх, при нулевом расхождении
+   *  пикселей. Диагностика, предупреждающая о том, что уже исправлено,
+   *  хуже отсутствующей: она учит не верить отчёту. */
+  for (const id of lifted.stillWrong) {
     sink.report(
       'warning', DIAGNOSTIC_CODES.paintOrderInterleaved,
-      'Поддерево красится с разрывом: дерево Figma такой порядок выразить ' +
-      'не может, потому что там z-порядок задаётся порядком среди сиблингов.',
+      'Порядок отрисовки остался неверным: этот узел обязан краситься ' +
+      'иначе, чем его нарисует вложенное дерево, а перенести его некуда — ' +
+      'в Figma z-порядок задаётся порядком среди сиблингов, и такое ' +
+      'расположение вложенностью не выражается.',
       id, false,
     )
   }
