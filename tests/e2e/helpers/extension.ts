@@ -65,7 +65,11 @@ declare global {
   var h2d: {
     captureAt: (tabId: number, size: { name: string; width: number; height: number })
       => Promise<CapturedScreen>
-    captureAll: (tabId: number) => Promise<CapturedScreen[]>
+    captureAll: (tabId: number)
+      => Promise<{ screen: CapturedScreen; base64: string }[]>
     captureBundle: (tabId: number) => Promise<CapturedBundle>
+    captureShot: (tabId: number, size: { name: string; width: number; height: number })
+      => Promise<{ contentHeight: number; imageHeight: number }>
+    captureToFile: (tabId: number) => Promise<{ zip: number[]; name: string }>
   }
 }

@@ -15,6 +15,9 @@ importers:
       '@figma/plugin-typings':
         specifier: ^1.138.0
         version: 1.138.0
+      '@h2d/bundle':
+        specifier: workspace:*
+        version: link:packages/bundle
       '@h2d/extension':
         specifier: workspace:*
         version: link:packages/extension

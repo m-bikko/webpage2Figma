@@ -61,3 +61,40 @@ export const withViewport = async <T>(
     }
   }
 }
+
+/** Скриншот ПОЛНОЙ высоты содержимого, а не видимой части.
+ *
+ *  `chrome.tabs.captureVisibleTab` снимает только вьюпорт — для
+ *  страницы выше экрана он отдал бы обрезанную картинку, и это было бы
+ *  незаметно: скриншот выглядит нормальным, просто короче. Поэтому
+ *  снимок делается через CDP с `captureBeyondViewport`.
+ *
+ *  Вызывается ВНУТРИ `withViewport`: отладчик уже подключён, а
+ *  подключать его второй раз к той же вкладке нельзя. */
+export const captureFullPage = async (
+  tabId: number,
+  width: number,
+  height: number,
+): Promise<string> => {
+  const target: chrome.debugger.Debuggee = { tabId }
+  const shot = await chrome.debugger.sendCommand(target, 'Page.captureScreenshot', {
+    format: 'png',
+    /** Флаг стоит ради ясности намерения, но НЕСУЩЕЕ здесь не он, а
+     *  явная область обрезки: измерено — с `captureBeyondViewport:
+     *  false` и той же областью снимок получается таким же. Записано,
+     *  чтобы никто не считал флаг работающим сам по себе и не выбросил
+     *  вместо него область. */
+    captureBeyondViewport: true,
+    /** Область задаётся ЯВНО обеими сторонами. Нулевая ширина — не
+     *  «вся»: CDP отвечает «Cannot take screenshot with 0 width».
+     *  А высота берётся из `screen.height`, то есть из содержимого, а
+     *  не из вьюпорта: без этого короткая страница дала бы скриншот
+     *  ниже своего фрейма, и pixel-diff сравнивал бы разное. */
+    clip: { x: 0, y: 0, width, height, scale: 1 },
+  }) as { data?: string } | undefined
+  const data = shot?.data
+  if (typeof data !== 'string') {
+    throw new Error('CDP не вернул скриншот: снимать нечего или вкладка закрылась.')
+  }
+  return data
+}

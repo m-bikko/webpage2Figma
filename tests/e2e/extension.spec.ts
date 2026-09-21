@@ -1,6 +1,7 @@
 import { expect, test, type Worker } from '@playwright/test'
 import type { IrNode } from '@h2d/ir'
-import { fixtureUrl } from './helpers/capture.js'
+import { unpackBundle } from '@h2d/bundle'
+import { captureScreen, fixtureUrl } from './helpers/capture.js'
 import { launchWithExtension } from './helpers/extension.js'
 
 /** Идентификатор вкладки по куску URL. Воркер не знает, какую вкладку
@@ -14,6 +15,23 @@ const tabIdOf = async (worker: Worker, urlPart: string): Promise<number> => {
   if (id === null) throw new Error(`Вкладка с "${urlPart}" не найдена`)
   return id
 }
+
+/** Форма узла без идентификаторов.
+ *
+ *  Идентификаторы отбрасываются намеренно: у расширения нумерация
+ *  общая на пять экранов, у прямого захвата — своя. Это разница по
+ *  устройству, а не дефект, и сравнивать её значило бы ловить шум
+ *  вместо сигнала. Всё остальное — геометрия, вид, стиль — обязано
+ *  совпасть до последнего поля. */
+const shapeOf = (node: IrNode): unknown => ({
+  kind: node.kind,
+  tag: node.sourceTag,
+  rect: node.rect,
+  style: node.style,
+  layout: node.layout,
+  transform: node.transform,
+  children: node.children.map(shapeOf),
+})
 
 /** Режим раскладки первого узла, который её имеет. Ищется по дереву,
  *  а не по фиксированному пути: путь завязал бы проверку на структуру
@@ -103,14 +121,15 @@ test('пять экранов с общей нумерацией узлов', as
     )
 
     expect(screens).toHaveLength(5)
-    expect(screens.map((item) => item.screen.width)).toEqual([1920, 1440, 1024, 768, 390])
+    expect(screens.map((item) => item.screen.screen.width))
+      .toEqual([1920, 1440, 1024, 768, 390])
 
     const ids: string[] = []
     const collect = (node: IrNode): void => {
       ids.push(node.id)
       node.children.forEach(collect)
     }
-    screens.forEach((item) => { collect(item.screen.root) })
+    screens.forEach((item) => { collect(item.screen.screen.root) })
     expect(new Set(ids).size).toBe(ids.length)
   } finally {
     await context.close()
@@ -153,6 +172,91 @@ test('воркер достаёт байты, которых странице н
     expect(asset?.mimeType).toBe('image/png')
     expect(resolved.report.filter((entry) => entry.code === 'fidelity.image-unreadable'))
       .toHaveLength(0)
+  } finally {
+    await context.close()
+  }
+})
+
+/** Скриншот обязан быть ПОЛНОЙ высоты содержимого.
+ *
+ *  `chrome.tabs.captureVisibleTab` снял бы только вьюпорт, и заметить
+ *  это трудно: картинка выглядит нормальной, просто короче. Фикстура
+ *  `text` при 390px заведомо выше экрана, поэтому расхождение видно
+ *  сразу. */
+test('скриншот снимается на полную высоту содержимого', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('text'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    const shot = await worker.evaluate(
+      (tabId) => globalThis.h2d.captureShot(tabId, { name: 'M', width: 390, height: 300 }),
+      tabId,
+    )
+    expect(shot.contentHeight).toBeGreaterThan(300)
+    expect(shot.imageHeight).toBe(shot.contentHeight)
+  } finally {
+    await context.close()
+  }
+})
+
+/** Бандл расширения обязан проходить те же проверки, что и любой другой.
+ *
+ *  Смысл: расширение — оркестровка, и своей логики у него быть не
+ *  должно. Если бандл не проходит валидатор, логика просочилась. */
+test('бандл расширения принимается валидатором и распаковывается', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('boxes'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    const packed = await worker.evaluate(
+      (tabId) => globalThis.h2d.captureToFile(tabId), tabId,
+    )
+    const back = await unpackBundle(Uint8Array.from(packed.zip))
+
+    expect(back.bundle.screens).toHaveLength(5)
+    expect(back.bundle.format).toBe('h2d')
+    /** Каждый экран несёт скриншот, и каждый скриншот лежит в архиве. */
+    for (const screen of back.bundle.screens) {
+      expect(screen.screenshotId).not.toBeNull()
+      expect(back.files.assets[screen.screenshotId ?? '']).toBeDefined()
+    }
+  } finally {
+    await context.close()
+  }
+})
+
+/** ГЛАВНАЯ проверка плана: расширение не привносит своей логики.
+ *
+ *  Дерево, снятое расширением при 1440, обязано совпасть с деревом,
+ *  снятым напрямую тем же сериализатором через Playwright. Разошлись —
+ *  значит расширение что-то делает по-своему, и это надо найти, а не
+ *  списать на «ну оно же по-другому запускается».
+ *
+ *  Сравниваются геометрия, вид и стиль каждого узла. Идентификаторы
+ *  НЕ сравниваются: у расширения общая нумерация на пять экранов, у
+ *  прямого захвата — своя. Это разница по устройству, а не дефект. */
+test('дерево расширения совпадает с деревом прямого захвата', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('boxes'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    const viaExtension = await worker.evaluate(
+      (tabId) => globalThis.h2d.captureAt(tabId, { name: 'D', width: 1440, height: 900 }),
+      tabId,
+    )
+
+    const direct = await context.newPage()
+    await direct.setViewportSize({ width: 1440, height: 900 })
+    await direct.goto(fixtureUrl('boxes'))
+    const { screen } = await captureScreen(direct, 's-1440', 'D')
+
+    expect(shapeOf(viaExtension.screen.root)).toEqual(shapeOf(screen.root))
   } finally {
     await context.close()
   }

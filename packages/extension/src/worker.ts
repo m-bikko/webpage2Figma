@@ -1,7 +1,10 @@
 import { IR_VERSION } from '@h2d/ir/version'
 import { reconcileAssets } from '@h2d/ir'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@h2d/ir'
-import { BREAKPOINTS, withViewport, type Breakpoint } from './breakpoints.js'
+import {
+  BREAKPOINTS, captureFullPage, withViewport, type Breakpoint,
+} from './breakpoints.js'
+import { packBundle } from '@h2d/bundle'
 import { resolveAssets, type AssetRequest } from './assets.js'
 
 /** Оркестровка, и только она.
@@ -56,6 +59,16 @@ export const captureAt = async (
   size: Breakpoint,
 ): Promise<CaptureResult> => withViewport(tabId, size, async () => {
   await injectOnce(tabId)
+  return captureInPage(tabId, size)
+})
+
+/** Снимает экран, считая, что эмуляция уже применена и сериализатор
+ *  уже впрыснут. Вынесено отдельно, чтобы скриншот и дерево снимались
+ *  под ОДНИМ подключением отладчика. */
+const captureInPage = async (
+  tabId: number,
+  size: Breakpoint,
+): Promise<CaptureResult> => {
   const captured = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
@@ -76,7 +89,7 @@ export const captureAt = async (
     )
   }
   return result as CaptureResult
-})
+}
 
 /** Снимает все пять брейкпоинтов одним заходом.
  *
@@ -85,7 +98,9 @@ export const captureAt = async (
  *  инвариант `asset.dangling` проверяет ссылки в пределах бандла, а
  *  отчёт ссылается на узлы по имени. Сброс счётчика перед каждым
  *  экраном дал бы пять узлов `n0`, и ссылка стала бы неоднозначной. */
-export const captureAll = async (tabId: number): Promise<CaptureResult[]> => {
+export const captureAll = async (
+  tabId: number,
+): Promise<{ screen: CaptureResult; base64: string }[]> => {
   await injectOnce(tabId)
   await chrome.scripting.executeScript({
     target: { tabId },
@@ -93,13 +108,61 @@ export const captureAll = async (tabId: number): Promise<CaptureResult[]> => {
     func: () => { (globalThis as unknown as { __h2d: PageApi }).__h2d.beginCapture() },
   })
 
-  const screens: CaptureResult[] = []
+  const out: { screen: CaptureResult; base64: string }[] = []
   /** Последовательно, а не параллельно: эмуляция применяется к ОДНОЙ
    *  вкладке, и два размера одновременно на ней несовместимы. */
   for (const size of BREAKPOINTS) {
-    screens.push(await captureAt(tabId, size))
+    const shot = await captureShot(tabId, size)
+    out.push({ screen: shot.screen, base64: shot.base64 })
   }
-  return screens
+  return out
+}
+
+/** Снимает экран ВМЕСТЕ со скриншотом.
+ *
+ *  Скриншот делается внутри того же `withViewport`: отладчик уже
+ *  подключён, а подключить его второй раз к той же вкладке нельзя.
+ *  Разнести это на два захода значило бы эмулировать размер дважды —
+ *  и получить скриншот от одной раскладки, а дерево от другой. */
+export const captureShot = async (
+  tabId: number,
+  size: Breakpoint,
+): Promise<{ screen: CaptureResult; base64: string
+             contentHeight: number; imageHeight: number }> =>
+  withViewport(tabId, size, async () => {
+    await injectOnce(tabId)
+    const captured = await captureInPage(tabId, size)
+    const base64 = await captureFullPage(
+      tabId, captured.screen.width, captured.screen.height,
+    )
+    /** Высота проверяется по самому PNG, а не по тому, что мы просили:
+     *  просьба и результат — разные вещи, и расхождение между ними
+     *  ровно то, ради чего снимок берётся через CDP. */
+    const imageHeight = pngHeight(base64)
+    return {
+      screen: captured, base64,
+      contentHeight: captured.screen.height, imageHeight,
+    }
+  })
+
+/** base64 → байты. `Buffer` в воркере нет, `atob` есть. */
+const base64ToBytes = (base64: string): Uint8Array => {
+  const binary = atob(base64)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+/** Высота PNG из его заголовка.
+ *
+ *  Разбор вручную, потому что в service worker нет ни `Image`, ни
+ *  `document`. Размеры лежат в чанке IHDR: восемь байт подписи, потом
+ *  четыре длины, четыре типа, потом ширина и высота по четыре байта. */
+const pngHeight = (base64: string): number => {
+  const head = atob(base64.slice(0, 64))
+  let height = 0
+  for (let i = 20; i < 24; i += 1) height = height * 256 + head.charCodeAt(i)
+  return height
 }
 
 /** Шрифты объединяются по всем экранам: без этого инвариант
@@ -136,18 +199,33 @@ export const captureBundle = async (tabId: number): Promise<{
   const last = captured[captured.length - 1]
   if (last === undefined) throw new Error('Ни одного экрана не снято.')
 
-  const resolved = await resolveAssets(last.assetRequests)
+  const resolved = await resolveAssets(last.screen.assetRequests)
   const available = new Set(resolved.assets.map((asset) => asset.id))
 
   const screens: Screen[] = []
   const report: Diagnostic[] = [...resolved.report]
+  const bytes: Record<string, Uint8Array> = { ...resolved.bytes }
+  const assets: Bundle['assets'] = [...resolved.assets]
+
   for (const item of captured) {
-    report.push(...item.report)
+    report.push(...item.screen.report)
     /** Дерево приводится в согласие с доехавшим: узел, чья картинка не
      *  пришла даже воркеру, становится заглушкой. Иначе инвариант
      *  `asset.dangling` отверг бы бандл целиком. */
-    const fixed = reconcileAssets(item.screen, available)
-    screens.push(fixed.screen)
+    const fixed = reconcileAssets(item.screen.screen, available)
+
+    /** Скриншот кладётся ОБЫЧНЫМ ассетом: инвариант требует, чтобы
+     *  `screenshotId` нашёлся среди `assets`, а упаковка пишет ассет по
+     *  его собственному `path`. Отдельного механизма не нужно. */
+    const shotId = `shot-${fixed.screen.id}`
+    assets.push({
+      id: shotId, mimeType: 'image/png',
+      width: fixed.screen.width, height: fixed.screen.height,
+      path: `screenshots/${fixed.screen.id}.png`,
+    })
+    bytes[shotId] = base64ToBytes(item.base64)
+
+    screens.push({ ...fixed.screen, screenshotId: shotId })
     report.push(...fixed.report)
   }
 
@@ -166,19 +244,108 @@ export const captureBundle = async (tabId: number): Promise<{
       capturedAt: new Date().toISOString(),
       url, title,
       userAgent: navigator.userAgent,
-      screens, assets: resolved.assets,
-      fonts: dedupeFonts(captured.flatMap((item) => item.fonts)),
+      screens, assets,
+      fonts: dedupeFonts(captured.flatMap((item) => item.screen.fonts)),
       tokens: { variables: [], textStyles: [], paintStyles: [] },
       report,
     },
-    bytes: resolved.bytes,
-    assets: resolved.assets,
+    bytes,
+    assets,
     report,
   }
 }
 
 /** Поверхность для тестов. Воркер MV3 не имеет экспорта наружу, и
  *  вызвать его функции иначе нечем. */
-;(self as unknown as { h2d: unknown }).h2d = {
-  captureAt, captureAll, captureBundle, BREAKPOINTS,
+/** Пакует бандл в файл `.h2d`.
+ *
+ *  Байты отдаются массивом чисел: границу `worker.evaluate` переживает
+ *  только то, что сериализуется как JSON, — `Uint8Array` приехал бы
+ *  пустым. Та же причина, по которой в плане 4 байты ездили base64. */
+/** Имя файла: домен и время съёмки.
+ *
+ *  Домен, а не заголовок страницы: заголовок бывает пустым, длинным и
+ *  с символами, которых в имени файла быть не может. */
+export const fileNameFor = (bundle: Bundle): string => {
+  const host = (() => {
+    try { return new URL(bundle.url).hostname } catch { return 'page' }
+  })()
+  const stamp = bundle.capturedAt.slice(0, 19).replace(/[:T]/g, '-')
+  return `${host === '' ? 'page' : host}-${stamp}.h2d`
 }
+
+export const captureToFile = async (
+  tabId: number,
+): Promise<{ zip: number[]; name: string }> => {
+  const { bundle, bytes } = await captureBundle(tabId)
+  const zip = await packBundle(bundle, { assets: bytes })
+  return { zip: Array.from(zip), name: fileNameFor(bundle) }
+}
+
+/** Отдаёт УЖЕ собранный файл пользователю.
+ *
+ *  Принимает готовый архив, а не идентификатор вкладки. Первая
+ *  редакция снимала страницу сама, и обработчик команды получался с
+ *  двойным захватом: сначала `captureBundle` ради отчёта, потом
+ *  `downloadCapture` ещё раз ради файла. Пять размеров снимались
+ *  дважды, а во второй раз узлы получали новые идентификаторы, то есть
+ *  отчёт в окне ссылался на узлы, которых в скачанном файле нет.
+ *
+ *  `data:`-URL, а не `URL.createObjectURL`: в MV3-воркере его нет. */
+export const downloadCapture = async (
+  zip: readonly number[],
+  name: string,
+): Promise<string> => {
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < zip.length; i += CHUNK) {
+    binary += String.fromCharCode(...zip.slice(i, i + CHUNK))
+  }
+  await chrome.downloads.download({
+    url: `data:application/zip;base64,${btoa(binary)}`,
+    filename: name,
+    saveAs: false,
+  })
+  return name
+}
+
+;(self as unknown as { h2d: unknown }).h2d = {
+  captureAt, captureAll, captureBundle, captureShot, captureToFile,
+  downloadCapture, BREAKPOINTS,
+}
+
+/** Приём команды из окна расширения.
+ *
+ *  Работа идёт ЗДЕСЬ, а не в окне: воркер переживает закрытие окна, а
+ *  съёмка пяти размеров занимает секунды. Делать её в окне значило бы
+ *  терять захват от случайного клика мимо.
+ *
+ *  Отказ уходит обратно ПОЛНЫМ текстом. Свернуть его в «ошибка»
+ *  значило бы выбросить единственное, что здесь есть полезного: у
+ *  сообщений распаковки и валидатора написано, что делать. */
+chrome.runtime.onMessage.addListener((message: { kind?: string }) => {
+  if (message.kind !== 'capture') return
+  void (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.id === undefined) throw new Error('Активная вкладка не найдена.')
+      /** Захват РОВНО ОДИН. Отчёт и файл берутся из одного и того же
+       *  бандла, иначе окно показывало бы ссылки на узлы, которых в
+       *  скачанном файле нет. */
+      const { bundle, bytes } = await captureBundle(tab.id)
+      const zip = await packBundle(bundle, { assets: bytes })
+      const name = await downloadCapture(Array.from(zip), fileNameFor(bundle))
+      await chrome.runtime.sendMessage({
+        kind: 'done', file: name,
+        report: bundle.report.map((entry) => ({
+          level: entry.level, code: entry.code, message: entry.message,
+        })),
+      })
+    } catch (error) {
+      await chrome.runtime.sendMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : String(error),
+      })
+    }
+  })()
+})
