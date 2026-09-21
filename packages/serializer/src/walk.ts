@@ -13,8 +13,9 @@ import { parseLinearGradient } from './css/gradient.js'
 import { hasMixedBorderColors, hasNonSolidStroke, readStroke } from './css/stroke.js'
 import { parseBoxShadow } from './css/shadow.js'
 import {
-  appliesTransform, decomposeMatrix, hasSkew, parseMatrix, readOrigin,
-  untransformedOrigin, untransformedSize,
+  appliesTransform, decomposeMatrix, hasSkew, IDENTITY_MATRIX, invertMatrix,
+  localOffset, matrixAboutOrigin, multiplyMatrix, originUnderMatrix,
+  parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
 import { isReversed, readLayout } from './layout.js'
@@ -75,6 +76,21 @@ type WalkContext = {
    *  `isolation: isolate`, `opacity < 1`, фильтр, маска и собственный
    *  режим наложения — изолируют. */
   insideIsolation: boolean
+  /** Произведение матриц всех трансформированных предков. Ведётся сверху
+   *  вниз: снизу его не восстановить, потому что `getBoundingClientRect()`
+   *  отдаёт результат их применения, но не сами матрицы. */
+  ancestorMatrix: Matrix
+  /** Обратная к `ancestorMatrix`. Ведётся рядом, а не считается на каждом
+   *  узле: она нужна каждому ребёнку, а меняется только там, где у предка
+   *  есть собственная трансформа — то есть почти нигде.
+   *
+   *  `null` означает вырожденную цепочку (`scale(0)` где-то выше):
+   *  положение потомков в такой системе не восстановимо, и подставлять
+   *  единичную нельзя — это выдало бы неверный ответ за верный. */
+  ancestorInverse: Matrix | null
+  /** Экранное положение локального нуля родителя ПОСЛЕ его собственной
+   *  трансформы. Начало системы координат, в которой выражены дети. */
+  parentOrigin: { x: number; y: number }
 }
 
 /** Элементы, которые не рисуются и не должны попадать в макет. */
@@ -379,23 +395,71 @@ const buildNode = (
   const id = ctx.allocId()
   reportGaps(el, cs, ctx.sink, id)
 
-  const matrix = parseMatrix(cs.transform)
+  const ownMatrixRaw = parseMatrix(cs.transform)
   const rawRect = el.getBoundingClientRect()
 
-  let transform: Transform | null = null
-  let box = { x: rawRect.left, y: rawRect.top, w: rawRect.width, h: rawRect.height }
+  /** Читается ли НЕтрансформированный бокс из вычисленного стиля. Тот же
+   *  признак отвечает, применил ли браузер объявленную трансформу: у
+   *  незамещаемого строчного элемента computed `width` равен `auto`, и
+   *  трансформа к нему не применяется — см. `appliesTransform`. */
+  const boxReadable = appliesTransform(cs)
+  const usable = ownMatrixRaw !== null && !hasSkew(ownMatrixRaw) && boxReadable
 
-  if (matrix !== null && !hasSkew(matrix) && appliesTransform(cs)) {
-    const origin = readOrigin(cs)
-    const size = untransformedSize(cs)
-    const corner = untransformedOrigin(el, matrix, size, origin)
-    transform = { ...decomposeMatrix(matrix), originX: origin.x, originY: origin.y }
-    /** rect становится НЕтрансформированным боксом — так требует контракт.
-     *  Иначе поля противоречат друг другу: рендерер применил бы трансформу
-     *  к габариту уже трансформированного элемента и получил двойное
-     *  преобразование. */
-    box = { x: corner.x, y: corner.y, w: size.w, h: size.h }
-  }
+  const origin = readOrigin(cs)
+  /** Собственная матрица, приведённая к форме вокруг нуля. Единичная,
+   *  когда трансформы нет ИЛИ она непереносима (сдвиг, трёхмерная,
+   *  неприменённая): в этих случаях она отсутствует и в поле `transform`,
+   *  и рендерер её не применит — значит и здесь её быть не должно. */
+  const ownMatrix = usable && ownMatrixRaw !== null
+    ? matrixAboutOrigin(ownMatrixRaw, origin)
+    : IDENTITY_MATRIX
+
+  /** Размер НЕтрансформированного бокса. `untransformedSize` годится
+   *  только когда бокс читается: на строчном элементе `cs.width` равен
+   *  `auto`, и безусловный вызов схлопнул бы каждый `<span>` в точку — он
+   *  исчез бы из рендера молча. Там, где бокс не читается, трансформа к
+   *  элементу и не применена, поэтому габарит `getBoundingClientRect()` и
+   *  есть нетрансформированный размер. */
+  const size = boxReadable
+    ? untransformedSize(cs)
+    : { w: rawRect.width, h: rawRect.height }
+
+  /** Полная цепочка: сначала собственная матрица узла, затем матрицы
+   *  предков. Единичную собственную матрицу пропускаем по ссылке — это
+   *  подавляющее большинство узлов, а произведение с единичной побитово
+   *  равно исходной матрице, так что сокращение точное, а не приближённое. */
+  const ownIsIdentity = ownMatrix === IDENTITY_MATRIX
+  const total = ownIsIdentity
+    ? ctx.ancestorMatrix
+    : multiplyMatrix(ctx.ancestorMatrix, ownMatrix)
+  const totalInverse = ownIsIdentity ? ctx.ancestorInverse : invertMatrix(total)
+
+  const screenOrigin = originUnderMatrix(el, total, size)
+
+  /** Положение выражается относительно родителя — в ЕГО осях, а не в
+   *  экранных. Разность экранных нулей под повёрнутым предком повёрнута
+   *  вместе с ним, поэтому её приходится вернуть в оси родителя обратной
+   *  матрицей; собственная трансформа узла из результата вычитается,
+   *  потому что уезжает отдельным полем. Оба шага живут в `localOffset`.
+   *
+   *  Вырожденная цепочка предков (`scale(0)` выше по дереву) схлопывает
+   *  всё поддерево в точку. Нулевое смещение — честный ответ для этого
+   *  случая, а не заглушка: именно так это и выглядит. На практике
+   *  недостижимо, потому что такой предок не проходит `isRendered`. */
+  const local = ctx.ancestorInverse === null
+    ? { x: 0, y: 0 }
+    : localOffset({
+        screenOrigin,
+        parentOrigin: ctx.parentOrigin,
+        ancestorInverse: ctx.ancestorInverse,
+        ownMatrix,
+      })
+
+  const box = { x: local.x, y: local.y, w: size.w, h: size.h }
+
+  const transform: Transform | null = usable && ownMatrixRaw !== null
+    ? { ...decomposeMatrix(ownMatrixRaw), originX: origin.x, originY: origin.y }
+    : null
 
   const children: IrNode[] = []
   const childProbes: LayoutProbe[] = []
@@ -415,19 +479,19 @@ const buildNode = (
   if (Number.parseFloat(cs.opacity) < 1) ownEffects.push('opacity')
 
   const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
-  /** Производный контекст создаётся только когда узел что-то добавляет:
-   *  копия на каждый узел дерева из десятков тысяч элементов — лишняя
-   *  работа без выигрыша. */
-  const needsChildCtx = ownEffects.length > 0 || isolates
-  const childCtx: WalkContext = needsChildCtx
-    ? {
-        ...ctx,
-        groupEffects: ownEffects.length > 0
-          ? [...new Set([...ctx.groupEffects, ...ownEffects])]
-          : ctx.groupEffects,
-        insideIsolation: ctx.insideIsolation || isolates,
-      }
-    : ctx
+  /** Контекст создаётся для КАЖДОГО узла, а не условно, как было до
+   *  локальных координат: `parentOrigin` меняется всегда — это начало
+   *  системы координат детей. Прежняя экономия на копии стала неверной. */
+  const childCtx: WalkContext = {
+    ...ctx,
+    ancestorMatrix: total,
+    ancestorInverse: totalInverse,
+    parentOrigin: screenOrigin,
+    groupEffects: ownEffects.length > 0
+      ? [...new Set([...ctx.groupEffects, ...ownEffects])]
+      : ctx.groupEffects,
+    insideIsolation: ctx.insideIsolation || isolates,
+  }
   for (const child of ordered) {
     const built = buildNode(child, cs, childCtx)
     if (built === null) continue
@@ -439,12 +503,11 @@ const buildNode = (
     id,
     sourceTag: el.tagName.toLowerCase(),
     name: el.tagName.toLowerCase(),
-    rect: {
-      x: box.x + ctx.scrollX,
-      y: box.y + ctx.scrollY,
-      w: box.w,
-      h: box.h,
-    },
+    /** Координаты родителя. Прокрутка сюда больше не прибавляется: она
+     *  входит в положение КОРНЯ и наследуется вложенностью, а прибавленная
+     *  на каждом уровне сложилась бы столько раз, какова глубина. Корню её
+     *  добавляет `walkDocument` после обхода. */
+    rect: box,
     // Заполняется вторым проходом: требует готового дерева.
     paintOrder: -1,
     isStackingContext: false,
@@ -606,10 +669,24 @@ export const walkDocument = (
     allocId,
     groupEffects: [],
     insideIsolation: false,
+    ancestorMatrix: IDENTITY_MATRIX,
+    ancestorInverse: IDENTITY_MATRIX,
+    parentOrigin: { x: 0, y: 0 },
   }
 
   const built = buildNode(document.body, null, ctx)
   if (built === null) return null
+
+  /** Корень — единственный узел, чей `rect` абсолютен, и прокрутку несёт
+   *  он один. Все остальные выражены относительно родителя, поэтому
+   *  получают её по наследству через вложенность. Складывать её на каждом
+   *  уровне, как делал прежний обходчик, теперь означало бы умножить
+   *  смещение на глубину дерева. */
+  built.node.rect = {
+    ...built.node.rect,
+    x: built.node.rect.x + window.scrollX,
+    y: built.node.rect.y + window.scrollY,
+  }
 
   /** Фон страницы часто объявлен на `<html>`, а обход начинается с `<body>`.
    *  Браузер красит им весь холст, поэтому без переноса тёмная страница
