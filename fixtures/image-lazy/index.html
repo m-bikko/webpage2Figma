@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>image-lazy</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:24px}
+  .spacer{height:2400px;background:linear-gradient(#f8fafc,#e2e8f0)}
+  img{width:120px;height:90px;background:#d4d4d8;object-fit:contain;display:block}
+</style></head>
+<body>
+  <!-- Картинка НИЖЕ СГИБА с loading="lazy". Браузер не начинает её
+       грузить, пока до неё не доскроллят, поэтому захват без прокрутки
+       видит незагруженный <img> и ставит заглушку.
+
+       Это самая широкая потеря из оставшихся: на восьми живых
+       страницах 73 записи "источник не загружен", семь страниц из
+       восьми. На длинной странице так теряется большинство картинок —
+       именно те, ради которых макет и снимают. -->
+  <div class="spacer"></div>
+  <img src="/image-fit/asset.png" loading="lazy" alt="ленивая">
+</body></html>

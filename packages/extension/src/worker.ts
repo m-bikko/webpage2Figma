@@ -2,7 +2,8 @@ import { IR_VERSION } from '@w2f/ir/version'
 import { reconcileAssets } from '@w2f/ir'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 import {
-  BREAKPOINTS, captureFullPage, selectedBreakpoints, waitForImages, withViewport,
+  BREAKPOINTS, captureFullPage, primeLazyContent, selectedBreakpoints,
+  waitForImages, withViewport,
   type Breakpoint,
 } from './breakpoints.js'
 import { encodeBundleText, packBundle } from '@w2f/bundle'
@@ -83,7 +84,14 @@ const captureInPage = async (
 ): Promise<CaptureResult> => {
   /** ПОСЛЕ эмуляции, а не до: смена размера сама вызывает загрузку
    *  новых картинок — медиазапросы, `srcset`, ленивые изображения,
-   *  попавшие в видимую область. */
+   *  попавшие в видимую область.
+   *
+   *  Прокрутка идёт ПЕРЕД ожиданием, а не после: ленивая картинка не
+   *  числится загружающейся, пока до неё не доскроллили, и ожидание
+   *  без прохода просто истекло бы впустую. Порядок здесь и есть вся
+   *  суть — сначала заставить браузер начать загрузку, потом ждать
+   *  её. */
+  await primeLazyContent(tabId)
   await waitForImages(tabId)
   const captured = await chrome.scripting.executeScript({
     target: { tabId },

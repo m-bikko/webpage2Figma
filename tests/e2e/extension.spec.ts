@@ -371,3 +371,48 @@ test('текст для буфера — тот же самый архив, чт
     await context.close()
   }
 })
+
+/** Ленивые картинки ниже сгиба.
+ *
+ *  Браузер не начинает грузить `loading="lazy"` изображение, пока до
+ *  него не доскроллят. Захват без прокрутки видит незагруженный
+ *  `<img>` и честно ставит заглушку — честно, но бесполезно: на
+ *  длинной странице так теряется большинство картинок, ровно тех,
+ *  ради которых макет и снимают.
+ *
+ *  Измерено на живых страницах: 73 записи «источник не загружен», семь
+ *  страниц из восьми. Причина не CORS — воркер его обходит, — а
+ *  именно то, что загрузка не начиналась.
+ *
+ *  Утверждается конечный результат, а не механика: узел обязан быть
+ *  картинкой. Проверять «была ли прокрутка» значило бы проверять
+ *  реализацию, а не то, ради чего она существует. */
+test('ленивая картинка ниже сгиба доезжает картинкой, а не заглушкой', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('image-lazy'))
+    const tabId = await tabIdOf(worker, '4317')
+
+    const captured = await worker.evaluate(
+      (tabId) => globalThis.w2f.captureAt(
+        tabId, { name: 'Desktop', width: 1440, height: 900 },
+      ), tabId,
+    )
+
+    const kinds: string[] = []
+    const visit = (node: IrNode): void => {
+      kinds.push(node.kind)
+      for (const child of node.children) visit(child)
+    }
+    visit(captured.screen.root)
+
+    expect(
+      kinds.filter((kind) => kind === 'placeholder'),
+      'заглушек быть не должно: картинка обязана догрузиться',
+    ).toHaveLength(0)
+    expect(kinds).toContain('image')
+  } finally {
+    await context.close()
+  }
+})

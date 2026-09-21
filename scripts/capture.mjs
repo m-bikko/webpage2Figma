@@ -136,6 +136,28 @@ try {
   await page.goto(url, { waitUntil: 'load' })
   await page.evaluate(() => document.fonts.ready)
 
+  /** Проход прокруткой — то же, что делает расширение перед съёмкой.
+   *
+   *  Без него отладочный снимок врёт в ту сторону, которая тревожит
+   *  больше всего: ленивые картинки ниже сгиба не начинают грузиться,
+   *  становятся заглушками, и отчёт показывает потерю, которой у
+   *  продукта нет. Именно так этот скрипт насчитал пятнадцать
+   *  «недоступных» картинок на живой странице — все пятнадцать были
+   *  его собственным артефактом. */
+  await page.evaluate(async () => {
+    const startY = window.scrollY
+    const step = Math.max(200, window.innerHeight)
+    const full = () => Math.max(
+      document.documentElement.scrollHeight, document.body.scrollHeight,
+    )
+    for (let y = 0, steps = 0; y < full() && steps < 40; y += step, steps += 1) {
+      window.scrollTo(0, y)
+      await new Promise((done) => { setTimeout(done, 60) })
+    }
+    window.scrollTo(0, startY)
+    await new Promise((done) => { setTimeout(done, 60) })
+  })
+
   await page.addScriptTag({ content: serializer })
   await page.evaluate(() => { window.__w2f.beginCapture() })
   const captured = await page.evaluate(() => window.__w2f.captureScreen('s0', 'Capture'))
