@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { figmaRotation, sizeUnderTransform, scaleSubtree } from '../src/build/geometry.js'
+import {
+  figmaRotation, originOffset, scaleSubtree, sizeUnderTransform,
+} from '../src/build/geometry.js'
 import { frameNode } from '@h2d/ir/test-fixtures'
 import type { Transform } from '@h2d/ir'
 
@@ -109,5 +111,89 @@ describe('scaleSubtree', () => {
     const child = frameNode({ id: 'c', rect: { x: 10, y: 10, w: 10, h: 10 } })
     const [scaled] = scaleSubtree([child], 2, 5)
     expect(scaled?.rect).toEqual({ x: 20, y: 50, w: 20, h: 50 })
+  })
+})
+
+describe('originOffset: CSS преобразует вокруг центра, Figma — вокруг угла', () => {
+  /** Документация Figma: при установке `rotation` меняются только
+   *  m00/m01/m10/m11, а сдвиг m02/m12 остаётся. Значит неподвижна
+   *  локальная точка (0,0) — левый верхний угол. CSS же по умолчанию
+   *  вращает вокруг ЦЕНТРА (`transform-origin: 50% 50%`).
+   *
+   *  Без поправки повёрнутый узел приедет не на своё место, и заметить
+   *  это на глаз тем труднее, чем меньше угол. */
+  it('без поворота поправки нет', () => {
+    expect(originOffset(null)).toEqual({ dx: 0, dy: 0 })
+  })
+
+  /** Поворот на 180° вокруг центра переводит левый верхний угол в
+   *  правый нижний. Чтобы Figma, вращая вокруг угла, дала ту же
+   *  картину, узел надо сдвинуть на всю ширину и высоту.
+   *  Значение выведено геометрически, а не прогоном кода. */
+  it('поворот на 180 вокруг центра сдвигает на размер узла', () => {
+    const out = originOffset(
+      { angle: Math.PI, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0,
+        originX: 50, originY: 25 })
+    expect(out.dx).toBeCloseTo(100, 6)
+    expect(out.dy).toBeCloseTo(50, 6)
+  })
+
+  /** Поворот вокруг САМОГО угла поправки не требует: точка вращения
+   *  уже совпадает с фигмовской. Случай отличает настоящую формулу от
+   *  «сдвинуть на половину размера всегда». */
+  it('поворот вокруг левого верхнего угла поправки не требует', () => {
+    const out = originOffset(
+      { angle: 0.4, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0,
+        originX: 0, originY: 0 })
+    expect(out.dx).toBeCloseTo(0, 9)
+    expect(out.dy).toBeCloseTo(0, 9)
+  })
+
+  /** Поворот на 90° вокруг центра неквадратного узла: сдвиг по осям
+   *  РАЗНЫЙ. Квадратный узел эту ошибку скрыл бы — ровно тот случай,
+   *  что описан в вики как «проверка выбрала вход, на котором ошибка
+   *  невидима». */
+  it('на неквадратном узле сдвиги по осям различаются', () => {
+    const out = originOffset(
+      { angle: Math.PI / 2, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0,
+        originX: 50, originY: 25 })
+    expect(out.dx).toBeCloseTo(75, 6)
+    expect(out.dy).toBeCloseTo(-25, 6)
+  })
+})
+
+describe('originOffset: масштаб и перенос', () => {
+  /** Чистый масштаб вокруг центра ТОЖЕ двигает левый верхний угол:
+   *  блок растёт во все стороны, а не только вправо и вниз. Первая
+   *  редакция поправки этого не учитывала, и круговой обход показал
+   *  6000 расходящихся пикселей на блоке `scale(1.5)`. */
+  it('масштаб вокруг центра сдвигает угол', () => {
+    const out = originOffset({ angle: 0, scaleX: 1.5, scaleY: 1.5,
+      translateX: 0, translateY: 0, originX: 60, originY: 30 })
+    expect(out.dx).toBeCloseTo(-30, 9)
+    expect(out.dy).toBeCloseTo(-15, 9)
+  })
+
+  /** Перенос в `rect` не входит вовсе: референс-рендерер применяет его
+   *  отдельной строкой трансформы. Забыть его — сдвинуть узел ровно на
+   *  величину переноса. */
+  it('перенос прибавляется целиком', () => {
+    const out = originOffset({ angle: 0, scaleX: 1, scaleY: 1,
+      translateX: 20, translateY: 10, originX: 60, originY: 30 })
+    expect(out.dx).toBeCloseTo(20, 9)
+    expect(out.dy).toBeCloseTo(10, 9)
+  })
+
+  /** Поворот вместе с НЕравномерным масштабом: порядок множителей
+   *  виден только здесь. При равномерном масштабе поворот и масштаб
+   *  коммутируют, и перестановка невидима — тот же довод, по которому
+   *  неравномерный блок есть в самой фикстуре. */
+  it('поворот применяется к масштабу, а не наоборот', () => {
+    const out = originOffset({ angle: Math.PI / 2, scaleX: 2, scaleY: 0.5,
+      translateX: 0, translateY: 0, originX: 60, originY: 30 })
+    // M·o = (cos·sx·ox − sin·sy·oy, sin·sx·ox + cos·sy·oy)
+    //     = (0·2·60 − 1·0.5·30, 1·2·60 + 0·0.5·30) = (−15, 120)
+    expect(out.dx).toBeCloseTo(60 - -15, 9)
+    expect(out.dy).toBeCloseTo(30 - 120, 9)
   })
 })

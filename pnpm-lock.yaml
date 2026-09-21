@@ -18,6 +18,9 @@ importers:
       '@h2d/ir':
         specifier: workspace:*
         version: link:packages/ir
+      '@h2d/plugin':
+        specifier: workspace:*
+        version: link:packages/plugin
       '@h2d/reference-renderer':
         specifier: workspace:*
         version: link:packages/reference-renderer
@@ -63,6 +66,15 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  packages/plugin:
+    dependencies:
+      '@h2d/bundle':
+        specifier: workspace:*
+        version: link:../bundle
+      '@h2d/ir':
+        specifier: workspace:*
+        version: link:../ir
 
   packages/reference-renderer:
     dependencies:

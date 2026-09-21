@@ -1,4 +1,4 @@
-import type { Corner, DiagnosticCode, Rgba8 } from '@h2d/ir'
+import type { Corner, DiagnosticCode, Rgba8, Sides } from '@h2d/ir'
 
 /** Описание сцены Figma.
  *
@@ -41,7 +41,12 @@ export type ScenePaint =
 export type SceneStroke = {
   color: FigmaColor
   opacity: number
-  weight: number
+  /** Толщина ПО СТОРОНАМ, а не одним числом. Figma это умеет
+   *  (`IndividualStrokesMixin`), в отличие от SVG, где одиночная
+   *  обводка имеет одну ширину на весь путь и референс-рендереру
+   *  приходится рисовать кольцо. Сводить к максимуму здесь было бы
+   *  потерей, а не вынужденным упрощением. */
+  weight: Sides
   /** Пустой массив — сплошная линия. Шаги согласованы с тем, что
    *  рисует референс-рендерер: иначе круговой обход поймает
    *  расхождение, и будет прав. */

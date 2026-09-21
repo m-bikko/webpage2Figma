@@ -291,13 +291,27 @@ const imageTag = (
   const w = image.width * placement.scaleX
   const h = image.height * placement.scaleY
 
-  /** Обрезка по боксу узла обязательна: при `cover` нарисованный размер
-   *  БОЛЬШЕ бокса, и без неё картинка залезла бы на соседей. */
+  /** Обрезка ставится ТОЛЬКО когда есть что обрезать.
+   *
+   *  При `cover` нарисованный размер больше бокса, и без обрезки
+   *  картинка залезла бы на соседей. Но когда она помещается целиком,
+   *  клип не нужен — а не бесплатен: если его границы совпадают с
+   *  границами самой картинки, он срезает сглаженный край. Проявилось,
+   *  когда изображение стало ОТДЕЛЬНЫМ узлом (сцена плагина): его
+   *  `rect` равен нарисованному прямоугольнику, клип ложился ровно по
+   *  краю и давал 12 одиночных расходящихся пикселей там, где на пути
+   *  с заливкой их было ноль. */
+  const overflows =
+    placement.offsetX < 0 || placement.offsetY < 0 ||
+    placement.offsetX + w > rect.w || placement.offsetY + h > rect.h
+
   const clipId = `clip-${nodeId}-${ref.assetId}`
-  ctx.defs.push(
-    `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" ` +
-    `width="${rect.w}" height="${rect.h}"/></clipPath>`,
-  )
+  if (overflows) {
+    ctx.defs.push(
+      `<clipPath id="${clipId}"><rect x="${rect.x}" y="${rect.y}" ` +
+      `width="${rect.w}" height="${rect.h}"/></clipPath>`,
+    )
+  }
 
   if (placement.mode === 'tile') {
     const patternId = `tile-${nodeId}-${ref.assetId}`
@@ -314,8 +328,9 @@ const imageTag = (
     )
   }
 
+  const open = overflows ? `<g clip-path="url(#${clipId})">` : '<g>'
   return (
-    `<g clip-path="url(#${clipId})">` +
+    open +
     `<image href="${image.dataUri}" ` +
     `x="${rect.x + placement.offsetX}" y="${rect.y + placement.offsetY}" ` +
     `width="${w}" height="${h}" ` +

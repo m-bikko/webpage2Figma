@@ -137,3 +137,44 @@ export const scaleSubtree = (
   }
   return { ...node, ...geometry }
 })
+
+/** Поправка положения узла с трансформой.
+ *
+ *  Нужна потому, что CSS и Figma вращают и масштабируют ВОКРУГ РАЗНЫХ
+ *  ТОЧЕК. CSS по умолчанию берёт центр (`transform-origin: 50% 50%`);
+ *  Figma оставляет неподвижной локальную точку (0,0) — левый верхний
+ *  угол, — потому что установка `rotation` меняет только m00/m01/m10/m11,
+ *  а сдвиг m02/m12 сохраняется.
+ *
+ *  Первая редакция учитывала ТОЛЬКО поворот и называлась
+ *  `rotationOffset`. Круговой обход показал, что этого мало: расходились
+ *  все четыре блока фикстуры `transformed`, включая чистый `scale(1.5)`
+ *  и чистый `translate`. Масштаб вокруг центра тоже двигает угол, а
+ *  перенос в `rect` вообще не входит — референс-рендерер применяет его
+ *  отдельно, строкой `translate(ox,oy) translate(tx,ty) rotate scale
+ *  translate(-ox,-oy)`.
+ *
+ *  Общая формула. В локальной системе узла угол — это (0,0), точка
+ *  преобразования — `o`. Полное преобразование CSS переводит угол в
+ *      t + o + M·(−o),
+ *  где `M = R·S` — поворот, применённый к масштабу, в порядке CSS.
+ *  Figma оставит угол на месте, поэтому узел сдвигается ровно на эту
+ *  величину.
+ *
+ *      M = [[cosθ·sx, −sinθ·sy],
+ *           [sinθ·sx,  cosθ·sy]]
+ */
+export const originOffset = (
+  transform: Transform | null,
+): { dx: number; dy: number } => {
+  if (transform === null) return { dx: 0, dy: 0 }
+  const { angle, scaleX, scaleY, originX, originY, translateX, translateY } = transform
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const mx = cos * scaleX * originX - sin * scaleY * originY
+  const my = sin * scaleX * originX + cos * scaleY * originY
+  return {
+    dx: translateX + originX - mx,
+    dy: translateY + originY - my,
+  }
+}

@@ -78,6 +78,19 @@ export const imageNodeFor = (
         'Плитка перенесена режимом TILE. Поведение scalingFactor при ' +
         'неквадратной плитке не документировано — требует сверки в Figma.',
     })
+    /** У TILE в Figma нет смещения: `background-position` для
+     *  повторяющегося фона теряется. Молчать нельзя — сетка плитки
+     *  сдвинется, и выглядеть это будет как своя, тоже правдоподобная
+     *  раскладка. */
+    if (placement.offsetX !== 0 || placement.offsetY !== 0) {
+      needsVerification.push({
+        code: DIAGNOSTIC_CODES.deferredRepeatMode,
+        nodeId,
+        message:
+          `Смещение плитки (${placement.offsetX}, ${placement.offsetY}) ` +
+          'потеряно: у режима TILE в Figma смещения нет.',
+      })
+    }
     return {
       kind: 'frame',
       clipsContent: true,
@@ -119,6 +132,24 @@ export const imageNodeFor = (
       }],
     },
   }
+
+  /** Обрезающая рамка добавляется ТОЛЬКО когда есть что обрезать.
+   *
+   *  Раньше она ставилась всегда, и на `contain`, `auto` и заданном
+   *  размере это добавляло границу, которой в браузере нет: край
+   *  ложился на дробный пиксель и давал одиночные расхождения — 3
+   *  пикселя на 768 и 12 на 390. Лишний клип не бесплатен, и ставить
+   *  его «на всякий случай» значит платить артефактами за случай,
+   *  которого нет.
+   *
+   *  Нужна ли обрезка — вопрос геометрии, а не режима: сравниваются
+   *  нарисованный прямоугольник и бокс. */
+  const overflows =
+    placement.offsetX < 0 || placement.offsetY < 0 ||
+    placement.offsetX + inner.base.width > rect.w ||
+    placement.offsetY + inner.base.height > rect.h
+
+  if (!overflows) return { ...inner, needsVerification }
 
   return {
     kind: 'frame',

@@ -4,18 +4,33 @@
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#fff;padding:40px}
-  /* Содержимое ВНУТРИ трансформированного родителя. Этот случай
-     переносится неверно: rect потомка снят как габарит уже повёрнутого
-     элемента, потому что getBoundingClientRect включает трансформы
-     предков. Фикстура в pixel-diff НЕ входит — рендер заведомо разойдётся.
-     Её задача — доказать, что расхождение объяснено диагностикой, а не
-     молчит. */
+  /* Содержимое ВНУТРИ трансформированного родителя.
+     Комментарий устарел и исправлен: с плана 3 фикстура ВХОДИТ в
+     pixel-diff и совпадает с браузером пиксель в пиксель. Раньше
+     случай переносился неверно — rect потомка снимался как габарит уже
+     повёрнутого элемента, — и задачей фикстуры было доказать, что
+     расхождение объяснено диагностикой, а не молчит. */
+  .row{display:flex;gap:60px}
   .rotated{width:200px;height:120px;background:#e2e8f0;transform:rotate(20deg)}
+  /* МАСШТАБИРОВАННЫЙ родитель с детьми. Случай добавлен после того, как
+     слом «не вписывать масштаб в поддерево» не уронил ни одной проверки:
+     ни одна фикстура не содержала scale() на узле С ДЕТЬМИ, и целая
+     ветка строителя плагина никем не проверялась. В CSS scale
+     масштабирует поддерево целиком, а resize в Figma детей не трогает —
+     отличить это можно только здесь.
+     Масштаб НЕравномерный: при равномерном перепутать оси невозможно. */
+  .scaled{width:120px;height:80px;background:#e2e8f0;
+    transform:scale(1.6,0.7);transform-origin:0 0}
   .child{width:60px;height:30px;margin:20px;background:#ef4444}
   .grandchild{width:20px;height:10px;background:#1d4ed8}
 </style></head>
 <body>
-  <div class="rotated">
-    <div class="child"><div class="grandchild"></div></div>
+  <div class="row">
+    <div class="rotated">
+      <div class="child"><div class="grandchild"></div></div>
+    </div>
+    <div class="scaled">
+      <div class="child"><div class="grandchild"></div></div>
+    </div>
   </div>
 </body></html>

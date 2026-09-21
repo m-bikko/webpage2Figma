@@ -8,6 +8,16 @@ const natural = { width: 64, height: 32 }
 const place = (o: Partial<ImagePlacement> = {}): ImagePlacement =>
   ({ mode: 'fit', offsetX: 0, offsetY: 0, scaleX: 1, scaleY: 1, ...o })
 
+/** Прямоугольник, несущий картинку, — сам узел или его ребёнок.
+ *
+ *  Хелпер существует потому, что вложенность НЕ является предметом
+ *  этих проверок: обрезающая рамка добавляется только при выходе за
+ *  бокс, и держаться за неё значило бы ронять тесты про размещение
+ *  всякий раз, когда меняется решение про обрезку. Само это решение
+ *  проверяется отдельно и явно. */
+const rectOf = (node: ReturnType<typeof imageNodeFor>) =>
+  node.kind === 'rect' ? node : node.base.children[0]
+
 describe('imageNodeFor: размещение сведено к геометрии', () => {
   /** Главное решение плана. Вместо того чтобы полагаться на режимы
    *  Figma, размещение выражается размерами и координатами вложенного
@@ -17,7 +27,7 @@ describe('imageNodeFor: размещение сведено к геометри�
    *  точно по нему, не обрезая и не добавляя полей. */
   it('прямоугольник картинки имеет пропорции источника', () => {
     const node = imageNodeFor('n1', rect, place({ scaleX: 1.875, scaleY: 1.875 }), 'a0', natural)
-    const inner = node.base.children[0]
+    const inner = rectOf(node)
     expect(inner).toBeDefined()
     if (inner === undefined) return
     expect(inner.base.width / inner.base.height)
@@ -26,14 +36,14 @@ describe('imageNodeFor: размещение сведено к геометри�
 
   it('размеры равны натуральным, умноженным на масштаб', () => {
     const node = imageNodeFor('n1', rect, place({ scaleX: 2, scaleY: 2 }), 'a0', natural)
-    expect(node.base.children[0]?.base.width).toBe(128)
-    expect(node.base.children[0]?.base.height).toBe(64)
+    expect(rectOf(node)?.base.width).toBe(128)
+    expect(rectOf(node)?.base.height).toBe(64)
   })
 
   it('смещение попадает в координаты прямоугольника', () => {
     const node = imageNodeFor('n1', rect, place({ offsetX: 10, offsetY: -4 }), 'a0', natural)
-    expect(node.base.children[0]?.base.x).toBe(10)
-    expect(node.base.children[0]?.base.y).toBe(-4)
+    expect(rectOf(node)?.base.x).toBe(10)
+    expect(rectOf(node)?.base.y).toBe(-4)
   })
 
   /** При `cover` нарисованный прямоугольник БОЛЬШЕ рамки и вылезает за
@@ -43,9 +53,17 @@ describe('imageNodeFor: размещение сведено к геометри�
     expect(node.kind === 'frame' && node.clipsContent).toBe(true)
   })
 
+  /** Обрезка ставится ТОЛЬКО когда есть что обрезать. Клип не
+   *  бесплатен: совпав границами с самой картинкой, он срезает
+   *  сглаженный край — измерено, 12 одиночных расходящихся пикселей. */
+  it('без выхода за бокс обрезающей рамки нет', () => {
+    const node = imageNodeFor('n1', rect, place({ scaleX: 1, scaleY: 1 }), 'a0', natural)
+    expect(node.kind).toBe('rect')
+  })
+
   it('равномерный масштаб едет режимом FILL, без догадок', () => {
     const node = imageNodeFor('n1', rect, place({ scaleX: 2, scaleY: 2 }), 'a0', natural)
-    const fill = node.base.children[0]?.base.fills[0]
+    const fill = rectOf(node)?.base.fills[0]
     expect(fill?.type).toBe('IMAGE')
     expect(fill?.type === 'IMAGE' && fill.scaleMode).toBe('FILL')
   })
@@ -61,7 +79,7 @@ describe('imageNodeFor: неравномерное растяжение', () => 
    *  названа, а не спрятана. */
   it('неравные масштабы едут режимом CROP', () => {
     const node = imageNodeFor('n1', rect, place({ scaleX: 1.875, scaleY: 2.8125 }), 'a0', natural)
-    const fill = node.base.children[0]?.base.fills[0]
+    const fill = rectOf(node)?.base.fills[0]
     expect(fill?.type === 'IMAGE' && fill.scaleMode).toBe('CROP')
   })
 
