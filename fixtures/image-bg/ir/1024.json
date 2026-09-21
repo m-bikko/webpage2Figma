@@ -91,7 +91,7 @@
             },
             "align": "stretch",
             "justify": "start",
-            "wrap": false
+            "wrap": true
           },
           "selfLayout": {
             "positioning": "flow",
@@ -553,6 +553,79 @@
                   "style": "solid",
                   "align": "inside"
                 },
+                "corner": {
+                  "tl": 0,
+                  "tr": 0,
+                  "br": 0,
+                  "bl": 0
+                },
+                "shadows": [],
+                "opacity": 1,
+                "blend": "normal",
+                "blur": null,
+                "clip": false
+              },
+              "children": [],
+              "kind": "frame"
+            },
+            {
+              "id": "n8",
+              "sourceTag": "div",
+              "name": "div",
+              "rect": {
+                "x": 816,
+                "y": 0,
+                "w": 120,
+                "h": 90
+              },
+              "paintOrder": 8,
+              "isStackingContext": false,
+              "transform": null,
+              "layout": {
+                "mode": "none",
+                "gap": 0,
+                "padding": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "align": "start",
+                "justify": "start",
+                "wrap": false
+              },
+              "selfLayout": {
+                "positioning": "flow",
+                "align": null,
+                "grow": 0,
+                "shrink": 1
+              },
+              "style": {
+                "fills": [
+                  {
+                    "kind": "solid",
+                    "color": {
+                      "r": 212,
+                      "g": 212,
+                      "b": 216,
+                      "a": 1
+                    }
+                  },
+                  {
+                    "kind": "image",
+                    "ref": {
+                      "assetId": "a0",
+                      "placement": {
+                        "mode": "tile",
+                        "offsetX": 0,
+                        "offsetY": 0,
+                        "scaleX": 0.5,
+                        "scaleY": 0.5
+                      }
+                    }
+                  }
+                ],
+                "stroke": null,
                 "corner": {
                   "tl": 0,
                   "tr": 0,

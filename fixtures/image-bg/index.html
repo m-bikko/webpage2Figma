@@ -6,7 +6,12 @@
   body{background:#fff;padding:24px}
   /* Подложка непрозрачна: на белом незакрытое место неотличимо от фона,
      и `contain` было бы не отличить от `cover`. */
-  .row{display:flex;gap:16px}
+  /* Перенос, а не сжатие. Без него flex на узких ширинах ужимает
+     ячейки до ДРОБНЫХ размеров, швы плитки попадают на дробные
+     координаты и дают одиночные расхождения — про округление, а не
+     про семантику плитки, ради которой фикстура и существует.
+     Confound убран, а не покрыт порогом. */
+  .row{display:flex;gap:16px;flex-wrap:wrap}
   .cell{width:120px;height:90px;background-color:#d4d4d8;
     background-image:url(../image-fit/asset.png);background-repeat:no-repeat}
   .cover{background-size:cover}
@@ -14,6 +19,11 @@
   .auto{background-size:auto;background-position:0% 0%}
   .sized{background-size:96px auto;background-position:100% 100%}
   .tiled{background-size:auto;background-repeat:repeat}
+  /* МАСШТАБИРОВАННАЯ плитка. Замер в Figma подтвердил повтор при
+     scalingFactor 1, но документация молчит именно про масштаб на
+     неквадратной плитке — а источник здесь 64×32. Без этой ячейки
+     вопрос оставался бы наполовину открытым. */
+  .tiled-scaled{background-size:32px auto;background-repeat:repeat}
   /* background-origin по умолчанию padding-box: фон начинается ВНУТРИ
      рамки, а наш rect — это border box. Без рамки ветка пуста и ничего
      не проверяет, поэтому рамка здесь толстая и заметная. */
@@ -28,5 +38,6 @@
     <div class="cell sized"></div>
     <div class="cell tiled"></div>
     <div class="cell bordered"></div>
+    <div class="cell tiled-scaled"></div>
   </div>
 </body></html>
