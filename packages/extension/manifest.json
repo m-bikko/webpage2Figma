@@ -3,8 +3,32 @@
   "name": "html2design",
   "version": "0.1.0",
   "description": "Снимает открытую страницу в пяти брейкпоинтах и отдаёт файл .h2d для плагина Figma.",
-  "permissions": ["debugger", "scripting", "activeTab", "tabs", "downloads"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "dist/worker.js", "type": "module" },
-  "action": { "default_popup": "src/popup.html", "default_title": "html2design" }
+  "permissions": [
+    "debugger",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "downloads"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "dist/worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "html2design"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/serializer.global.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }
