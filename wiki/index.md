@@ -3,7 +3,7 @@ title: Индекс базы знаний
 type: concept
 tags: [index]
 created: 2026-09-19
-updated: 2026-09-20
+updated: 2026-09-21
 sources: []
 ---
 
@@ -20,13 +20,15 @@ sources: []
 - [[support-boundaries]] — что переносим, что объявляем неподдерживаемым
 - [[breakpoint-capture]] — как получаются пять размеров из одной открытой вкладки
 - [[paint-order]] — почему перенос z-порядка труднее всего остального
+- [[group-effects]] — CSS-эффекты, применяемые к узлу вместе с поддеревом, против плоского рендерера, который их применяет только к узлу
 
 ## Entities
 
 - [[ir-bundle]] — формат обмена между extension и плагином Figma
 - [[component-detection]] — слои B и C, как рождаются компоненты Figma
-- [[fixture-suite]] — 11 фикстур и 55 снапшотов IR в настоящем Chrome
+- [[fixture-suite]] — 17 фикстур и 85 снапшотов IR в настоящем Chrome
 - [[pixel-diff-gate]] — сравнение скриншота браузера с рендером IR, замыкание контура
+- [[gradients-and-transforms]] — геометрия `Gradient` и `Transform`: нормализованные концы отрезка, `atan2(h,w)`, нетрансформированный `rect`
 
 ## Sources
 

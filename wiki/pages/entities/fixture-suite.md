@@ -3,13 +3,13 @@ title: Фикстуры и снапшоты IR
 type: entity
 tags: [testing, playwright, fixtures, snapshots, chrome]
 created: 2026-09-20
-updated: 2026-09-20
+updated: 2026-09-21
 sources: [fixtures/, tests/e2e/, playwright.config.ts]
 ---
 
 # Фикстуры и снапшоты IR
 
-Уровень 2 из [[correctness-strategy]] в реализованном виде: 12 самодостаточных HTML-страниц, снятых настоящим Chrome через Playwright на пяти ширинах, с закоммиченными эталонами IR.
+Уровень 2 из [[correctness-strategy]] в реализованном виде: 17 самодостаточных HTML-страниц (11 из плана 1, 6 добавлены планом 2 — `gradient` выросла до пяти блоков, плюс `radial-gradient`, `transform-nested`, `blend`, `blend-isolated`, `blur`, `group-effects`), снятых настоящим Chrome через Playwright на пяти ширинах, с закоммиченными эталонами IR.
 
 ## Устройство
 
@@ -21,7 +21,7 @@ tests/e2e/fidelity.spec.ts      снапшоты + поведенческие т
 tests/e2e/diagnostics.spec.ts   обязательные коды диагностик
 ```
 
-Ширины: 1920, 1440, 1024, 768, 390. Итого 60 снапшотов.
+Ширины: 1920, 1440, 1024, 768, 390. Итого 85 снапшотов (17 фикстур × 5 ширин).
 
 ## Решения, которые не случайны
 
@@ -76,6 +76,8 @@ tests/e2e/diagnostics.spec.ts   обязательные коды диагнос
 - [[correctness-strategy]] — четыре уровня и правило «проверяй проверки»
 - [[ir-bundle]] — что именно лежит в снапшоте
 - [[breakpoint-capture]] — откуда пять ширин
-- [[paint-order]] — единственный незакрытый случай
+- [[paint-order]] — единственный незакрытый случай уровня 2 из плана 1
 - [[pixel-diff-gate]] — что нашёл в этих же фикстурах уровень 3
 - [[font-availability-detection]] — дефект, найденный первым же запуском
+- [[group-effects]] — почему `transform-nested`, `blend-isolated`, `group-effects` существуют, но не входят в pixel-diff
+- [[gradients-and-transforms]] — геометрия за фикстурами `gradient` и `transformed`
