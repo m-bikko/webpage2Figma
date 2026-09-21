@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>clip-hidden</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:16px/1.5 monospace;padding:16px}
+
+  /* ПРИЁМ ВИЗУАЛЬНОГО СКРЫТИЯ. Текст остаётся в документе для
+     скринридеров, но целиком вырезан clip-path и на экране его нет.
+     Игнорировать такой clip-path — значит добавить в макет ЛИШНЕЕ:
+     невидимая на странице подпись приедет в Figma видимой и ляжет
+     поверх соседей. Ошибка обратная обычной: не потеря, а мусор. */
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap}
+
+  /* Второй распространённый вариант той же идиомы. */
+  .sr-alt{position:absolute;clip-path:inset(0 100% 100% 0);
+    width:200px;height:24px;background:#dc2626;color:#fff}
+
+  /* Третий: схлопнут только по высоте. */
+  .sr-v{clip-path:inset(0 0 100%);width:200px;height:24px;background:#16a34a}
+
+  /* А ЭТО НЕ СКРЫТИЕ: clip-path есть, но не режет ничего. Стоит рядом
+     нарочно — слишком широкое правило «clip-path значит невидим»
+     съело бы и его, и блок молча исчез бы из макета.
+
+     Частичная обрезка (`inset(6px 12px)`) сюда НЕ поставлена: она
+     законно расходится, потому что не переносится вовсе, и пиксельный
+     порог пришлось бы поднимать под неподдержанное. Её место — в
+     проверке диагностик, а точность границы правила проверяется
+     юнит-тестами на `clipsAwayEverything`. */
+  .trimmed{clip-path:inset(0px);width:200px;height:48px;
+    background:#2563eb;margin-top:8px}
+
+  .visible{background:#e2e8f0;padding:8px;margin-top:8px}
+</style></head>
+<body>
+  <div class="visible">видимый текст<span class="sr-only">скрытая подпись</span></div>
+  <div class="sr-alt">скрыто целиком</div>
+  <div class="sr-v"></div>
+  <div class="trimmed"></div>
+</body></html>

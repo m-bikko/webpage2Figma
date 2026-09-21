@@ -41,6 +41,11 @@ const EXPECTED: Record<string, readonly DiagnosticCode[]> = {
    *  счётчика не отдаёт и значения. Пиксельно это не сверить —
    *  проверяется, что захват молчанием не отделывается. */
   'pseudo-element-flow': ['deferred.pseudo-element'],
+  /** Частичная обрезка: содержимое видно, но края срезаны. Формы
+   *  обрезки в контракте нет, поэтому узел приезжает необрезанным и
+   *  расходится законно — пиксельно этого не сверить. Утверждается
+   *  то, что проверяемо: захват об этом говорит. */
+  'clip-partial': ['unsupported.clip-path'],
 }
 
 for (const [fixture, codes] of Object.entries(EXPECTED)) {

@@ -259,6 +259,36 @@ var H2DSerializer = (() => {
   };
   var isInvisible = (color) => color.a === 0;
 
+  // src/css/clip.ts
+  var parseSide = (raw, basis) => {
+    const value = raw.trim();
+    const percent = /^(-?\d*\.?\d+)%$/.exec(value);
+    if (percent?.[1] !== void 0) {
+      return Number.parseFloat(percent[1]) / 100 * basis;
+    }
+    const px2 = /^(-?\d*\.?\d+)px$/.exec(value);
+    if (px2?.[1] !== void 0) return Number.parseFloat(px2[1]);
+    return null;
+  };
+  var clipsAwayEverything = (clipPath, box) => {
+    const match = /^inset\(([^)]*)\)$/.exec(clipPath.trim());
+    if (match?.[1] === void 0) return false;
+    const sides = match[1].split(/\s+round\s+/)[0]?.trim().split(/\s+/) ?? [];
+    if (sides.length === 0 || sides.length > 4) return false;
+    const [a, b, c, d] = sides;
+    const top = a;
+    const right = sides.length === 1 ? a : b;
+    const bottom = sides.length <= 2 ? a : c;
+    const left = sides.length === 1 ? a : sides.length === 4 ? d : b;
+    if (top === void 0 || right === void 0 || bottom === void 0 || left === void 0) return false;
+    const t = parseSide(top, box.h);
+    const r = parseSide(right, box.w);
+    const bo = parseSide(bottom, box.h);
+    const l = parseSide(left, box.w);
+    if (t === null || r === null || bo === null || l === null) return false;
+    return box.w - l - r <= 0.25 || box.h - t - bo <= 0.25;
+  };
+
   // src/css/length.ts
   var parsePx = (value) => {
     const match = /^(-?\d*\.?\d+)px$/.exec(value.trim());
@@ -1654,7 +1684,8 @@ var H2DSerializer = (() => {
     if (SKIPPED_TAGS.has(el.tagName)) return false;
     if (cs.display === "none" || cs.visibility === "hidden") return false;
     const rect = el.getBoundingClientRect();
-    return rect.width > 0 || rect.height > 0;
+    if (rect.width <= 0 && rect.height <= 0) return false;
+    return !clipsAwayEverything(cs.clipPath, { w: rect.width, h: rect.height });
   };
   var ALIGN_SELF = {
     "flex-start": "start",

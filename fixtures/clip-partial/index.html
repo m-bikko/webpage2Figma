@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>clip-partial</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:16px}
+  /* ЧАСТИЧНАЯ ОБРЕЗКА: содержимое видно, но края срезаны. Не
+     переносится — в контракте обрезки произвольной формы нет, — и
+     потому расходится с оригиналом законно. Пиксельно это не сверить,
+     проверяется наличие диагностики. */
+  .trimmed{clip-path:inset(6px 12px);width:200px;height:48px;background:#2563eb}
+  .round{clip-path:circle(40%);width:120px;height:120px;background:#16a34a;
+    margin-top:8px}
+  .poly{clip-path:polygon(0 0,100% 0,50% 100%);width:120px;height:80px;
+    background:#dc2626;margin-top:8px}
+</style></head>
+<body>
+  <div class="trimmed"></div><div class="round"></div><div class="poly"></div>
+</body></html>

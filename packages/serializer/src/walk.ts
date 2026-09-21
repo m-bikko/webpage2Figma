@@ -8,6 +8,7 @@ import type {
   ImageRef, SelfLayout, SelfPositioning, Transform,
 } from '@w2f/ir'
 import { isInvisible, parseColor } from './css/color.js'
+import { clipsAwayEverything } from './css/clip.js'
 import { isEllipticalCorner, readCorner } from './css/corner.js'
 import { sizeFromDataUrl } from './css/data-url.js'
 import { parseLinearGradient } from './css/gradient.js'
@@ -102,7 +103,17 @@ const isRendered = (el: Element, cs: CSSStyleDeclaration): boolean => {
   if (SKIPPED_TAGS.has(el.tagName)) return false
   if (cs.display === 'none' || cs.visibility === 'hidden') return false
   const rect = el.getBoundingClientRect()
-  return rect.width > 0 || rect.height > 0
+  if (rect.width <= 0 && rect.height <= 0) return false
+  /** Полностью вырезанный `clip-path`-ом узел невидим ТАК ЖЕ, как
+   *  `display: none`, и пропускается вместе с поддеревом.
+   *
+   *  Это не потеря, а её противоположность. Идиома
+   *  `clip-path: inset(50%)` на боксе 1×1 — стандартный способ
+   *  оставить подпись скринридерам, убрав её с экрана; перенеся её,
+   *  мы положили бы в макет текст, которого на странице не видно.
+   *  Измерено: половина всех записей про `clip-path` на живых
+   *  страницах — ровно эта идиома. */
+  return !clipsAwayEverything(cs.clipPath, { w: rect.width, h: rect.height })
 }
 
 const ALIGN_SELF: Record<string, LayoutAlign> = {
