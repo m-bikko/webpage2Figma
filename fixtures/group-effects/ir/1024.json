@@ -120,8 +120,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 24,
-                "y": 24,
+                "x": 0,
+                "y": 0,
                 "w": 160,
                 "h": 110
               },
@@ -178,8 +178,8 @@
                   "sourceTag": "div",
                   "name": "div",
                   "rect": {
-                    "x": 48,
-                    "y": 48,
+                    "x": 24,
+                    "y": 24,
                     "w": 80,
                     "h": 50
                   },
@@ -236,8 +236,8 @@
                       "sourceTag": "div",
                       "name": "div",
                       "rect": {
-                        "x": 48,
-                        "y": 48,
+                        "x": 0,
+                        "y": 0,
                         "w": 30,
                         "h": 16
                       },
@@ -302,8 +302,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 208,
-                "y": 24,
+                "x": 184,
+                "y": 0,
                 "w": 160,
                 "h": 110
               },
@@ -363,8 +363,8 @@
                   "sourceTag": "div",
                   "name": "div",
                   "rect": {
-                    "x": 232,
-                    "y": 48,
+                    "x": 24,
+                    "y": 24,
                     "w": 80,
                     "h": 50
                   },
@@ -426,8 +426,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 392.00004931640626,
-                "y": 24.000046838378907,
+                "x": 368.00004931640626,
+                "y": 0.00004683837890695486,
                 "w": 160,
                 "h": 110
               },
@@ -492,10 +492,10 @@
                   "sourceTag": "div",
                   "name": "div",
                   "rect": {
-                    "x": 413.2734069824219,
-                    "y": 37.03437042236328,
-                    "w": 88.64739990234375,
-                    "h": 65.54031372070312
+                    "x": 23.999970828405754,
+                    "y": 23.99998941786813,
+                    "w": 80,
+                    "h": 50
                   },
                   "paintOrder": 8,
                   "isStackingContext": false,
@@ -555,8 +555,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 576,
-                "y": 24,
+                "x": 552,
+                "y": 0,
                 "w": 160,
                 "h": 110
               },
@@ -613,8 +613,8 @@
                   "sourceTag": "div",
                   "name": "div",
                   "rect": {
-                    "x": 594,
-                    "y": 42,
+                    "x": 18,
+                    "y": 18,
                     "w": 110,
                     "h": 70
                   },
@@ -674,8 +674,8 @@
                       "sourceTag": "div",
                       "name": "div",
                       "rect": {
-                        "x": 594,
-                        "y": 42,
+                        "x": 0,
+                        "y": 0,
                         "w": 30,
                         "h": 16
                       },
@@ -743,62 +743,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "warning",
-      "code": "fidelity.opacity-group",
-      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
-      "nodeId": "n4",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.opacity-group",
-      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
-      "nodeId": "n3",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.blur-descendant",
-      "message": "Узел лежит внутри предка с эффектом \"blur\": размытие предка к нему не применяется, и он остаётся резким.",
-      "nodeId": "n6",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.transform-descendant",
-      "message": "Узел лежит внутри предка с эффектом \"transform\": трансформа предка к нему не применяется, а его прямоугольник снят как габарит уже трансформированного элемента.",
-      "nodeId": "n8",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.opacity-group",
-      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
-      "nodeId": "n11",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.blur-descendant",
-      "message": "Узел лежит внутри предка с эффектом \"blur\": размытие предка к нему не применяется, и он остаётся резким.",
-      "nodeId": "n11",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.opacity-group",
-      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
-      "nodeId": "n10",
-      "screenId": "s-1024",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

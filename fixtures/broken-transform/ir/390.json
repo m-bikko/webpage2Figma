@@ -1,9 +1,9 @@
 {
   "screen": {
-    "id": "s-1920",
-    "name": "Desktop XL",
-    "width": 1920,
-    "height": 1080,
+    "id": "s-390",
+    "name": "Mobile",
+    "width": 390,
+    "height": 844,
     "dpr": 1,
     "scroll": {
       "x": 0,
@@ -16,7 +16,7 @@
       "rect": {
         "x": 0,
         "y": 0,
-        "w": 1920,
+        "w": 390,
         "h": 220
       },
       "paintOrder": 0,
@@ -72,22 +72,14 @@
           "sourceTag": "div",
           "name": "div",
           "rect": {
-            "x": 40.00002911376954,
-            "y": 60.000007612304685,
+            "x": 18.161785125732422,
+            "y": 60,
             "w": 200,
             "h": 120
           },
           "paintOrder": 1,
           "isStackingContext": true,
-          "transform": {
-            "angle": 0.3490655860180159,
-            "scaleX": 1.0000003073244528,
-            "scaleY": 1.0000003073244528,
-            "translateX": 0,
-            "translateY": 0,
-            "originX": 100,
-            "originY": 60
-          },
+          "transform": null,
           "layout": {
             "mode": "none",
             "gap": 0,
@@ -138,8 +130,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 20.000009374979225,
-                "y": 0.0000013877592506261749,
+                "x": 20,
+                "y": 0,
                 "w": 60,
                 "h": 30
               },
@@ -196,8 +188,8 @@
                   "sourceTag": "div",
                   "name": "div",
                   "rect": {
-                    "x": 6.538387193249315e-7,
-                    "y": -2.379776360827558e-7,
+                    "x": 0,
+                    "y": 0,
                     "w": 20,
                     "h": 10
                   },
@@ -262,5 +254,30 @@
     },
     "screenshotId": null
   },
-  "report": []
+  "report": [
+    {
+      "level": "error",
+      "code": "unsupported.transform-3d",
+      "message": "transform \"matrix(1, 0, 0.36397, 1, 0, 0)\" содержит сдвиг, которого в Figma нет.",
+      "nodeId": "n1",
+      "screenId": "s-390",
+      "needsPlaceholder": false
+    },
+    {
+      "level": "warning",
+      "code": "fidelity.transform-descendant",
+      "message": "Узел лежит внутри предка с непереносимой трансформой (скос или трёхмерная): её нет в накопленной матрице, поэтому положение узла унаследовало ошибку предка.",
+      "nodeId": "n3",
+      "screenId": "s-390",
+      "needsPlaceholder": false
+    },
+    {
+      "level": "warning",
+      "code": "fidelity.transform-descendant",
+      "message": "Узел лежит внутри предка с непереносимой трансформой (скос или трёхмерная): её нет в накопленной матрице, поэтому положение узла унаследовало ошибку предка.",
+      "nodeId": "n2",
+      "screenId": "s-390",
+      "needsPlaceholder": false
+    }
+  ]
 }

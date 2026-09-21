@@ -40,15 +40,6 @@ export const createIdAllocator = (): IdAllocator => {
   }
 }
 
-/** Эффект, который CSS применяет к элементу вместе с его поддеревом. */
-export type GroupEffect = 'transform' | 'blur' | 'opacity'
-
-const GROUP_EFFECT_CODES = {
-  transform: DIAGNOSTIC_CODES.transformDescendant,
-  blur: DIAGNOSTIC_CODES.blurDescendant,
-  opacity: DIAGNOSTIC_CODES.opacityGroup,
-} as const
-
 const GROUP_EFFECT_MESSAGES = {
   transform: 'трансформа предка к нему не применяется, а его прямоугольник ' +
     'снят как габарит уже трансформированного элемента',
@@ -62,20 +53,11 @@ type WalkContext = {
   scrollX: number
   scrollY: number
   allocId: IdAllocator
-  /** Групповые эффекты, действующие на этот узел от предков.
-   *
-   *  Общая форма дефекта, обнаруженная четырежды: CSS применяет такой
-   *  эффект к элементу ВМЕСТЕ с поддеревом, а плоский рендерер — только к
-   *  самому узлу. Ведётся сверху вниз, потому что снизу не восстановить:
-   *  `getBoundingClientRect()` уже включает трансформы предков и не
-   *  говорит, откуда они, а прозрачность и размытие в вычисленном стиле
-   *  потомка просто отсутствуют. */
-  groupEffects: readonly GroupEffect[]
-  /** Есть ли среди предков ИЗОЛИРУЮЩАЯ группа. Изолируют не все
-   *  stacking context: `position: relative; z-index: 1` не изолирует, а
-   *  `isolation: isolate`, `opacity < 1`, фильтр, маска и собственный
-   *  режим наложения — изолируют. */
-  insideIsolation: boolean
+  /** Есть ли среди предков узел с НЕпереносимой трансформой — скосом или
+   *  трёхмерной матрицей. Такая трансформа не попадает в накопленную
+   *  матрицу, поэтому положение всех потомков наследует ошибку.
+   *  Ведётся сверху вниз: снизу этого не восстановить. */
+  insideBrokenTransform: boolean
   /** Произведение матриц всех трансформированных предков. Ведётся сверху
    *  вниз: снизу его не восстановить, потому что `getBoundingClientRect()`
    *  отдаёт результат их применения, но не сами матрицы. */
@@ -464,34 +446,23 @@ const buildNode = (
   const children: IrNode[] = []
   const childProbes: LayoutProbe[] = []
 
-  /** Изолирующие триггеры по спецификации компоновки. Обычный stacking
-   *  context не изолирует — только группа с собственным эффектом. */
-  const isolates =
-    cs.isolation === 'isolate' ||
-    Number.parseFloat(cs.opacity) < 1 ||
-    cs.filter !== 'none' ||
-    cs.clipPath !== 'none' ||
-    cs.mixBlendMode !== 'normal'
+  /** Трансформа есть, но не переносится: скос или трёхмерная матрица.
+   *  Она не попадёт в накопленную матрицу, поэтому все потомки унаследуют
+   *  ошибку положения и должны быть об этом предупреждены. */
+  const brokenTransform = ownMatrixRaw !== null && !usable
 
-  const ownEffects: GroupEffect[] = []
-  if (transform !== null) ownEffects.push('transform')
-  if (blurRadius(cs.filter) > 0) ownEffects.push('blur')
-  if (Number.parseFloat(cs.opacity) < 1) ownEffects.push('opacity')
-
+  /** Порядок детей нормализуется по -reverse: сам порядок отрисовки
+   *  живёт в paintOrder, а здесь он логический, раскладочный. */
   const ordered = isReversed(cs) ? [...el.children].reverse() : [...el.children]
-  /** Контекст создаётся для КАЖДОГО узла, а не условно, как было до
-   *  локальных координат: `parentOrigin` меняется всегда — это начало
-   *  системы координат детей. Прежняя экономия на копии стала неверной. */
+
   const childCtx: WalkContext = {
     ...ctx,
     ancestorMatrix: total,
-    ancestorInverse: totalInverse,
+    ancestorInverse: invertMatrix(total),
     parentOrigin: screenOrigin,
-    groupEffects: ownEffects.length > 0
-      ? [...new Set([...ctx.groupEffects, ...ownEffects])]
-      : ctx.groupEffects,
-    insideIsolation: ctx.insideIsolation || isolates,
+    insideBrokenTransform: ctx.insideBrokenTransform || brokenTransform,
   }
+
   for (const child of ordered) {
     const built = buildNode(child, cs, childCtx)
     if (built === null) continue
@@ -530,26 +501,12 @@ const buildNode = (
    *  осталась: улучшение корректности породило молчаливую потерю.
    *  Исправление геометрии — отдельная работа, требующая хранить `rect`
    *  в локальных координатах родителя и композировать трансформы вниз. */
-  /** Наложение внутри изолирующей группы воспроизводится НЕВЕРНО:
-   *  рендерер плющит дерево и смешивает со всем, что нарисовано раньше,
-   *  тогда как CSS ограничивает подложку изолирующей группой. Молчать
-   *  нельзя — это та же потеря честности, что была с потомками
-   *  трансформированных узлов. */
-  if (ctx.insideIsolation && cs.mixBlendMode !== 'normal') {
+  if (ctx.insideBrokenTransform) {
     ctx.sink.report(
-      'warning', DIAGNOSTIC_CODES.blendIsolation,
-      `Режим наложения "${cs.mixBlendMode}" применён внутри изолирующей ` +
-      `группы: подложка ограничена этой группой, а рендерер смешивает со ` +
-      `всем, что нарисовано раньше.`,
-      id, false,
-    )
-  }
-
-  for (const effect of ctx.groupEffects) {
-    ctx.sink.report(
-      'warning', GROUP_EFFECT_CODES[effect],
-      `Узел лежит внутри предка с эффектом "${effect}": ` +
-      `${GROUP_EFFECT_MESSAGES[effect]}.`,
+      'warning', DIAGNOSTIC_CODES.transformDescendant,
+      'Узел лежит внутри предка с непереносимой трансформой (скос или ' +
+      'трёхмерная): её нет в накопленной матрице, поэтому положение узла ' +
+      'унаследовало ошибку предка.',
       id, false,
     )
   }
@@ -667,8 +624,7 @@ export const walkDocument = (
     scrollX: window.scrollX,
     scrollY: window.scrollY,
     allocId,
-    groupEffects: [],
-    insideIsolation: false,
+    insideBrokenTransform: false,
     ancestorMatrix: IDENTITY_MATRIX,
     ancestorInverse: IDENTITY_MATRIX,
     parentOrigin: { x: 0, y: 0 },

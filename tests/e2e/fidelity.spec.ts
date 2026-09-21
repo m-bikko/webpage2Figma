@@ -8,7 +8,7 @@ type TextNode = Extract<IrNode, { kind: 'text' }>
 
 const FIXTURES = [
   'boxes', 'stacking', 'flex', 'text',
-  'transformed', 'transform-nested', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
+  'transformed', 'transform-nested', 'broken-transform', 'gradient', 'radial-gradient', 'inline-text', 'absolute-in-flex',
   'missing-font', 'dashed-border', 'text-transform', 'blend', 'blend-isolated', 'group-effects',
   'blur',
 ] as const
@@ -57,15 +57,21 @@ test('стекинг: порядок отрисовки не совпадает 
 
   type Flat = { tag: string; order: number; x: number; y: number; w: number; h: number }
   const flat: Flat[] = []
-  const visit = (node: typeof screen.root): void => {
+  /** Координаты складываются по пути от корня: с плана 3 `rect` задан
+   *  относительно родителя, а опознавать блоки удобнее по абсолютному
+   *  положению — оно уникально и совпадает с тем, что написано в CSS
+   *  фикстуры. */
+  const visit = (node: typeof screen.root, offX: number, offY: number): void => {
+    const x = offX + node.rect.x
+    const y = offY + node.rect.y
     flat.push({
       tag: node.sourceTag,
       order: node.paintOrder,
-      x: node.rect.x, y: node.rect.y, w: node.rect.w, h: node.rect.h,
+      x, y, w: node.rect.w, h: node.rect.h,
     })
-    for (const child of node.children) visit(child)
+    for (const child of node.children) visit(child, x, y)
   }
-  visit(screen.root)
+  visit(screen.root, 0, 0)
 
   /** Геометрия в этой фикстуре уникальна у каждого блока, а имён классов
    *  в IR нет — узлы опознаются по прямоугольнику. */

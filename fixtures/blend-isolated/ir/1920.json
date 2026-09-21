@@ -180,8 +180,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 24,
-                "y": 64,
+                "x": 0,
+                "y": 0,
                 "w": 1872,
                 "h": 60
               },
@@ -291,8 +291,8 @@
               "sourceTag": "div",
               "name": "div",
               "rect": {
-                "x": 24,
-                "y": 144,
+                "x": 0,
+                "y": 0,
                 "w": 1872,
                 "h": 60
               },
@@ -354,30 +354,5 @@
     },
     "screenshotId": null
   },
-  "report": [
-    {
-      "level": "warning",
-      "code": "fidelity.blend-isolation",
-      "message": "Режим наложения \"multiply\" применён внутри изолирующей группы: подложка ограничена этой группой, а рендерер смешивает со всем, что нарисовано раньше.",
-      "nodeId": "n3",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.blend-isolation",
-      "message": "Режим наложения \"multiply\" применён внутри изолирующей группы: подложка ограничена этой группой, а рендерер смешивает со всем, что нарисовано раньше.",
-      "nodeId": "n5",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    },
-    {
-      "level": "warning",
-      "code": "fidelity.opacity-group",
-      "message": "Узел лежит внутри предка с эффектом \"opacity\": прозрачность предка применяется к группе целиком, а рендерер применяет её к каждому узлу отдельно.",
-      "nodeId": "n5",
-      "screenId": "s-1920",
-      "needsPlaceholder": false
-    }
-  ]
+  "report": []
 }

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>broken-transform</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:40px}
+  /* Скос в Figma невыразим, поэтому transform у этого узла пуст, а rect
+     хранит осепараллельный габарит уже скошенного элемента — измерено,
+     18.2 вместо истинных 40. Накопленная матрица предков скоса не
+     содержит, и потомки наследуют ошибку. В pixel-diff фикстура НЕ
+     входит: рендер заведомо разойдётся. Её задача — доказать, что
+     потомки объяснены, а не молчат. */
+  .skewed{width:200px;height:120px;background:#e2e8f0;transform:skewX(20deg)}
+  .kid{width:60px;height:30px;margin:20px;background:#ef4444}
+  .grandkid{width:20px;height:10px;background:#1d4ed8}
+</style></head>
+<body><div class="skewed"><div class="kid"><div class="grandkid"></div></div></div></body></html>

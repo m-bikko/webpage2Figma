@@ -73,32 +73,51 @@ test('фон <body> не подменяется фоном <html>', async ({ pag
   expect(report.some((i) => i.code === 'fidelity.page-background-moved')).toBe(false)
 })
 
-test('transform-nested: потомки трансформированного узла ОБЪЯСНЕНЫ, а не молчат', async ({ page }) => {
+test('broken-transform: потомки НЕпереносимой трансформы объяснены', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto(fixtureUrl('transform-nested'))
+  await page.goto(fixtureUrl('broken-transform'))
   const { screen, report } = await captureScreen(page, 's0', 'Desktop')
 
-  const rotated = screen.root.children[0]
-  expect(rotated?.transform, 'сам родитель переносится верно').not.toBeNull()
+  const skewed = screen.root.children[0]
+  const kid = skewed?.children[0]
+  const grandkid = kid?.children[0]
 
-  const child = rotated?.children[0]
-  const grandchild = child?.children[0]
-  expect(child).toBeDefined()
-  expect(grandchild).toBeDefined()
+  // Сам скошенный узел объяснён отдельным кодом — скос невыразим в Figma.
+  expect(report.some((i) => i.nodeId === skewed?.id && i.code === 'unsupported.transform-3d'))
+    .toBe(true)
 
-  // Геометрия потомков неверна — это известно и не чинится здесь. Но
-  // молчать об этом нельзя: пока трансформы были отложены, родитель нёс
-  // deferred.transform и инвариант заставлял бандл объяснить пропажу.
-  // Когда родитель стал переноситься верно, объяснение исчезло бы вместе
-  // с ним, а неверность потомков осталась.
+  // А вот потомки — это ОСТАТОК, вскрывшийся при снятии общих диагностик
+  // групповых эффектов. Скос не попадает в накопленную матрицу, поэтому
+  // положение потомков наследует ошибку предка. Без этой проверки случай
+  // стал бы молчаливым: четвёртый раз подряд, когда общая диагностика
+  // прикрывала соседний случай помимо своего.
   const explained = (id: string | undefined): boolean =>
     report.some((i) => i.nodeId === id && i.code === 'fidelity.transform-descendant')
+  expect(explained(kid?.id), 'ребёнок скошенного узла обязан быть объяснён').toBe(true)
+  expect(explained(grandkid?.id), 'и внук — признак наследуется вглубь').toBe(true)
 
-  expect(explained(child?.id), 'ребёнок обязан быть объяснён').toBe(true)
-  expect(explained(grandchild?.id), 'внук тоже — флаг наследуется вглубь').toBe(true)
+  // На самом скошенном узле этой диагностики быть не должно: он не потомок.
+  expect(explained(skewed?.id)).toBe(false)
+})
 
-  // А сам родитель — не потомок, на нём диагностики быть не должно.
-  expect(explained(rotated?.id)).toBe(false)
+test('transform-nested: групповой эффект действует на поддерево, диагностики нет', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('transform-nested'))
+  const { report } = await captureScreen(page, 's0', 'Desktop')
+
+  // Утверждение перевёрнуто планом 3. Раньше эти коды были обязательны:
+  // эффект применялся только к узлу, поддерево оставалось неверным, и
+  // молчать об этом было нельзя. Теперь координаты локальные, рендерер
+  // вложенный, и эффект действует на всё поддерево — значит объяснять
+  // нечего.
+  //
+  // Проверка не формальная: если диагностика осталась, обходчик всё ещё
+  // считает случай непереносимым, а pixel-diff на этой же фикстуре
+  // зелёный. Одно из двух утверждений тогда ложно.
+  for (const code of ['fidelity.transform-descendant']) {
+    expect(report.some((i) => i.code === code), `лишняя диагностика ${code}`)
+      .toBe(false)
+  }
 })
 
 test('transformed: трансформа переносится, rect — НЕтрансформированный бокс', async ({ page }) => {
@@ -197,48 +216,24 @@ test('radial-gradient: радиальный диагностируется, а �
     .toBe(true)
 })
 
-test('group-effects: потомки под каждым групповым эффектом ОБЪЯСНЕНЫ', async ({ page }) => {
+test('group-effects: групповой эффект действует на поддерево, диагностики нет', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('group-effects'))
-  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+  const { report } = await captureScreen(page, 's0', 'Desktop')
 
-  const row = screen.root.children[0]
-  const [faded, blurred, turned] = row?.children ?? []
-
-  const has = (id: string | undefined, code: string): boolean =>
-    report.some((i) => i.nodeId === id && i.code === code)
-
-  // Общая форма дефекта: CSS применяет эффект к элементу ВМЕСТЕ с
-  // поддеревом, плоский рендерер — только к узлу. Измерено зондом:
-  // прозрачность с потомком даёт 6000 расходящихся пикселей, размытие —
-  // 2362, и оба при пустом отчёте.
-  const fadedKid = faded?.children[0]
-  const fadedGrandkid = fadedKid?.children[0]
-  expect(has(fadedKid?.id, 'fidelity.opacity-group')).toBe(true)
-  expect(has(fadedGrandkid?.id, 'fidelity.opacity-group'),
-    'эффект наследуется вглубь, а не только на прямых детей').toBe(true)
-
-  expect(has(blurred?.children[0]?.id, 'fidelity.blur-descendant')).toBe(true)
-  expect(has(turned?.children[0]?.id, 'fidelity.transform-descendant')).toBe(true)
-
-  // ВЛОЖЕННЫЕ эффекты: размытие внутри прозрачности. Потомок обязан
-  // получить ОБЕ диагностики — ради этого случая существует слияние
-  // множеств в контексте обхода, и без такой проверки накопление
-  // остаётся непроверенным кодом.
-  const nested = row?.children[3]
-  const innerBlur = nested?.children[0]
-  const deepest = innerBlur?.children[0]
-  expect(has(innerBlur?.id, 'fidelity.opacity-group'),
-    'размытый узел внутри прозрачного — сам потомок прозрачности').toBe(true)
-  expect(has(deepest?.id, 'fidelity.opacity-group')).toBe(true)
-  expect(has(deepest?.id, 'fidelity.blur-descendant'),
-    'вглубь обязаны дойти ОБА эффекта, а не только ближайший').toBe(true)
-
-  // На самих носителях эффекта диагностики быть не должно: они переносятся
-  // верно, неверны именно потомки.
-  expect(has(faded?.id, 'fidelity.opacity-group')).toBe(false)
-  expect(has(blurred?.id, 'fidelity.blur-descendant')).toBe(false)
-  expect(has(turned?.id, 'fidelity.transform-descendant')).toBe(false)
+  // Утверждение перевёрнуто планом 3. Раньше эти коды были обязательны:
+  // эффект применялся только к узлу, поддерево оставалось неверным, и
+  // молчать об этом было нельзя. Теперь координаты локальные, рендерер
+  // вложенный, и эффект действует на всё поддерево — значит объяснять
+  // нечего.
+  //
+  // Проверка не формальная: если диагностика осталась, обходчик всё ещё
+  // считает случай непереносимым, а pixel-diff на этой же фикстуре
+  // зелёный. Одно из двух утверждений тогда ложно.
+  for (const code of ['fidelity.transform-descendant', 'fidelity.blur-descendant', 'fidelity.opacity-group']) {
+    expect(report.some((i) => i.code === code), `лишняя диагностика ${code}`)
+      .toBe(false)
+  }
 })
 
 test('boxes: узлы БЕЗ групповых эффектов не диагностируются', async ({ page }) => {
@@ -257,28 +252,24 @@ test('boxes: узлы БЕЗ групповых эффектов не диагн
   }
 })
 
-test('blend-isolated: наложение в изолирующей группе ОБЪЯСНЕНО, а не молчит', async ({ page }) => {
+test('blend-isolated: групповой эффект действует на поддерево, диагностики нет', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(fixtureUrl('blend-isolated'))
-  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+  const { report } = await captureScreen(page, 's0', 'Desktop')
 
-  const explained = (id: string | undefined): boolean =>
-    report.some((i) => i.nodeId === id && i.code === 'fidelity.blend-isolation')
-
-  // Измерено на зонде: в браузере элемент внутри isolation: isolate
-  // остаётся своим цветом, а плоский рендерер смешивает его со всем, что
-  // нарисовано раньше, и чернит. Геометрия тут ни при чём — ошибается
-  // модель композиции, и молчать о ней нельзя.
-  const isolated = screen.root.children[1]?.children[0]
-  expect(isolated?.style.blend).toBe('multiply')
-  expect(explained(isolated?.id), 'наложение под isolation обязано быть объяснено')
-    .toBe(true)
-
-  // opacity < 1 изолирует не хуже явного isolation — это часто
-  // неожиданно, поэтому проверяется отдельно.
-  const faded = screen.root.children[2]?.children[0]
-  expect(explained(faded?.id), 'opacity < 1 тоже создаёт изолирующую группу')
-    .toBe(true)
+  // Утверждение перевёрнуто планом 3. Раньше эти коды были обязательны:
+  // эффект применялся только к узлу, поддерево оставалось неверным, и
+  // молчать об этом было нельзя. Теперь координаты локальные, рендерер
+  // вложенный, и эффект действует на всё поддерево — значит объяснять
+  // нечего.
+  //
+  // Проверка не формальная: если диагностика осталась, обходчик всё ещё
+  // считает случай непереносимым, а pixel-diff на этой же фикстуре
+  // зелёный. Одно из двух утверждений тогда ложно.
+  for (const code of ['fidelity.blend-isolation']) {
+    expect(report.some((i) => i.code === code), `лишняя диагностика ${code}`)
+      .toBe(false)
+  }
 })
 
 test('blend: наложение БЕЗ изолирующего предка не диагностируется', async ({ page }) => {

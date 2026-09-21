@@ -28,7 +28,7 @@ import { diffPng, shotOfScreen } from './helpers/diff.js'
  *  такой ветки рядом с `radial-gradient`, то есть в проверке диагностик,
  *  а не в гейте точности. */
 const FIXTURES = [
-  'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed', 'blend', 'blur',
+  'boxes', 'stacking', 'flex', 'text', 'gradient', 'transformed', 'blend', 'blur', 'group-effects', 'transform-nested', 'blend-isolated',
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.
