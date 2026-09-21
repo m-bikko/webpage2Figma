@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildScene } from '../src/build/index.js'
+import { buildScene, layOutScreens } from '../src/build/index.js'
 import { bundle as makeBundle, frameNode, nodeText, screen as makeScreen }
   from '@h2d/ir/test-fixtures'
 import type { IrNode } from '@h2d/ir'
@@ -101,5 +101,52 @@ describe('инвариант держится на дереве любой фо�
     expect(root).toBeDefined()
     if (root === undefined) return
     expect(leavesWithChildren(root)).toEqual([])
+  })
+})
+
+/** Пять экранов обязаны лечь РЯДОМ, а не друг на друга.
+ *
+ *  Корень каждого экрана стоит в нуле своих координат — это верно
+ *  внутри экрана и неверно на холсте. Первая редакция клала все пять
+ *  в одну точку, и вместо пяти макетов получалось месиво: снаружи это
+ *  выглядит как «импортировалось неправильно», хотя каждый экран по
+ *  отдельности верен.
+ *
+ *  Найдено на импорте настоящей страницы. Ни одна фикстура этого не
+ *  показывала: в тестах экран всегда был один. */
+describe('раскладка экранов на холсте', () => {
+  const fiveScreens = () => makeBundle({
+    screens: [1920, 1440, 1024, 768, 390].map((width) => makeScreen({
+      id: `s-${width}`, width, height: 800,
+      root: frameNode({ id: `r-${width}`, rect: { x: 0, y: 0, w: width, h: 800 } }),
+    })),
+  })
+
+  it('экраны не накладываются друг на друга', () => {
+    const scene = buildScene(fiveScreens())
+    const placed = layOutScreens(scene.screens)
+    for (let i = 1; i < placed.length; i += 1) {
+      const previous = placed[i - 1]
+      const current = placed[i]
+      expect(previous).toBeDefined()
+      expect(current).toBeDefined()
+      if (previous === undefined || current === undefined) return
+      expect(current.x).toBeGreaterThanOrEqual(previous.x + previous.width)
+    }
+  })
+
+  /** Зазор обязателен: экраны встык читаются как один, и найти границу
+   *  между 1920 и 1440 глазами невозможно. */
+  it('между экранами есть зазор', () => {
+    const placed = layOutScreens(buildScene(fiveScreens()).screens)
+    const first = placed[0]
+    const second = placed[1]
+    if (first === undefined || second === undefined) return
+    expect(second.x).toBeGreaterThan(first.x + first.width)
+  })
+
+  it('порядок сохраняется: от широкого к узкому', () => {
+    const placed = layOutScreens(buildScene(fiveScreens()).screens)
+    expect(placed.map((item) => item.width)).toEqual([1920, 1440, 1024, 768, 390])
   })
 })

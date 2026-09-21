@@ -42,6 +42,14 @@ var H2DSerializer = (() => {
   // ../ir/src/codes.ts
   var DIAGNOSTIC_CODES = {
     unsupportedCanvas: "unsupported.canvas",
+    /** `<video>` и его `poster`. Кадр видео — не изображение страницы,
+     *  и переносить его как картинку значило бы выдать один момент
+     *  времени за содержимое.
+     *
+     *  Код заведён поздно и закрывает долг, записанный ещё в плане 4:
+     *  до него `<video>` приезжал обычным пустым фреймом БЕЗ единой
+     *  записи в отчёте — последняя молчаливая потеря в проекте. */
+    unsupportedVideo: "unsupported.video",
     unsupportedCrossOriginIframe: "unsupported.cross-origin-iframe",
     unsupportedClosedShadowRoot: "unsupported.closed-shadow-root",
     unsupportedClipPath: "unsupported.clip-path",
@@ -248,6 +256,65 @@ var H2DSerializer = (() => {
     cs.borderBottomRightRadius,
     cs.borderBottomLeftRadius
   ].some((value) => value.trim().split(/\s+/).length > 1);
+
+  // src/css/data-url.ts
+  var decodeBase64Prefix = (payload, bytesNeeded) => {
+    const charsNeeded = Math.ceil(bytesNeeded / 3) * 4;
+    const slice = payload.slice(0, charsNeeded);
+    if (slice.length < charsNeeded) return null;
+    try {
+      const binary = atob(slice);
+      const out = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+      return out.length >= bytesNeeded ? out : null;
+    } catch {
+      return null;
+    }
+  };
+  var be32 = (bytes, at) => ((bytes[at] ?? 0) << 24 | (bytes[at + 1] ?? 0) << 16 | (bytes[at + 2] ?? 0) << 8 | (bytes[at + 3] ?? 0)) >>> 0;
+  var le16 = (bytes, at) => (bytes[at] ?? 0) | (bytes[at + 1] ?? 0) << 8;
+  var sizeFromDataUrl = (url) => {
+    if (!url.startsWith("data:")) return null;
+    const comma = url.indexOf(",");
+    if (comma === -1) return null;
+    const header = url.slice(5, comma);
+    if (!header.includes("base64")) return null;
+    const payload = url.slice(comma + 1);
+    if (header.startsWith("image/png")) {
+      const bytes = decodeBase64Prefix(payload, 24);
+      if (bytes === null) return null;
+      const w = be32(bytes, 16);
+      const h = be32(bytes, 20);
+      return w > 0 && h > 0 ? { w, h } : null;
+    }
+    if (header.startsWith("image/gif")) {
+      const bytes = decodeBase64Prefix(payload, 10);
+      if (bytes === null) return null;
+      const w = le16(bytes, 6);
+      const h = le16(bytes, 8);
+      return w > 0 && h > 0 ? { w, h } : null;
+    }
+    if (header.startsWith("image/jpeg") || header.startsWith("image/jpg")) {
+      const bytes = decodeBase64Prefix(payload, 1024);
+      if (bytes === null) return null;
+      let at = 2;
+      while (at + 9 < bytes.length) {
+        if (bytes[at] !== 255) {
+          at += 1;
+          continue;
+        }
+        const marker = bytes[at + 1] ?? 0;
+        if (marker >= 192 && marker <= 207 && marker !== 196 && marker !== 200 && marker !== 204) {
+          const h = (bytes[at + 5] ?? 0) << 8 | (bytes[at + 6] ?? 0);
+          const w = (bytes[at + 7] ?? 0) << 8 | (bytes[at + 8] ?? 0);
+          return w > 0 && h > 0 ? { w, h } : null;
+        }
+        at += 2 + ((bytes[at + 2] ?? 0) << 8 | (bytes[at + 3] ?? 0));
+      }
+      return null;
+    }
+    return null;
+  };
 
   // src/css/gradient.ts
   var splitTopLevel = (value) => {
@@ -1238,6 +1305,8 @@ var H2DSerializer = (() => {
     };
   };
   var naturalSizeOf = (url) => {
+    const fromData = sizeFromDataUrl(url);
+    if (fromData !== null) return fromData;
     const probe = new Image();
     probe.src = url;
     if (!probe.complete || probe.naturalWidth === 0) return null;
@@ -1562,6 +1631,16 @@ var H2DSerializer = (() => {
         true
       );
       return { code: DIAGNOSTIC_CODES.unsupportedCanvas, label: "canvas" };
+    }
+    if (el.tagName === "VIDEO") {
+      sink.report(
+        "warning",
+        DIAGNOSTIC_CODES.unsupportedVideo,
+        "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 <video> \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F: \u043A\u0430\u0434\u0440 \u0432\u0438\u0434\u0435\u043E \u2014 \u043D\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B, \u0438 \u0432\u044B\u0434\u0430\u0432\u0430\u0442\u044C \u043E\u0434\u0438\u043D \u043C\u043E\u043C\u0435\u043D\u0442 \u0432\u0440\u0435\u043C\u0435\u043D\u0438 \u0437\u0430 \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u043D\u0435\u0432\u0435\u0440\u043D\u043E.",
+        id,
+        true
+      );
+      return { code: DIAGNOSTIC_CODES.unsupportedVideo, label: "video" };
     }
     if (el.tagName === "IFRAME") {
       const frame = el;
@@ -2026,7 +2105,13 @@ var H2DSerializer = (() => {
     if (requests === null) return { assets: [], base64: {}, report: [] };
     return resolveAssets(requests.drain());
   };
-  var api = { beginCapture, captureScreen, emptyBundle, resolvePendingAssets };
+  var api = {
+    beginCapture,
+    captureScreen,
+    emptyBundle,
+    resolvePendingAssets,
+    sizeFromDataUrl
+  };
   window.__h2d = api;
 })();
 //# sourceMappingURL=serializer.global.js.map

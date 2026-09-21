@@ -1,5 +1,5 @@
 import { unpackBundle } from '@h2d/bundle'
-import { buildScene } from './build/index.js'
+import { buildScene, layOutScreens } from './build/index.js'
 import { applyScreen, type FigmaSurface } from './apply.js'
 import type { Diagnostic } from '@h2d/ir'
 
@@ -81,9 +81,19 @@ const handleMessage = async (message: unknown): Promise<void> => {
 
   const report: Diagnostic[] = [...bundle.report, ...scene.report]
 
-  for (const screen of scene.screens) {
+  /** Экраны раскладываются В РЯД, а не в одну точку. Корень каждого
+   *  стоит в нуле своих координат — верно внутри экрана и неверно на
+   *  холсте. Первая редакция клала все пять друг на друга, и вместо
+   *  пяти макетов получалось месиво. */
+  const places = layOutScreens(scene.screens)
+  for (const [index, screen] of scene.screens.entries()) {
     const applied = await applyScreen(figma, screen, scene.fonts, images)
     report.push(...applied.report)
+    const place = places[index]
+    if (place !== undefined) {
+      applied.root.x = place.x
+      applied.root.y = place.y
+    }
     figma.currentPage.appendChild(applied.root)
   }
 
