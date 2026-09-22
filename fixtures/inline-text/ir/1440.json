@@ -80,7 +80,7 @@
         {
           "id": "n1",
           "sourceTag": "p",
-          "name": "p",
+          "name": "Hello and",
           "rect": {
             "x": 24,
             "y": 24,
@@ -138,7 +138,7 @@
             {
               "id": "n2",
               "sourceTag": "b",
-              "name": "b",
+              "name": "world",
               "rect": {
                 "x": 40.90625,
                 "y": 3,
@@ -233,7 +233,7 @@
             {
               "id": "n3",
               "sourceTag": "span",
-              "name": "span",
+              "name": "red",
               "rect": {
                 "x": 119.171875,
                 "y": 3,
@@ -373,7 +373,7 @@
         {
           "id": "n4",
           "sourceTag": "p",
-          "name": "p",
+          "name": "Просто абзац без вложенных элементов",
           "rect": {
             "x": 24,
             "y": 60,

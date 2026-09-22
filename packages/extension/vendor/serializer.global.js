@@ -1239,6 +1239,85 @@ var H2DSerializer = (() => {
     }
   };
 
+  // src/naming.ts
+  var SEMANTIC = /* @__PURE__ */ new Set([
+    "header",
+    "footer",
+    "nav",
+    "main",
+    "aside",
+    "section",
+    "article",
+    "form",
+    "button",
+    "label",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "td",
+    "th",
+    "ul",
+    "ol",
+    "li",
+    "dl",
+    "dt",
+    "dd",
+    "figure",
+    "figcaption",
+    "blockquote",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "p",
+    "a",
+    "input",
+    "select",
+    "textarea",
+    "video",
+    "canvas",
+    "iframe",
+    "svg",
+    "img"
+  ]);
+  var MAX = 40;
+  var clean = (value) => value.replace(/\s+/g, " ").trim();
+  var shorten = (value) => value.length <= MAX ? value : `${value.slice(0, MAX - 1)}\u2026`;
+  var fileNameOf = (url) => {
+    const withoutQuery = url.split(/[?#]/)[0] ?? "";
+    const last = withoutQuery.split("/").filter((part) => part !== "").pop();
+    if (last === void 0 || last === "") return null;
+    const withoutExtension = last.replace(/\.[a-z0-9]+$/i, "");
+    return withoutExtension === "" ? null : decodeURIComponent(withoutExtension);
+  };
+  var nameFor = (el, ownText2) => {
+    const tag = el.tagName.toLowerCase();
+    for (const attribute of ["aria-label", "alt", "title"]) {
+      const value = el.getAttribute(attribute);
+      if (value !== null && clean(value) !== "") {
+        return shorten(clean(value));
+      }
+    }
+    if (tag === "img") {
+      const source = el.currentSrc || el.getAttribute("src") || "";
+      const file = fileNameOf(source);
+      if (file !== null) return shorten(file);
+    }
+    const text = clean(ownText2);
+    if (text !== "") return shorten(text);
+    if (SEMANTIC.has(tag)) return tag;
+    const inner = clean(el.textContent ?? "");
+    if (inner !== "" && inner.length <= MAX) return inner;
+    if (tag === "a") {
+      const href = el.getAttribute("href");
+      if (href !== null && clean(href) !== "") return shorten(clean(href));
+    }
+    return tag;
+  };
+
   // src/hoist.ts
   var overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
   var index = (root) => {
@@ -2749,10 +2828,11 @@ var H2DSerializer = (() => {
       children.push(pseudoAfter.node);
       childProbes.push(pseudoAfter.probe);
     }
+    const ownText2 = [...el.childNodes].filter((child) => child.nodeType === Node.TEXT_NODE).map((child) => child.textContent ?? "").join("");
     const base = {
       id,
       sourceTag: el.tagName.toLowerCase(),
-      name: el.tagName.toLowerCase(),
+      name: nameFor(el, ownText2),
       /** Координаты родителя. Прокрутка сюда больше не прибавляется: она
        *  входит в положение КОРНЯ и наследуется вложенностью, а прибавленная
        *  на каждом уровне сложилась бы столько раз, какова глубина. Корню её

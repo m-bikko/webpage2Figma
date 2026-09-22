@@ -699,3 +699,75 @@ test('канва: нарисованная едет картинкой, пуст
   expect(about[0]?.level).toBe('info')
   expect(about[0]?.needsPlaceholder).toBe(false)
 })
+
+/** ИМЕНА СЛОЁВ.
+ *
+ *  В панели Figma имя — единственное, по чему слой находят. Пока им
+ *  служило имя тега, дерево выглядело сотней одинаковых строк «div»,
+ *  и найти в нём было нельзя ничего.
+ *
+ *  Пикселями это не проверить вовсе: имя не рисуется. Утверждается
+ *  поэтому напрямую — какое имя получил какой узел. */
+test('слои получают осмысленные имена', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('naming'))
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+
+  const names: string[] = []
+  const tagged: { tag: string; name: string }[] = []
+  const visit = (node: typeof screen.root): void => {
+    names.push(node.name)
+    tagged.push({ tag: node.sourceTag, name: node.name })
+    for (const child of node.children) visit(child)
+  }
+  visit(screen.root)
+
+  const wrappersNamed = (name: string): boolean =>
+    tagged.some((item) => item.tag === 'div' && item.name === name)
+
+  /** Написанное для людей — самое надёжное. */
+  expect(names).toContain('Главное меню')
+  expect(names).toContain('Подсказка к блоку')
+  expect(names).toContain('Логотип компании')
+
+  /** Без подписи у картинки — имя файла. */
+  expect(names).toContain('asset')
+
+  /** Собственный текст важнее семантики тега. */
+  expect(names).toContain('Войти')
+
+  /** Семантический тег, когда текста нет. */
+  expect(names).toContain('nav')
+  expect(names).toContain('section')
+
+  /** Короткая надпись ВНУТРИ годится обёртке. Проверять надо именно
+   *  обёртку: сам `span` назовётся этим текстом в любом случае, как
+   *  собственным, и утверждение о списке имён прошло бы даже без
+   *  правила. */
+  expect(
+    wrappersNamed('Купить билет'),
+    'обёртка с короткой надписью внутри обязана взять её именем',
+  ).toBe(true)
+
+  /** А длинная — нет, и проверяется это у ОБЁРТКИ.
+   *
+   *  У самого текстового узла обрезанное имя уместно: он и есть этот
+   *  текст, и первые слова — лучшее, чем его можно назвать. А вот
+   *  `div`, внутри которого лежит длинный абзац, называть его началом
+   *  бессмысленно: контейнер не равен своему содержимому, и в панели
+   *  такое имя обмануло бы. */
+  const wrappers = tagged.filter((item) => item.tag === 'div')
+  void wrappers
+  expect(
+    wrappers.some((item) => item.name.startsWith('Очень длинная')),
+    'длинный текст не должен становиться именем обёртки: ' +
+    `${wrappers.map((item) => item.name).join(' | ')}`,
+  ).toBe(false)
+
+  /** Классы в имя не идут: `flex items-center gap-2` описывает стиль,
+   *  а не смысл. */
+  expect(
+    names.some((name) => name.includes('items-center')),
+    'классы не должны попадать в имя слоя',
+  ).toBe(false)
+})

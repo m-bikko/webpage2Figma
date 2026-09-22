@@ -138,7 +138,7 @@
             {
               "id": "n2",
               "sourceTag": "img",
-              "name": "img",
+              "name": "404",
               "rect": {
                 "x": 0,
                 "y": 0,
@@ -212,7 +212,7 @@
             {
               "id": "n3",
               "sourceTag": "img",
-              "name": "img",
+              "name": "сеть",
               "rect": {
                 "x": 136,
                 "y": 0,

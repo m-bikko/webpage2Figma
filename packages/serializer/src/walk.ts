@@ -26,6 +26,7 @@ import {
 import type { DiagnosticSink } from './diagnostics.js'
 import { snapshotCanvas } from './canvas.js'
 import { computeCounters, type CounterMap } from './counters.js'
+import { nameFor } from './naming.js'
 import { hoistEscaped } from './hoist.js'
 import {
   readPseudo, type PseudoKind, type PseudoRead, type PseudoRefusal,
@@ -1071,10 +1072,18 @@ const buildNode = (
     childProbes.push(pseudoAfter.probe)
   }
 
+  /** Собственный текст узла — только ЕГО, без текста потомков: он
+   *  пойдёт в имя слоя, и текст всей страницы в имени корня был бы
+   *  бесполезен. */
+  const ownText = [...el.childNodes]
+    .filter((child) => child.nodeType === Node.TEXT_NODE)
+    .map((child) => child.textContent ?? '')
+    .join('')
+
   const base = {
     id,
     sourceTag: el.tagName.toLowerCase(),
-    name: el.tagName.toLowerCase(),
+    name: nameFor(el, ownText),
     /** Координаты родителя. Прокрутка сюда больше не прибавляется: она
      *  входит в положение КОРНЯ и наследуется вложенностью, а прибавленная
      *  на каждом уровне сложилась бы столько раз, какова глубина. Корню её
