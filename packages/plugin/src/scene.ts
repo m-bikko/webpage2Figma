@@ -146,6 +146,10 @@ export type SceneAutoLayout = {
   counterAxisAlignItems: 'MIN' | 'CENTER' | 'MAX'
   /** Куда обязаны встать дети. Порядок тот же, что у `children`. */
   expected: { x: number; y: number }[]
+  /** Абсолютные дети остаются внутри рамки, но в очередь не встают:
+   *  `layoutPositioning: 'ABSOLUTE'` из документации Figma. Порядок
+   *  тот же, что у `children`. */
+  positioning: ('AUTO' | 'ABSOLUTE')[]
 }
 
 export type SceneBase = {

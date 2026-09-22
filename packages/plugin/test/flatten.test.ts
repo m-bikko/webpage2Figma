@@ -115,7 +115,7 @@ describe('flattenScene', () => {
       mode: 'HORIZONTAL' as const, itemSpacing: 0,
       paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
       primaryAxisAlignItems: 'MIN' as const, counterAxisAlignItems: 'MIN' as const,
-      expected: [],
+      expected: [], positioning: [],
     }
     const root = frame('root', {
       children: [frame('wrap', {
@@ -133,7 +133,7 @@ describe('flattenScene', () => {
     mode: 'VERTICAL' as const, itemSpacing: 0,
     paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
     primaryAxisAlignItems: 'MIN' as const, counterAxisAlignItems: 'MIN' as const,
-    expected: [],
+    expected: [], positioning: [],
   }
 
   it('внутри auto-layout обёртка с ребёнком другого размера остаётся', () => {

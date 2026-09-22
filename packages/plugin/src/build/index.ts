@@ -421,6 +421,7 @@ const autoLayoutFor = (node: IrNode, ctx: BuildCtx): SceneAutoLayout | null => {
     primaryAxisAlignItems: PRIMARY_ALIGN[node.layout.justify],
     counterAxisAlignItems: COUNTER_ALIGN[verdict.align],
     expected: verdict.expected.map((place) => ({ x: place.x, y: place.y })),
+    positioning: verdict.positioning,
   }
 }
 

@@ -38,6 +38,28 @@ describe('readLayout', () => {
       .toBe('column')
   })
 
+  /** Разворот порядка — только половина дела. У `-reverse` главная ось
+   *  идёт с конца, и `justify-content: start` прижимает детей к
+   *  правому краю. Без разворота выравнивания единственный ребёнок
+   *  ряда вставал слева, а браузер клал его справа: сдвиг на 8 в
+   *  контейнере 32 с ребёнком 24 на живой странице. */
+  it('у обратного направления выравнивание по главной оси разворачивается', () => {
+    const reversed = (justify: string) => readLayout(style({
+      display: 'flex', flexDirection: 'row-reverse', justifyContent: justify,
+    })).justify
+    expect(reversed('flex-start')).toBe('end')
+    expect(reversed('flex-end')).toBe('start')
+    expect(reversed('normal')).toBe('end')
+    expect(reversed('center')).toBe('center')
+    expect(reversed('space-between')).toBe('space-between')
+  })
+
+  it('у прямого направления выравнивание не трогается', () => {
+    expect(readLayout(style({
+      display: 'flex', flexDirection: 'row', justifyContent: 'flex-start',
+    })).justify).toBe('start')
+  })
+
   /** Сетка записывается СЕТКОЙ, а не сводится к колонке.
    *
    *  Раньше сводилась, и это было ошибкой проектирования: IR описывает

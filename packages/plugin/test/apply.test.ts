@@ -178,6 +178,7 @@ describe('auto-layout: включение и откат', () => {
         paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
         primaryAxisAlignItems: 'MIN', counterAxisAlignItems: 'MIN',
         expected: [{ x: 0, y: 0 }, { x: 20, y: 0 }],
+        positioning: ['AUTO', 'AUTO'],
       },
       children: [
         { kind: 'rect', base: { ...base('a'), x: 0, y: 0, width: 10, height: 10 } },
@@ -302,5 +303,73 @@ describe('векторы', () => {
       figma, screen(vector(svgOf(24, 24), 48, 48)), [],
     )
     expect(report.map((entry) => entry.code)).toContain('fidelity.vector-resized')
+  })
+})
+
+/** Абсолютный ребёнок внутри auto-layout.
+ *
+ *  Проверяется на двойнике по тому же праву, что и откат: это
+ *  поведение ПРИМЕНИТЕЛЯ — какой ребёнок получает `ABSOLUTE` и где
+ *  он в итоге стоит. Двойник изображает Figma, которая раскладывает
+ *  в ряд всех, кому не сказали стоять на месте. */
+describe('auto-layout: абсолютный ребёнок', () => {
+  const withBadge = (): SceneNode => ({
+    kind: 'frame', clipsContent: false,
+    base: {
+      ...base('card'),
+      autoLayout: {
+        mode: 'HORIZONTAL', itemSpacing: 10,
+        paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
+        primaryAxisAlignItems: 'MIN', counterAxisAlignItems: 'MIN',
+        expected: [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 90, y: -5 }],
+        positioning: ['AUTO', 'AUTO', 'ABSOLUTE'],
+      },
+      children: [
+        { kind: 'rect', base: { ...base('a'), x: 0, y: 0, width: 10, height: 10 } },
+        { kind: 'rect', base: { ...base('b'), x: 20, y: 0, width: 10, height: 10 } },
+        { kind: 'rect', base: { ...base('badge'), x: 90, y: -5, width: 8, height: 8 } },
+      ],
+    },
+  })
+
+  /** Двойник кладёт в ряд только тех, кто не ABSOLUTE, — как Figma. */
+  const layingOut = () => {
+    const figma = makeFigma()
+    const createFrame = figma.createFrame
+    figma.createFrame = () => {
+      const frame = createFrame()
+      const kids = (frame as unknown as { appendedChildren: FigmaLikeNode[] })
+        .appendedChildren
+      let mode = 'NONE'
+      Object.defineProperty(frame, 'layoutMode', {
+        get: () => mode,
+        set: (value: string) => {
+          mode = value
+          if (value === 'NONE') return
+          let x = 0
+          for (const kid of kids) {
+            if (kid['layoutPositioning'] === 'ABSOLUTE') continue
+            kid.x = x
+            kid.y = 0
+            x += (typeof kid.width === 'number' ? kid.width : 0) + 10
+          }
+        },
+      })
+      return frame
+    }
+    return figma
+  }
+
+  it('получает ABSOLUTE и остаётся на своём месте, режим не откатывается', async () => {
+    const figma = layingOut()
+    const { root, report } = await applyScreen(figma, screen(withBadge()), [])
+    const kids = (root as unknown as { appendedChildren: FigmaLikeNode[] })
+      .appendedChildren
+    expect(kids[2]?.['layoutPositioning']).toBe('ABSOLUTE')
+    expect(kids[2]?.x).toBe(90)
+    expect(kids[2]?.y).toBe(-5)
+    expect(root['layoutMode']).toBe('HORIZONTAL')
+    expect(report.map((entry) => entry.code))
+      .not.toContain('fidelity.auto-layout-rejected')
   })
 })

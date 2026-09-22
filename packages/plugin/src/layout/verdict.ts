@@ -19,6 +19,9 @@ export type AutoLayoutVerdict =
   | {
       safe: true
       expected: Placement[]
+      /** Кто из детей в очереди auto-layout, а кто стоит абсолютно.
+       *  Порядок тот же, что у `children` и `expected`. */
+      positioning: ('AUTO' | 'ABSOLUTE')[]
       /** Ось, по которой раскладывать. Для сетки выведена из
        *  измеренного и может не совпадать с `layout.mode`. */
       mode: 'row' | 'column'
@@ -95,7 +98,22 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
     }
   }
 
+  /** АБСОЛЮТНЫЕ дети из флекса ИСКЛЮЧАЮТСЯ, а не отвергают его.
+   *
+   *  Так устроен и CSS: `position: absolute` выводит элемент из потока,
+   *  и флекс раскладывает остальных без него. И так устроена Figma:
+   *  у ребёнка auto-layout есть `layoutPositioning: 'ABSOLUTE'`, с
+   *  которым он остаётся внутри рамки, но в очередь не встаёт.
+   *  Прежний отказ «ребёнок с position: absolute сдвинул бы остальных»
+   *  описывал поведение по умолчанию, а не единственно возможное; на
+   *  бандле пользователя он давал 24 отказа, и каждый — бейдж или
+   *  иконка в углу карточки, ради которой карточка и лишалась
+   *  раскладки.
+   *
+   *  `sticky` и `float` остаются отказом: первый в потоке, но
+   *  смещён, второй раскладывается вовсе не флексом. */
   for (const child of node.children) {
+    if (isAbsolute(child)) continue
     if (child.selfLayout.positioning !== 'flow') {
       return {
         safe: false,
@@ -131,7 +149,11 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
   /** Внешние отступы детей сворачиваются в отступы контейнера и
    *  зазор: у auto-layout нет отступов на ребёнке. Не свернулось —
    *  честный отказ с причиной. */
-  const folded = foldMargins(node, mode)
+  const flow = node.children.filter((child) => !isAbsolute(child))
+  if (flow.length === 0) {
+    return { safe: false, reason: 'все дети позиционированы абсолютно — раскладывать нечего' }
+  }
+  const folded = foldMargins({ ...node, children: flow }, mode)
   if ('reason' in folded) return { safe: false, reason: folded.reason }
 
   const effective: NodeLayout = {
@@ -142,15 +164,27 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
     align: folded.align,
   }
 
-  const expected = solveLayout(
+  const solved = solveLayout(
     effective,
     { width: node.rect.w, height: node.rect.h },
-    node.children.map((child) => ({ width: child.rect.w, height: child.rect.h })),
+    flow.map((child) => ({ width: child.rect.w, height: child.rect.h })),
     border,
   )
 
+  /** `expected` — по ВСЕМ детям, в их порядке: применитель сверяет
+   *  каждого. Абсолютному ожидается его собственное место — Figma с
+   *  `ABSOLUTE` его не трогает, и сверка это подтвердит. */
+  const expected: Placement[] = []
+  const positioning: ('AUTO' | 'ABSOLUTE')[] = []
+  let cursor = 0
   for (const [index, child] of node.children.entries()) {
-    const place = expected[index]
+    if (isAbsolute(child)) {
+      expected.push({ x: child.rect.x, y: child.rect.y })
+      positioning.push('ABSOLUTE')
+      continue
+    }
+    const place = solved[cursor]
+    cursor += 1
     if (place === undefined) {
       return { safe: false, reason: 'решатель не дал положения для всех детей' }
     }
@@ -163,10 +197,16 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
           + `браузер намерил (${child.rect.x.toFixed(1)}, ${child.rect.y.toFixed(1)})`,
       }
     }
+    expected.push(place)
+    positioning.push('AUTO')
   }
 
   return {
-    safe: true, expected, mode,
+    safe: true, expected, positioning, mode,
     gap: folded.gap, padding: folded.padding, align: folded.align,
   }
 }
+
+const isAbsolute = (child: IrNode): boolean =>
+  child.selfLayout.positioning === 'absolute'
+  || child.selfLayout.positioning === 'fixed'

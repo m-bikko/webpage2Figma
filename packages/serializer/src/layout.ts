@@ -52,6 +52,7 @@ export const readLayout = (cs: CSSStyleDeclaration): NodeLayout => {
       ? (mode === 'none' ? 'start' : 'stretch')
       : (ALIGN_MAP[alignRaw] ?? 'start')
 
+  const justify = JUSTIFY_MAP[cs.justifyContent] ?? 'start'
   return {
     mode,
     gap,
@@ -62,9 +63,21 @@ export const readLayout = (cs: CSSStyleDeclaration): NodeLayout => {
       left: parsePx(cs.paddingLeft),
     },
     align,
-    justify: JUSTIFY_MAP[cs.justifyContent] ?? 'start',
+    /** У `-reverse` главная ось идёт с КОНЦА: `justify-content: start`
+     *  прижимает детей к правому краю ряда, а не к левому. Порядок
+     *  детей обходчик уже разворачивает; без разворота выравнивания
+     *  решатель клал единственного ребёнка слева, а браузер — справа.
+     *  Измерено на живой странице: сдвиг ровно на 8 в контейнере 32 с
+     *  ребёнком 24. `space-*` симметричны и не меняются. */
+    justify: isReversed(cs) ? FLIPPED[justify] : justify,
     wrap: cs.flexWrap.startsWith('wrap'),
   }
+}
+
+const FLIPPED: Record<LayoutJustify, LayoutJustify> = {
+  start: 'end', end: 'start', center: 'center',
+  'space-between': 'space-between', 'space-around': 'space-around',
+  'space-evenly': 'space-evenly',
 }
 
 export const isReversed = (cs: CSSStyleDeclaration): boolean =>

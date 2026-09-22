@@ -385,6 +385,19 @@ const applyAutoLayout = (
   target['primaryAxisSizingMode'] = 'FIXED'
   target['counterAxisSizingMode'] = 'FIXED'
 
+  /** Абсолютные дети выводятся из очереди СРАЗУ после включения режима
+   *  и ставятся на прежнее место. Порядок по документации: режим на
+   *  родителе, потом `layoutPositioning` на ребёнке, потом координаты —
+   *  до переключения Figma их игнорирует. */
+  children.forEach((child, index) => {
+    if (layout.positioning[index] !== 'ABSOLUTE') return
+    child['layoutPositioning'] = 'ABSOLUTE'
+    const was = before[index]
+    if (was === undefined) return
+    child.x = was.x
+    child.y = was.y
+  })
+
   const drifted = children.findIndex((child, index) => {
     const want = layout.expected[index]
     if (want === undefined) return true

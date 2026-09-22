@@ -61,16 +61,35 @@ describe('autoLayoutVerdict: исключения по построению', ()
       { wrap: true })).safe).toBe(false)
   })
 
-  /** Абсолютно позиционированный ребёнок в auto-layout встанет в
-   *  очередь и сдвинет остальных — ровно тот случай, ради которого в
-   *  контракте есть `selfLayout.positioning`. */
-  it('абсолютно позиционированный ребёнок — небезопасно', () => {
+  /** Утверждение ПЕРЕВЁРНУТО: абсолютный ребёнок больше не отвергает
+   *  auto-layout — он из него исключается, как в CSS, и в сцене
+   *  получает `ABSOLUTE`, как в Figma. Прежняя проверка описывала
+   *  поведение по умолчанию, а не единственно возможное, и падала бы
+   *  ровно в момент починки. На бандле пользователя отказ давал 24
+   *  карточки без раскладки — из-за бейджа в углу каждой.
+   *
+   *  Что осталось стеречь: флекс считается ПО ОСТАЛЬНЫМ, абсолютному
+   *  ожидается его собственное место, и оба факта видны в ответе. */
+  it('абсолютно позиционированный ребёнок исключается, а не отвергает', () => {
     const parent = rowParent([
       { x: 0, y: 0, w: 50, h: 20 },
       { x: 60, y: 0, w: 40, h: 20 },
+      { x: 90, y: -5, w: 8, h: 8 },
     ])
-    const badge = parent.children[1]
+    const badge = parent.children[2]
     if (badge !== undefined) badge.selfLayout = { ...badge.selfLayout, positioning: 'absolute' }
+    const verdict = autoLayoutVerdict(parent)
+    expect(verdict.safe).toBe(true)
+    if (!verdict.safe) return
+    expect(verdict.positioning).toEqual(['AUTO', 'AUTO', 'ABSOLUTE'])
+    expect(verdict.expected[2]).toEqual({ x: 90, y: -5 })
+  })
+
+  /** А вот если абсолютны ВСЕ — раскладывать нечего. */
+  it('контейнер из одних абсолютных детей — небезопасно', () => {
+    const parent = rowParent([{ x: 0, y: 0, w: 50, h: 20 }])
+    const only = parent.children[0]
+    if (only !== undefined) only.selfLayout = { ...only.selfLayout, positioning: 'absolute' }
     expect(autoLayoutVerdict(parent).safe).toBe(false)
   })
 

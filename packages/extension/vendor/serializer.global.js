@@ -1827,6 +1827,7 @@ var H2DSerializer = (() => {
     const gap = mode === "column" ? gapValue(cs.rowGap) : gapValue(cs.columnGap);
     const alignRaw = cs.alignItems;
     const align = alignRaw === "normal" ? mode === "none" ? "start" : "stretch" : ALIGN_MAP[alignRaw] ?? "start";
+    const justify = JUSTIFY_MAP[cs.justifyContent] ?? "start";
     return {
       mode,
       gap,
@@ -1837,9 +1838,23 @@ var H2DSerializer = (() => {
         left: parsePx(cs.paddingLeft)
       },
       align,
-      justify: JUSTIFY_MAP[cs.justifyContent] ?? "start",
+      /** У `-reverse` главная ось идёт с КОНЦА: `justify-content: start`
+       *  прижимает детей к правому краю ряда, а не к левому. Порядок
+       *  детей обходчик уже разворачивает; без разворота выравнивания
+       *  решатель клал единственного ребёнка слева, а браузер — справа.
+       *  Измерено на живой странице: сдвиг ровно на 8 в контейнере 32 с
+       *  ребёнком 24. `space-*` симметричны и не меняются. */
+      justify: isReversed(cs) ? FLIPPED[justify] : justify,
       wrap: cs.flexWrap.startsWith("wrap")
     };
+  };
+  var FLIPPED = {
+    start: "end",
+    end: "start",
+    center: "center",
+    "space-between": "space-between",
+    "space-around": "space-around",
+    "space-evenly": "space-evenly"
   };
   var isReversed = (cs) => cs.flexDirection.endsWith("-reverse");
 
