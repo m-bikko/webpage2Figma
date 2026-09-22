@@ -4,9 +4,14 @@
   "api": "1.0.0",
   "main": "dist/code.global.js",
   "ui": "src/ui.html",
-  "editorType": ["figma"],
+  "editorType": [
+    "figma"
+  ],
+  "documentAccess": "dynamic-page",
   "networkAccess": {
-    "allowedDomains": ["none"],
+    "allowedDomains": [
+      "none"
+    ],
     "reasoning": "Плагин не ходит в сеть. Байты изображений приходят внутри файла .w2f, который выбирает пользователь."
   }
 }

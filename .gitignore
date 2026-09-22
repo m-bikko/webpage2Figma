@@ -8,3 +8,4 @@ playwright-report/
 *.tsbuildinfo
 out/
 packages/*/dist/
+release/
