@@ -161,7 +161,7 @@ for (const screen of scene.screens) {
   if (doc === undefined) { console.log(`экран «${screen.name}»: артборд пуст`); continue }
   compare(screen.root, doc, { x: doc.absoluteBoundingBox.x - screen.root.base.x, y: doc.absoluteBoundingBox.y - screen.root.base.y }, screen.name)
   matched += 1
-  console.log(`экран «${screen.name}» (${figmaRoot.id}): расхождений ${problems.length - before}`)
+  console.log(`экран «${screen.name}» (${artboard.id}): расхождений ${problems.length - before}`)
   if (rootId !== undefined) break
 }
 

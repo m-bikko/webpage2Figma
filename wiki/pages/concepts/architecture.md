@@ -3,7 +3,7 @@ title: Архитектура
 type: concept
 tags: [architecture, extension, figma-plugin]
 created: 2026-09-19
-updated: 2026-09-21
+updated: 2026-09-22
 sources: [docs/superpowers/specs/2026-09-19-webpage2figma-design.md]
 ---
 
@@ -44,3 +44,7 @@ Localhost-relay отклонён: «один клик вместо двух» н
 
 - [[breakpoint-capture]] — как получаются пять размеров
 - [[support-boundaries]] — границы переносимого
+- [[scene-shaping]] — что плагин делает с деревом ради панели слоёв: схлопывание обёрток, имена, артборд
+- [[screen-canvas]] — экран как артборд с холстом браузера
+- [[import-resilience]] — изоляция сбоев Figma на уровне узла и картинки
+- [[release]] — публикация двух половин и почему они выходят парой
