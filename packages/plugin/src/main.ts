@@ -1,7 +1,7 @@
 import { decodeBundleText, unpackBundle } from '@w2f/bundle'
 import { buildScene, layOutScreens } from './build/index.js'
 import { applyScreen, type FigmaSurface } from './apply.js'
-import type { Diagnostic } from '@w2f/ir'
+import type { Bundle, Diagnostic } from '@w2f/ir'
 
 /** Точка входа плагина.
  *
@@ -151,16 +151,44 @@ const handleMessage = async (message: unknown): Promise<void> => {
 
   /** Картинки загружаются ОДИН раз на бандл: один и тот же ассет может
    *  стоять на многих узлах и на всех пяти экранах, а `createImage`
-   *  каждый раз клал бы в файл новую копию. */
+   *  каждый раз клал бы в файл новую копию.
+   *
+   *  И ТОЛЬКО ТЕ, на которые ссылаются узлы. В бандле лежат и
+   *  полностраничные скриншоты экранов — они для сверки, в макет не
+   *  идут, а высотой бывают в десять тысяч пикселей. Figma принимает
+   *  картинки до 4096 по стороне, и на длинной странице импорт падал
+   *  целиком: «Image is too large» — из-за ассета, который никому не
+   *  был нужен. */
+  const referenced = new Set<string>()
+  const collect = (node: Bundle['screens'][number]['root']): void => {
+    if (node.kind === 'image') referenced.add(node.image.assetId)
+    for (const fill of node.style.fills) {
+      if (fill.kind === 'image') referenced.add(fill.ref.assetId)
+    }
+    node.children.forEach(collect)
+  }
+  bundle.screens.forEach((screen) => collect(screen.root))
+
   const images = new Map<string, string>()
+  const report: Diagnostic[] = [...bundle.report, ...scene.report]
   for (const asset of bundle.assets) {
-    if (svgTexts.has(asset.id)) continue
+    if (svgTexts.has(asset.id) || !referenced.has(asset.id)) continue
     const bytes = files.assets[asset.id]
     if (bytes === undefined) continue
-    images.set(asset.id, figma.createImage(bytes).hash)
+    /** Отказ ОДНОЙ картинки — запись в отчёте, а не конец импорта.
+     *  Узел без хеша приедет пустым, и отчёт скажет почему; макет без
+     *  одной картинки лучше, чем никакого макета. */
+    try {
+      images.set(asset.id, figma.createImage(bytes).hash)
+    } catch (error) {
+      report.push({
+        level: 'error', code: 'fidelity.image-unreadable',
+        message: `Figma не приняла картинку ${asset.width}×${asset.height} ` +
+          `(${asset.mimeType}): ${error instanceof Error ? error.message : String(error)}`,
+        nodeId: null, screenId: null, needsPlaceholder: false,
+      })
+    }
   }
-
-  const report: Diagnostic[] = [...bundle.report, ...scene.report]
 
   /** Экраны раскладываются В РЯД, а не в одну точку. Корень каждого
    *  стоит в нуле своих координат — верно внутри экрана и неверно на

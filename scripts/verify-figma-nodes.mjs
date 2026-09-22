@@ -49,10 +49,19 @@ for (const asset of bundle.assets) {
 }
 const scene = buildScene(bundle, svgTexts)
 
-const api = async (path) => {
+/** Лимит запросов Figma отдаёт как 429, и он не ошибка данных, а
+ *  просьба подождать. Скрипт ждёт и повторяет, а не падает: иначе
+ *  сверка срывалась бы на второй попытке подряд. */
+const api = async (path, attempt = 0) => {
   const response = await fetch(`https://api.figma.com/v1${path}`, {
     headers: { 'X-Figma-Token': token },
   })
+  if (response.status === 429 && attempt < 5) {
+    const wait = Number(response.headers.get('retry-after') ?? 0) * 1000 || 30_000 * (attempt + 1)
+    console.log(`Figma просит подождать: ${Math.round(wait / 1000)} с`)
+    await new Promise((done) => { setTimeout(done, wait) })
+    return api(path, attempt + 1)
+  }
   if (!response.ok) {
     throw new Error(`Figma ответила ${response.status} на ${path}: ${await response.text()}`)
   }
