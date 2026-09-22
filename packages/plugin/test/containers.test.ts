@@ -21,11 +21,29 @@ import type { SceneNode } from '../src/scene.js'
  *  `appendChild` кому угодно и ничего бы не поймал. Это ровно та
  *  слабость имитации, о которой написано в шапке `apply.test.ts`. */
 
+/** У ребёнка есть ЗАЛИВКА, и это не украшение.
+ *
+ *  Строитель схлопывает невидимые узлы: пустой фрейм без заливок,
+ *  рамки и эффектов ничего не рисует, и в панели слоёв Figma он
+ *  только мешает. Пустышка здесь проверяла бы поведение схлопывания,
+ *  а не то, ради чего написан тест, — что текст с детьми не
+ *  проглатывает их. */
+const visibleChild = (id: string): IrNode => {
+  const node = frameNode({ id })
+  return {
+    ...node,
+    style: {
+      ...node.style,
+      fills: [{ kind: 'solid', color: { r: 1, g: 2, b: 3, a: 1 } }],
+    },
+  }
+}
+
 const withChildren = (): IrNode => ({
   ...frameNode({ id: 'n1' }),
   kind: 'text',
   text: nodeText(),
-  children: [frameNode({ id: 'n2' })],
+  children: [visibleChild('n2')],
 })
 
 const leavesWithChildren = (node: SceneNode, out: string[] = []): string[] => {
@@ -192,7 +210,12 @@ describe('раскладка учитывает ПЕРЕПОЛНЕНИЕ, а н�
           id: 's-1', width: 400, height: 300,
           root: frameNode({
             id: 'r1', rect: { x: 0, y: 0, w: 400, h: 300 },
-            children: [frameNode({ id: 'c', rect: { x: 350, y: 0, w: 500, h: 50 } })],
+            /** Ребёнок ВИДИМЫЙ: невидимый и пустой строитель
+             *  выбрасывает, и переполнять было бы нечем. */
+            children: [{
+              ...visibleChild('c'),
+              rect: { x: 350, y: 0, w: 500, h: 50 },
+            }],
           }),
         }),
         makeScreen({ id: 's-2', width: 400, height: 300,

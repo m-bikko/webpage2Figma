@@ -84,7 +84,7 @@ const base = (name: string) => ({
   id: name, name, x: 0, y: 0, width: 10, height: 10, rotation: 0,
   opacity: 1, blendMode: 'NORMAL', fills: [], stroke: null,
   corner: { tl: 0, tr: 0, br: 0, bl: 0 }, effects: [],
-  autoLayout: null, children: [],
+  autoLayout: null, isolates: false, children: [],
 })
 
 const textNode: SceneNode = {

@@ -13,6 +13,7 @@ import {
 import {
   figmaRgba, gradientPaint, radialGradientPaint, solidPaint,
 } from './paint.js'
+import { flattenScene } from './flatten.js'
 import { emptyBase, imageNodeFor } from './image.js'
 import { resizeSvg } from './svg.js'
 import { autoLayoutVerdict } from '../layout/verdict.js'
@@ -371,6 +372,7 @@ const baseFor = (node: IrNode, ctx: BuildCtx): SceneBase => {
     corner: node.style.corner,
     effects: effectsFor(node.style),
     autoLayout: autoLayoutFor(node, ctx),
+    isolates: node.isStackingContext,
     /** Картинка-фон идёт ПЕРВЫМ ребёнком: в CSS `background-image`
      *  ложится над `background-color`, но под содержимым. */
     children: backgroundFirst(imageChildrenFor(node, ctx), childrenOf(node, ctx)),
@@ -575,9 +577,14 @@ export const buildScreen = (
   name: screen.name,
   width: screen.width,
   height: screen.height,
-  root: buildNode(screen.root, {
+  /** Схлопывание — ПОСЛЕДНИЙ шаг построения, уже над готовым
+   *  деревом. Делать его по ходу нельзя: решение о подъёме детей
+   *  зависит от того, что у узла в итоге оказалось — заливки,
+   *  auto-layout, обрезка, — а это известно только когда узел
+   *  достроен. */
+  root: flattenScene(buildNode(screen.root, {
     assets, svgTexts, needsVerification, report, screenId: screen.id,
-  }),
+  })),
 })
 
 export const buildScene = (

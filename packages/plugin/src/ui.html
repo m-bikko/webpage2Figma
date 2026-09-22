@@ -73,20 +73,37 @@
       out.innerHTML = '<div class="row error">' + escapeHtml(msg.text) + '</div>'
       return
     }
-    // Переносы узлов сворачиваются в одну строку: это не изъяны, а
-    // объяснение, почему слой лежит не там, где элемент в разметке. На
-    // живой странице их под сотню, и списком они топят всё остальное.
-    const hoisted = msg.report.filter(
-      (entry) => entry.code === 'fidelity.paint-order-hoisted').length
-    const hoistedRow = hoisted === 0 ? '' :
-      '<div class="row info">' + hoisted + ' узлов перенесено к предкам ради ' +
-      'верного порядка отрисовки — в Figma порядок слоёв и есть z-порядок.' +
-      '</div>'
-    const rest = msg.report.filter(
-      (entry) => entry.code !== 'fidelity.paint-order-hoisted')
-    const rows = rest.map((entry) =>
-      '<div class="row"><span class="lvl ' + entry.level + '">' + entry.level +
-      '</span><span>' + escapeHtml(entry.message) + '</span></div>').join('')
+    // ОДИНАКОВЫЕ записи сворачиваются в одну со счётчиком.
+    //
+    // На живой странице отчёт — это сотни повторов одного и того же
+    // предложения: 640 переносов узлов, полторы сотни одинаковых
+    // предупреждений о порядке отрисовки. Списком они топят собой всё
+    // остальное, то есть мешают ровно тому, ради чего отчёт нужен.
+    // Пролистать такое нельзя, и человек перестаёт читать его вовсе.
+    //
+    // Группировка идёт по ПАРЕ «уровень + сообщение», а не по коду:
+    // один код даёт разные сообщения (у каждого свой элемент или своя
+    // причина), и слить их в одну строку значило бы потерять то
+    // немногое, что в записи полезно.
+    const groups = []
+    const seen = new Map()
+    for (const entry of msg.report) {
+      const key = entry.level + '|' + entry.message
+      const found = seen.get(key)
+      if (found === undefined) {
+        const row = { level: entry.level, message: entry.message, count: 1 }
+        seen.set(key, row)
+        groups.push(row)
+      } else found.count += 1
+    }
+    // Самые частые сверху: отчёт читают с начала, а не до конца.
+    groups.sort((a, b) => b.count - a.count)
+    const rows = groups.map((group) =>
+      '<div class="row"><span class="lvl ' + group.level + '">' + group.level +
+      '</span><span>' + escapeHtml(group.message) +
+      (group.count > 1 ? ' <b>× ' + group.count + '</b>' : '') +
+      '</span></div>').join('')
+    const hoistedRow = ''
     const check = msg.needsVerification.length === 0 ? '' :
       '<div class="check"><b>Требует сверки глазами</b> — здесь наша модель ' +
       'поведения Figma остаётся догадкой:<br>' +

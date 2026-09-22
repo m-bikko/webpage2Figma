@@ -125,49 +125,39 @@ chrome.runtime.onMessage.addListener((message: Progress) => {
     : `<div class="row info">Auto-layout не применён к ${rejected} узлам — ` +
       'причины ниже.</div>'
 
-  /** Сообщения о ПЕРЕНОСЕ узлов сворачиваются в одну строку.
+  /** ОДИНАКОВЫЕ записи сворачиваются в одну со счётчиком.
    *
-   *  Это не изъяны: перенос делается ради верного порядка отрисовки, и
-   *  каждая запись лишь объясняет, почему слой лежит не там, где
-   *  элемент в разметке. На живой странице их набирается под сотню, и
-   *  развёрнутым списком они топят собой всё остальное — то есть
-   *  мешают увидеть настоящие потери.
+   *  На живой странице отчёт — это сотни повторов одного предложения.
+   *  Списком они топят собой всё остальное, то есть мешают ровно
+   *  тому, ради чего отчёт нужен: увидеть, что именно потерялось.
    *
-   *  Совсем убрать их нельзя: иерархия действительно изменилась, и
-   *  человек, ищущий слой не на своём месте, должен найти этому
-   *  объяснение. */
-  const hoisted = message.report
-    .filter((entry) => entry.code === 'fidelity.paint-order-hoisted').length
-  const hoistedRow = hoisted === 0 ? ''
-    : `<div class="row info">${hoisted} узлов перенесено к предкам ради ` +
-      'верного порядка отрисовки — в Figma порядок слоёв и есть z-порядок.' +
-      '</div>'
-
-  const rest = message.report
-    .filter((entry) => entry.code !== 'fidelity.paint-order-hoisted')
-  const rows = rest.length === 0
-    ? '<div class="row info">Расхождений не найдено.</div>'
-    : rest.map((entry) =>
-        `<div class="row"><span class="lvl ${entry.level}">${entry.level}</span>` +
-        `<span>${escapeHtml(entry.message)}</span></div>`).join('')
-  /** Кнопка копирования включается ТОЛЬКО когда есть что копировать и
-   *  оно пролезает. Включённая кнопка, которая потом отказывает, —
-   *  худший из вариантов: человек уже ушёл в Figma и узнаёт об отказе
-   *  там, где сделать с ним ничего нельзя. */
-  pending = message.text
-  if (copyButton instanceof HTMLButtonElement) {
-    const size = message.text.length
-    const tooBig = size > CLIPBOARD_LIMIT
-    copyButton.disabled = tooBig
-    copyButton.textContent = tooBig
-      ? `Слишком велик для буфера (${Math.round(size / 1024 / 1024)} МБ)`
-      : `Скопировать для Figma (${Math.round(size / 1024 / 1024 * 10) / 10} МБ)`
-    copyButton.hidden = false
-    if (tooBig) pending = null
+   *  Группировка по ПАРЕ «уровень + сообщение», а не по коду: один код
+   *  даёт разные сообщения, и слияние по коду выбросило бы
+   *  единственное, что в записи полезно. */
+  type Group = { level: string; message: string; count: number }
+  const groups: Group[] = []
+  const seen = new Map<string, Group>()
+  for (const entry of message.report) {
+    const key = `${entry.level}|${entry.message}`
+    const found = seen.get(key)
+    if (found === undefined) {
+      const row: Group = { level: entry.level, message: entry.message, count: 1 }
+      seen.set(key, row)
+      groups.push(row)
+    } else found.count += 1
   }
+  /** Самые частые сверху: отчёт читают с начала, а не до конца. */
+  groups.sort((a, b) => b.count - a.count)
+
+  const rows = groups.length === 0
+    ? '<div class="row info">Расхождений не найдено.</div>'
+    : groups.map((group) =>
+        `<div class="row"><span class="lvl ${group.level}">${group.level}</span>` +
+        `<span>${escapeHtml(group.message)}` +
+        `${group.count > 1 ? ` <b>× ${group.count}</b>` : ''}</span></div>`).join('')
 
   show(`<div class="row"><b>Скачано: ${escapeHtml(message.file)}</b></div>` +
-       `${summary}${hoistedRow}${rows}`)
+       `${summary}${rows}`)
 })
 
 /** Копирование идёт по нажатию, а не само собой после захвата.
