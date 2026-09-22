@@ -26,7 +26,12 @@ export const readProbe = (
     id: '',
     position: cs.position as LayoutProbe['position'],
     zIndex: zIndexRaw === 'auto' ? 'auto' : Number.parseInt(zIndexRaw, 10),
-    opacity: Number.parseFloat(cs.opacity),
+    /** `visibility: hidden` выражается нулевой непрозрачностью — ТА ЖЕ
+     *  величина, что в `readStyle`. Два источника, считающие её
+     *  по-разному, дали узел с нулём в стиле и единицей в пробе:
+     *  рендерер не оборачивал его в группу и рисовал текст скрытого
+     *  элемента как видимый. Один источник истины — здесь. */
+    opacity: cs.visibility === 'hidden' ? 0 : Number.parseFloat(cs.opacity),
     hasTransform: cs.transform !== 'none',
     hasFilter: cs.filter !== 'none' || cs.backdropFilter !== 'none',
     hasMixBlendMode: cs.mixBlendMode !== 'normal',

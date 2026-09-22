@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>layout-ghosts</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:14px/1.4 monospace;padding:16px}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:12px;background:#f1f5f9;padding:8px}
+  .box{width:40px;height:24px;background:#2563eb}
+  .tall{display:flex;flex-direction:column;gap:8px;width:200px;background:#f1f5f9;padding:8px;margin-bottom:12px}
+</style></head>
+<body>
+  <!-- «ПРИЗРАКИ» РАСКЛАДКИ: элементы, которых не было в IR, но которые
+       занимают место. Сосед стоял в IR один, в сотнях пикселей от края
+       контейнера без видимой причины, и решатель флекса отвергал
+       auto-layout: «положение не объясняется флексом». На бандле
+       пользователя это была главная причина отказов. -->
+
+  <!-- visibility: hidden — невидим, но место занимает и в потоке, и во
+       флексе. В отличие от display: none. -->
+  <div class="row">
+    <span style="visibility:hidden;width:120px">скрытый, но занимающий место</span>
+    <div class="box"></div>
+    <div class="box" style="background:#16a34a"></div>
+  </div>
+
+  <!-- display: contents — у обёртки нет бокса, её дети раскладываются
+       как дети родителя. Прежде выбрасывалась ВМЕСТЕ с содержимым:
+       молчаливая потеря, а не только сбитая раскладка. -->
+  <div class="row">
+    <div style="display:contents">
+      <div class="box" style="background:#dc2626"></div>
+      <span>внутри contents</span>
+    </div>
+    <div class="box"></div>
+  </div>
+
+  <!-- То же по вертикали. -->
+  <div class="tall">
+    <div style="visibility:hidden;height:60px">скрытая шапка</div>
+    <div class="box" style="width:100%"></div>
+  </div>
+</body></html>

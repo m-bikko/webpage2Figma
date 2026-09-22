@@ -40,6 +40,7 @@ const FIXTURES = [
    *  в элемент вместо строк, и фон, заменённый цветом текста, прожили
    *  незамеченными до первой текстовой фикстуры здесь. */
   'text', 'inline-text',
+  'layout-ghosts',
 ] as const
 
 type Threshold = { maxDiffPixels: number; maxDiffRatio: number }
@@ -156,4 +157,37 @@ test('auto-layout признаётся безопасным на настоящ�
     verdict.safe,
     verdict.safe ? '' : `вердикт отказал: ${verdict.reason}`,
   ).toBe(true)
+})
+
+/** «Призраки» раскладки: элементы, которые место занимают, но в IR не
+ *  попадали. Пиксельный гейт этого НЕ ловит и ловить не может:
+ *  координаты в IR измерены браузером, а не посчитаны, и сосед
+ *  призрака стоит где надо при любом IR. Страдал вердикт auto-layout:
+ *  он считает раскладку по детям, и без призрака ребёнок в 314
+ *  пикселях от края «не объяснялся флексом». На бандле пользователя
+ *  это была главная причина отказов.
+ *
+ *  Поэтому утверждается ВЕРДИКТ: каждый флекс-контейнер фикстуры
+ *  обязан признаваться безопасным. Проверено сломом: возврат к
+ *  выбрасыванию visibility: hidden роняет проверку. */
+test('auto-layout не отвергается из-за скрытых и бескоробочных соседей', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('layout-ghosts'))
+  const { screen } = await captureScreen(page, 's-1440', 'D')
+
+  const containers: IrNode[] = []
+  const visit = (node: IrNode): void => {
+    if (node.layout.mode !== 'none' && node.children.length > 1) containers.push(node)
+    node.children.forEach(visit)
+  }
+  visit(screen.root)
+  expect(containers.length, 'фикстура обязана дать три флекс-контейнера').toBe(3)
+
+  for (const container of containers) {
+    const verdict = autoLayoutVerdict(container)
+    expect(
+      verdict.safe,
+      verdict.safe ? '' : `вердикт отказал контейнеру "${container.name}": ${verdict.reason}`,
+    ).toBe(true)
+  }
 })

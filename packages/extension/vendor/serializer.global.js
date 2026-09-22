@@ -1866,7 +1866,12 @@ var H2DSerializer = (() => {
       id: "",
       position: cs.position,
       zIndex: zIndexRaw === "auto" ? "auto" : Number.parseInt(zIndexRaw, 10),
-      opacity: Number.parseFloat(cs.opacity),
+      /** `visibility: hidden` выражается нулевой непрозрачностью — ТА ЖЕ
+       *  величина, что в `readStyle`. Два источника, считающие её
+       *  по-разному, дали узел с нулём в стиле и единицей в пробе:
+       *  рендерер не оборачивал его в группу и рисовал текст скрытого
+       *  элемента как видимый. Один источник истины — здесь. */
+      opacity: cs.visibility === "hidden" ? 0 : Number.parseFloat(cs.opacity),
       hasTransform: cs.transform !== "none",
       hasFilter: cs.filter !== "none" || cs.backdropFilter !== "none",
       hasMixBlendMode: cs.mixBlendMode !== "normal",
@@ -2210,7 +2215,7 @@ var H2DSerializer = (() => {
   ]);
   var isRendered = (el, cs) => {
     if (SKIPPED_TAGS.has(el.tagName)) return false;
-    if (cs.display === "none" || cs.visibility === "hidden") return false;
+    if (cs.display === "none") return false;
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 && rect.height <= 0) return false;
     return !clipsAwayEverything(cs.clipPath, { w: rect.width, h: rect.height });
@@ -2396,7 +2401,14 @@ var H2DSerializer = (() => {
       shadows: parseBoxShadow(cs.boxShadow),
       // СОБСТВЕННАЯ непрозрачность, не композитная: плагин вкладывает узлы,
       // и Figma перемножает так же, как браузер. Запекать вниз запрещено.
-      opacity: Number.parseFloat(cs.opacity),
+      //
+      // `visibility: hidden` выражается нулём: элемент невидим, но место
+      // занимает — ровно так ведёт себя и слой Figma с нулевой
+      // непрозрачностью внутри auto-layout. Слой с `visible: false` не
+      // годится: он из раскладки выпадает. Потомок с `visibility:
+      // visible` внутри скрытого предка при этом тоже пропадёт — редкий
+      // случай, признанное упрощение.
+      opacity: cs.visibility === "hidden" ? 0 : Number.parseFloat(cs.opacity),
       blend,
       /** Два размытия разведены намеренно: `filter: blur()` размывает САМ
        *  слой и переносится, `backdrop-filter: blur()` размывает то, что за
@@ -2775,9 +2787,19 @@ var H2DSerializer = (() => {
       false
     );
   };
+  var expandContents = (children) => children.flatMap((child) => (
+    /** `<slot>` тоже `display: contents` по умолчанию, но раскрывать его
+     *  здесь нельзя: на его месте стоят НАЗНАЧЕННЫЕ узлы, а не его
+     *  дети. Слот подменяет `orderedChildren` ниже; раскрытие здесь
+     *  подставило бы запасное содержимое — обычно пустоту — и слотовое
+     *  пропало бы. Поймал пиксельный гейт на `shadow-dom`: 38128. */
+    child.tagName !== "SLOT" && window.getComputedStyle(child).display === "contents" ? expandContents([...child.children]) : [child]
+  ));
   var orderedChildren = (el, cs) => {
     const shadow = el.shadowRoot;
-    const source = shadow === null || shadow === void 0 ? [...el.children] : [...shadow.children];
+    const source = expandContents(
+      shadow === null || shadow === void 0 ? [...el.children] : [...shadow.children]
+    );
     const expanded = [];
     for (const child of source) {
       if (child.tagName !== "SLOT") {

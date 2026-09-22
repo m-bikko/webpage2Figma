@@ -109,7 +109,14 @@ const SKIPPED_TAGS = new Set([
 
 const isRendered = (el: Element, cs: CSSStyleDeclaration): boolean => {
   if (SKIPPED_TAGS.has(el.tagName)) return false
-  if (cs.display === 'none' || cs.visibility === 'hidden') return false
+  /** `visibility: hidden` НЕ выбрасывает узел, в отличие от
+   *  `display: none`: скрытый элемент невидим, но место занимает — и в
+   *  потоке, и во флексе. Прежняя редакция выбрасывала его, и сосед
+   *  оставался в IR один, стоя в 314 пикселях от края контейнера без
+   *  видимой причины; решатель флекса объяснить такое не мог, и
+   *  auto-layout отвергался. Узел остаётся, а невидимость выражается
+   *  нулевой непрозрачностью — см. `readStyle`. */
+  if (cs.display === 'none') return false
   const rect = el.getBoundingClientRect()
   if (rect.width <= 0 && rect.height <= 0) return false
   /** Полностью вырезанный `clip-path`-ом узел невидим ТАК ЖЕ, как
@@ -379,7 +386,14 @@ const readStyle = (
     shadows: parseBoxShadow(cs.boxShadow),
     // СОБСТВЕННАЯ непрозрачность, не композитная: плагин вкладывает узлы,
     // и Figma перемножает так же, как браузер. Запекать вниз запрещено.
-    opacity: Number.parseFloat(cs.opacity),
+    //
+    // `visibility: hidden` выражается нулём: элемент невидим, но место
+    // занимает — ровно так ведёт себя и слой Figma с нулевой
+    // непрозрачностью внутри auto-layout. Слой с `visible: false` не
+    // годится: он из раскладки выпадает. Потомок с `visibility:
+    // visible` внутри скрытого предка при этом тоже пропадёт — редкий
+    // случай, признанное упрощение.
+    opacity: cs.visibility === 'hidden' ? 0 : Number.parseFloat(cs.opacity),
     blend,
     /** Два размытия разведены намеренно: `filter: blur()` размывает САМ
      *  слой и переносится, `backdrop-filter: blur()` размывает то, что за
@@ -896,6 +910,25 @@ const reportPseudoRefusal = (
     hostId, false)
 }
 
+/** `display: contents` — элемент БЕЗ БОКСА, чьи дети раскладываются
+ *  как дети его родителя.
+ *
+ *  У такого элемента `getBoundingClientRect` пуст, и прежняя редакция
+ *  выбрасывала его как ненарисованный — ВМЕСТЕ СО ВСЕМ ПОДДЕРЕВОМ.
+ *  Молчаливая потеря содержимого, и не редкая: библиотеки компонентов
+ *  оборачивают в `display: contents` постоянно. Здесь элемент
+ *  подменяется своими детьми на своём месте, рекурсивно. */
+const expandContents = (children: Element[]): Element[] =>
+  children.flatMap((child) =>
+    /** `<slot>` тоже `display: contents` по умолчанию, но раскрывать его
+     *  здесь нельзя: на его месте стоят НАЗНАЧЕННЫЕ узлы, а не его
+     *  дети. Слот подменяет `orderedChildren` ниже; раскрытие здесь
+     *  подставило бы запасное содержимое — обычно пустоту — и слотовое
+     *  пропало бы. Поймал пиксельный гейт на `shadow-dom`: 38128. */
+    child.tagName !== 'SLOT' && window.getComputedStyle(child).display === 'contents'
+      ? expandContents([...child.children])
+      : [child])
+
 /** Дети узла с учётом ТЕНЕВОГО ДЕРЕВА.
  *
  *  Содержимое открытого shadow root видно на экране, но `el.children`
@@ -916,9 +949,9 @@ const reportPseudoRefusal = (
  *  сообщает `reportGaps`. */
 const orderedChildren = (el: Element, cs: CSSStyleDeclaration): Element[] => {
   const shadow = (el as Element & { shadowRoot?: ShadowRoot | null }).shadowRoot
-  const source = shadow === null || shadow === undefined
-    ? [...el.children]
-    : [...shadow.children]
+  const source = expandContents(
+    shadow === null || shadow === undefined ? [...el.children] : [...shadow.children],
+  )
 
   /** `<slot>` сам по себе ничего не рисует: на его месте стоят
    *  назначенные узлы. Пустой слот показывает своё запасное
