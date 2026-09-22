@@ -1,6 +1,6 @@
 import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import type {
-  Asset, Bundle, Diagnostic, Fill, IrNode, LayoutAlign, LayoutJustify,
+  Asset, Bundle, Diagnostic, Fill, IrNode, LayoutAlign, LayoutJustify, LineBox,
   NodeStyle, Screen, Shadow,
 } from '@w2f/ir'
 import type {
@@ -232,7 +232,57 @@ const imageChildrenFor = (
   return out
 }
 
-const textFor = (node: Extract<IrNode, { kind: 'text' }>): SceneText => {
+/** Бокс, который занимают СТРОКИ, относительно узла.
+ *
+ *  Одна строка — бокс ровно по ней, и ширина подстроится в Figma.
+ *  Несколько строк — ширина берётся от содержимого элемента (бокс
+ *  минус отступы и рамки): именно в неё переносил браузер, и меньшая
+ *  ширина по самой длинной строке заставила бы Figma переносить
+ *  раньше. Верх — по первой строке, высота — по всем. */
+const textBoxOf = (node: Extract<IrNode, { kind: 'text' }>): {
+  x: number; y: number; w: number; h: number
+  sizing: SceneText['sizing']
+} => {
+  const lines = node.text.lines
+  const first = lines[0]
+  if (first === undefined) {
+    return { x: 0, y: 0, w: node.rect.w, h: node.rect.h, sizing: 'fixed-width' }
+  }
+  /** Верх и низ — по БОКСУ СТРОКИ, а не по боксу глифов.
+   *
+   *  Браузер отдаёт через `Range` бокс глифов: при `line-height: 40px`
+   *  и кегле 32 это 36 пикселей, отступающих на 2 от верха строки.
+   *  Figma же кладёт от верха текстового узла бокс строки высотой
+   *  `lineHeight`. Поставить узел по глифам значит опустить весь
+   *  текст на половину разницы — на живой странице это 1–2 пикселя
+   *  на каждой строке, ровно те, что делают импорт «чуть не таким».
+   *  Поймал круговой обход: 9980 пикселей на фикстуре text. */
+  const leading = (line: LineBox): number => (node.text.lineHeight - line.h) / 2
+  const left = Math.min(...lines.map((line) => line.x))
+  const top = Math.min(...lines.map((line) => line.y - leading(line)))
+  const right = Math.max(...lines.map((line) => line.x + line.w))
+  const bottom = Math.max(...lines.map((line) => line.y + line.h + leading(line)))
+
+  if (lines.length === 1) {
+    return { x: left, y: top, w: right - left, h: bottom - top, sizing: 'auto-width' }
+  }
+
+  const border = node.style.stroke?.weight
+    ?? { top: 0, right: 0, bottom: 0, left: 0 }
+  const contentLeft = node.layout.padding.left + border.left
+  const contentWidth = node.rect.w - contentLeft
+    - node.layout.padding.right - border.right
+  return {
+    x: contentLeft, y: top,
+    w: Math.max(contentWidth, right - left), h: bottom - top,
+    sizing: 'fixed-width',
+  }
+}
+
+const textFor = (
+  node: Extract<IrNode, { kind: 'text' }>,
+  box: { x: number; y: number; sizing: SceneText['sizing'] },
+): SceneText => {
   let cursor = 0
   const runs = node.text.runs.map((run) => {
     const start = cursor
@@ -255,6 +305,13 @@ const textFor = (node: Extract<IrNode, { kind: 'text' }>): SceneText => {
     runs,
     lineHeight: node.text.lineHeight,
     align: node.text.align,
+    sizing: box.sizing,
+    /** Строки переводятся в систему ТЕКСТОВОГО узла: в IR они
+     *  относительно элемента, а узел теперь стоит на месте первой
+     *  строки, а не элемента. */
+    lines: node.text.lines.map((line) => ({
+      x: line.x - box.x, y: line.y - box.y, w: line.w, h: line.h, text: line.text,
+    })),
   }
 }
 
@@ -278,6 +335,23 @@ export const figmaFontStyle = (weight: number, italic: 'normal' | 'italic'): str
     : 'Thin'
   if (italic !== 'italic') return name
   return name === 'Regular' ? 'Italic' : `${name} Italic`
+}
+
+/** Обратный перевод: начертание Figma → вес и наклон CSS.
+ *
+ *  Нужен круговому обходу. Прежде обратное преобразование подставляло
+ *  `fontWeight: 400` всем подряд, и жирный заголовок возвращался
+ *  обычным — уже глифы, другая ширина строки. Незаметно это было
+ *  потому, что текст в круговом обходе не участвовал вовсе. */
+const WEIGHT_OF: Record<string, number> = {
+  Thin: 100, ExtraLight: 200, Light: 300, Regular: 400, Medium: 500,
+  SemiBold: 600, Bold: 700, ExtraBold: 800, Black: 900,
+}
+
+export const cssFontOf = (style: string): { weight: number; italic: 'normal' | 'italic' } => {
+  const italic = /\bItalic\b/.test(style) ? 'italic' : 'normal'
+  const name = style.replace(/\s*Italic\b/, '').trim() || 'Regular'
+  return { weight: WEIGHT_OF[name] ?? 400, italic }
 }
 
 type BuildCtx = {
@@ -453,47 +527,60 @@ export const buildNode = (node: IrNode, ctx: BuildCtx): SceneNode => {
 
   if (node.kind === 'text') {
     const base = baseFor(node, ctx)
+    const box = textBoxOf(node)
+
+    /** ТЕКСТОВЫЙ УЗЕЛ — ЭТО СТРОКИ, А НЕ ЭЛЕМЕНТ.
+     *
+     *  У текстового узла Figma заливка есть цвет БУКВ, и больше
+     *  ничего: ни фона, ни рамки, ни отступов у него не бывает. А у
+     *  элемента страницы всё это бывает сплошь и рядом — кнопка,
+     *  ярлык, ячейка. Значит элемент и его текст — два разных узла:
+     *  рамка с фоном размером в элемент и текст внутри, стоящий там,
+     *  куда его положил браузер.
+     *
+     *  Прежняя редакция делала из элемента без детей ОДИН текстовый
+     *  узел размером в элемент, а фон заменяла цветом текста. Кнопка
+     *  теряла фон, а текст вставал в верхний левый угол вместо
+     *  середины. Круговой обход этого не видел, потому что ни одна
+     *  фикстура не клала фон на сам текстовый элемент; стоило
+     *  положить — 59305 расходящихся пикселей на фикстуре text-box. */
     const text: SceneNode = {
       kind: 'text',
-      /** Текст занимает ВЕСЬ бокс узла, поэтому стоит в нуле его
-       *  координат и не несёт ни заливок, ни эффектов: они остались
-       *  на обёртке, как и в CSS, где фон принадлежит блоку, а не
-       *  строке. */
       base: {
         ...base, id: `${node.id}-text`,
-        x: 0, y: 0, rotation: 0, opacity: 1, blendMode: 'NORMAL',
-        /** Заливка узла — цвет ПЕРВОГО прогона. У текста в Figma нет
-         *  отдельного свойства цвета, и пустой список делал весь
-         *  текст невидимым: узлы на месте, размеры верные, читать
-         *  нечего. Именно так «терялся» текст на живой странице. */
+        x: box.x, y: box.y, width: box.w, height: box.h,
+        rotation: 0, opacity: 1, blendMode: 'NORMAL',
+        /** Заливка — цвет ПЕРВОГО прогона; остальные прогоны красятся
+         *  диапазонами в применителе. Пустой список делал текст
+         *  невидимым. */
         fills: [solidPaint(node.text.runs[0].color)], stroke: null,
         corner: { tl: 0, tr: 0, br: 0, bl: 0 },
-        effects: [], children: [],
+        effects: [], autoLayout: null, isolates: false, children: [],
       },
-      text: textFor(node),
+      text: textFor(node, box),
     }
 
-    /** БЕЗ детей текстовый узел остаётся текстовым узлом: лишняя
-     *  обёртка — лишний слой в панели, и на странице с тысячами узлов
-     *  это заметно. */
-    if (base.children.length === 0) {
+    /** Обёртка нужна, когда у элемента есть ЧТО-ТО СВОЁ: фон, рамка,
+     *  эффект, обрезка, скругление, дети. Голая строка без всего этого
+     *  едет одним узлом — но уже размером в строку и на её месте, а не
+     *  размером в элемент. */
+    const bare = base.fills.length === 0 && base.stroke === null
+      && base.effects.length === 0 && base.children.length === 0
+      && !node.style.clip && base.opacity === 1 && base.blendMode === 'NORMAL'
+      && base.corner.tl === 0 && base.corner.tr === 0
+      && base.corner.br === 0 && base.corner.bl === 0
+    if (bare) {
       return {
-        kind: 'text',
-        base: { ...base, fills: [solidPaint(node.text.runs[0].color)] },
-        text: textFor(node),
+        ...text,
+        base: {
+          ...text.base, id: node.id, name: base.name,
+          x: base.x + box.x, y: base.y + box.y,
+          rotation: base.rotation,
+        },
       }
     }
 
-    /** С детьми — обёртка обязательна. В Figma `appendChild` есть
-     *  только у контейнеров; у текстового узла его нет вовсе, и
-     *  попытка добавить ребёнка падает с «not a function» глубоко в
-     *  рекурсии, где причина не видна.
-     *
-     *  Найдено на захвате настоящей страницы: `<div>` с текстом и
-     *  вложенными элементами — обычная вёрстка, но ни одна фикстура
-     *  такого не содержала.
-     *
-     *  Текст идёт ПЕРВЫМ ребёнком: в CSS собственное содержимое блока
+    /** Текст идёт ПЕРВЫМ ребёнком: в CSS собственное содержимое блока
      *  рисуется до вложенных элементов. */
     return {
       kind: 'frame',

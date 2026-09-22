@@ -1,3 +1,4 @@
+import { cssFontOf } from './build/index.js'
 import type { Fill, IrNode, NodeStyle, Screen, Transform } from '@w2f/ir'
 import type { SceneBase, SceneNode, SceneScreen } from './scene.js'
 
@@ -309,13 +310,18 @@ const nodeFrom = (
     return {
       ...common,
       kind: 'text',
-      style: { ...styleFrom(base), clip: false },
+      /** Заливка текстового узла — цвет БУКВ, а не фон, и в стиль IR
+       *  она не возвращается: иначе рендерер нарисовал бы под текстом
+       *  плашку цвета текста. Фон элемента, если он был, живёт на
+       *  обёртке и возвращается с ней. */
+      style: { ...styleFrom(base), fills: [], clip: false },
       text: {
         runs: [{
           text: node.text.characters,
           fontStack: [node.text.runs[0]?.family ?? 'Inter'],
           usedFamily: node.text.runs[0]?.family ?? 'Inter',
-          fontWeight: 400, fontStyle: 'normal',
+          fontWeight: cssFontOf(node.text.runs[0]?.style ?? 'Regular').weight,
+          fontStyle: cssFontOf(node.text.runs[0]?.style ?? 'Regular').italic,
           fontSize: node.text.runs[0]?.fontSize ?? 16,
           letterSpacing: node.text.runs[0]?.letterSpacing ?? 0,
           /** Цвет восстанавливается из ЗАЛИВКИ прогона: у текста в
@@ -335,7 +341,22 @@ const nodeFrom = (
           decoration: node.text.runs[0]?.decoration ?? 'none',
           shadows: [],
         }],
-        lines: [],
+        /** Строки СИНТЕЗИРУЮТСЯ от бокса, а не берутся браузерные.
+         *
+         *  Figma кладёт текст от верхнего левого угла бокса, строка за
+         *  строкой высотой в `lineHeight`; так и рисуется. Взять
+         *  браузерные строки, выраженные относительно бокса, значило
+         *  бы сократить бокс из проверки: строки встали бы на свои
+         *  абсолютные места при любом боксе, и слом «бокс текста от
+         *  элемента, а не от строк» давал ровно эталон — измерено.
+         *
+         *  Текст каждой строки при этом браузерный: перенос Figma
+         *  делает сама, и это единственное, что круговой обход о
+         *  тексте не проверяет. */
+        lines: node.text.lines.map((line, index) => ({
+          x: 0, y: index * node.text.lineHeight,
+          w: base.width, h: node.text.lineHeight, text: line.text,
+        })),
         lineHeight: node.text.lineHeight,
         align: node.text.align,
       },

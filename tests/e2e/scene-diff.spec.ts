@@ -35,6 +35,11 @@ const FIXTURES = [
    *  один из них легко — прежняя редакция брала только первый. */
   'background-layers',
   'svg-background',
+  'text-box',
+  /** Текст в круговом обходе НЕ БЫЛО никогда — и текстовый узел размером
+   *  в элемент вместо строк, и фон, заменённый цветом текста, прожили
+   *  незамеченными до первой текстовой фикстуры здесь. */
+  'text', 'inline-text',
 ] as const
 
 type Threshold = { maxDiffPixels: number; maxDiffRatio: number }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>text-box</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;font:16px/1.5 Arial,sans-serif;padding:16px}
+  .row{display:flex;gap:16px;align-items:flex-start;margin-bottom:16px}
+
+  /* ТЕКСТ И ФОН НА ОДНОМ ЭЛЕМЕНТЕ. Самый обычный случай — кнопка,
+     ярлык, ячейка: у элемента есть заливка, рамка, отступы, и текст
+     лежит внутри со сдвигом на padding. В Figma у текстового узла
+     заливка — это цвет БУКВ, и записать туда фон элемента нельзя:
+     нужны два узла, рамка с фоном и текст внутри, стоящий там, где его
+     положил браузер. */
+  .btn{background:#2563eb;color:#fff;padding:10px 24px;border-radius:8px;
+    font-weight:700}
+  .tag{background:#fef3c7;color:#92400e;padding:2px 10px;border:2px solid #f59e0b;
+    border-radius:999px;font-size:13px}
+
+  /* Текст, вертикально отцентрованный высотой строки: строка лежит в
+     середине бокса, а не у его верха. */
+  .tall{background:#e2e8f0;height:64px;line-height:64px;padding:0 16px;width:220px}
+
+  /* Многострочный текст с отступом: и первая строка, и последующие
+     смещены на padding. */
+  .card{background:#f1f5f9;padding:20px;width:260px;color:#0f172a}
+
+  /* Выравнивание вправо в широком боксе: текст прижат к правому краю,
+     и бокс, ужатый по содержимому, обязан остаться на том же правом
+     краю. */
+  .right{width:240px;text-align:right;background:#ecfdf5;padding:8px;color:#065f46}
+</style></head>
+<body>
+  <div class="row">
+    <span class="btn">Войти</span>
+    <span class="tag">новое</span>
+  </div>
+  <div class="tall">по центру высоты</div>
+  <div class="card">Абзац с отступом со всех сторон, который переносится на
+    несколько строк внутри карточки.</div>
+  <div class="right">справа</div>
+</body></html>

@@ -186,7 +186,10 @@ describe('flattenScene', () => {
     const text: SceneNode = {
       kind: 'text',
       base: { ...frame('t').base, children: [] },
-      text: { characters: 'раз', runs: [], lineHeight: 10, align: 'left' },
+      text: {
+        characters: 'раз', runs: [], lineHeight: 10, align: 'left',
+        sizing: 'auto-width', lines: [],
+      },
     }
     const root = frame('root', { children: [text] })
     expect(ids(flattenScene(root))).toContain('t')

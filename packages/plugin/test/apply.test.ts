@@ -91,6 +91,7 @@ const textNode: SceneNode = {
   kind: 'text', base: base('t'),
   text: {
     characters: 'раз', lineHeight: 20, align: 'left',
+    sizing: 'auto-width', lines: [{ x: 0, y: 0, w: 10, h: 20, text: 'раз' }],
     runs: [{ start: 0, end: 3, family: 'Inter', style: 'Bold',
              fontSize: 16, letterSpacing: 0,
              fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0 }, opacity: 1 }],

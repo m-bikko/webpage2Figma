@@ -174,6 +174,15 @@ const applyBase = (
    *  код падал на самом глубоком узле, оставляя созданные фигуры
    *  висеть на странице без родителей. */
   target.strokes = base.stroke === null ? [] : [base.stroke.paint]
+  /** ОБВОДКА ВНУТРЬ. CSS рисует границу внутри бокса, Figma по
+   *  умолчанию — по центру, и без этой строки каждая рамка вылезала на
+   *  половину толщины наружу, а её содержимое оказывалось ужато на ту
+   *  же половину внутрь. Контракт несёт поле `align: 'inside'` именно
+   *  чтобы применитель не забыл, — и применитель забыл: строки не было
+   *  вовсе. Нашлось на живом импорте как «рамки криво». */
+  if (base.stroke !== null && 'strokeAlign' in target) {
+    target['strokeAlign'] = 'INSIDE'
+  }
   target.effects = [...base.effects]
   /** Углы и толщины по сторонам есть НЕ У ВСЕХ узлов: у текста
    *  скруглений нет вовсе. Присваивание несуществующего свойства в
@@ -219,10 +228,10 @@ export const applyNode = (
     text.characters = node.text.characters
     text['lineHeight'] = { unit: 'PIXELS', value: node.text.lineHeight }
     text['textAlignHorizontal'] = node.text.align.toUpperCase()
-    /** Перенос строк Figma делает САМ, и совпадение с браузерным не
-     *  гарантируется. Размер задаётся жёстко, чтобы она хотя бы
-     *  переносила в тех же границах. */
-    text['textAutoResize'] = 'NONE'
+    /** Текст прижат к ВЕРХУ бокса: бокс и есть строки, и его верх —
+     *  верх первой строки. Значение по умолчанию то же, но выставлено
+     *  явно: на нём держится всё вертикальное положение текста. */
+    text['textAlignVertical'] = 'TOP'
 
     /** Прогоны применяются ДИАПАЗОНАМИ. Без этого весь текст получал
      *  начертание, кегль и цвет ПЕРВОГО прогона, и выделенные слова
@@ -295,6 +304,28 @@ export const applyNode = (
 
   applyBase(target, node.base, images)
   if (node.kind === 'placeholder') target.name = `⚠ ${node.label}`
+
+  if (node.kind === 'text') {
+    /** Авторазмер выставляется ПОСЛЕ `resize` в `applyBase`: порядок
+     *  здесь и есть смысл. Документация не обещает, что `resize`
+     *  сохранит авторазмер, и выставленный раньше он мог бы молча
+     *  сброситься в NONE — с тем самым переносом «Rece / nts», ради
+     *  которого всё и делается. */
+    if (node.text.sizing === 'auto-width') {
+      target['textAutoResize'] = 'WIDTH_AND_HEIGHT'
+      /** Бокс вырос или ужался по метрикам Figma — а край, к которому
+       *  текст был прижат, обязан остаться на месте. Для текста справа
+       *  это правый край, для центрированного — середина; левый и так
+       *  не двигается. Ширина ПЕРЕЧИТЫВАЕТСЯ у Figma, а не берётся из
+       *  нашей: в этом вся суть авторазмера. */
+      const grown = typeof target.width === 'number' ? target.width : node.base.width
+      const shift = grown - node.base.width
+      if (node.text.align === 'right') target.x = node.base.x - shift
+      else if (node.text.align === 'center') target.x = node.base.x - shift / 2
+    } else {
+      target['textAutoResize'] = 'HEIGHT'
+    }
+  }
 
   /** Дети добавляются В ТОМ ПОРЯДКЕ, в каком лежат в описании, и НЕ
    *  сортируются: порядок детей в Figma — это порядок отрисовки, и он
