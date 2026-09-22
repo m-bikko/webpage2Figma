@@ -101,7 +101,7 @@ const textNode: SceneNode = {
 
 const screen = (root: SceneNode): SceneScreen =>
   ({
-    id: 's', name: 'S', width: 100, height: 100, root,
+    id: 's', name: 'S', artboard: 'S 100', width: 100, height: 100, root,
     canvas: { type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: 1 },
   })
 

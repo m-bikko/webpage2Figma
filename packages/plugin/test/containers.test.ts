@@ -229,3 +229,25 @@ describe('раскладка учитывает ПЕРЕПОЛНЕНИЕ, а н�
     expect(second.x).toBeGreaterThanOrEqual(first.x + 850)
   })
 })
+
+describe('имя артборда', () => {
+  it('хост страницы, имя экрана и ширина — чтобы два импорта различались', () => {
+    const scene = buildScene(makeBundle({
+      url: 'https://tailwindcss.com/docs/installation',
+      screens: [makeScreen({ name: 'Desktop', width: 1440 })],
+    }))
+    expect(scene.screens[0]?.artboard).toBe('tailwindcss.com — Desktop 1440')
+    /** Имя самого экрана в сцене не подменяется: круговой обход
+     *  возвращает его в IR как было. */
+    expect(scene.screens[0]?.name).toBe('Desktop')
+  })
+
+  it('без хоста (about:blank, пустой адрес) — только экран и ширина', () => {
+    for (const url of ['', 'about:blank', 'not a url']) {
+      const scene = buildScene(makeBundle({
+        url, screens: [makeScreen({ name: 'Mobile', width: 390 })],
+      }))
+      expect(scene.screens[0]?.artboard, url).toBe('Mobile 390')
+    }
+  })
+})

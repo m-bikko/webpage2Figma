@@ -20,7 +20,8 @@
     "verify-figma": "node scripts/verify-figma.mjs",
     "build:extension": "pnpm --filter @w2f/extension build",
     "verify-figma-nodes": "node scripts/verify-figma-nodes.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "store-assets": "node scripts/make-store-assets.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",

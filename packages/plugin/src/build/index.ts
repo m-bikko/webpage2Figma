@@ -654,15 +654,35 @@ export const fontsOf = (scene: SceneScreen[]): FontRequest[] => {
   return fonts
 }
 
+/** Хост из адреса страницы — для имени артборда. Адрес бывает пустым
+ *  или не URL (about:blank, file:), тогда хоста нет и артборд
+ *  называется по экрану. */
+const hostOf = (url: string): string | null => {
+  try {
+    const host = new URL(url).hostname
+    return host === '' ? null : host
+  } catch {
+    return null
+  }
+}
+
+export const artboardName = (screen: Screen, url: string): string => {
+  const host = hostOf(url)
+  const size = `${screen.name} ${screen.width}`
+  return host === null ? size : `${host} — ${size}`
+}
+
 export const buildScreen = (
   screen: Screen,
   assets: Map<string, Asset>,
   report: Diagnostic[],
   needsVerification: Scene['needsVerification'],
   svgTexts: Map<string, string> = new Map(),
+  url = '',
 ): SceneScreen => ({
   id: screen.id,
   name: screen.name,
+  artboard: artboardName(screen, url),
   width: screen.width,
   height: screen.height,
   canvas: solidPaint(screen.canvas),
@@ -687,7 +707,7 @@ export const buildScene = (
   const needsVerification: Scene['needsVerification'] = []
   const report: Diagnostic[] = []
   const screens = bundle.screens.map(
-    (screen) => buildScreen(screen, assets, report, needsVerification, svgTexts),
+    (screen) => buildScreen(screen, assets, report, needsVerification, svgTexts, bundle.url),
   )
   return { screens, fonts: fontsOf(screens), needsVerification, report }
 }

@@ -136,10 +136,10 @@ for (const screen of scene.screens) {
    *  артборд; берётся последний из одноимённых — последний импорт. */
   const candidates = rootId !== undefined
     ? top.filter((n) => n.id === rootId)
-    : top.filter((n) => n.name === screen.name)
+    : top.filter((n) => n.name === screen.artboard)
   const artboard = candidates[candidates.length - 1]
   if (artboard === undefined) {
-    console.log(`экран «${screen.name}»: артборда с таким именем на страницах нет`)
+    console.log(`экран «${screen.name}»: артборда «${screen.artboard}» на страницах нет`)
     continue
   }
   const full = await api(`/files/${fileKey}/nodes?ids=${encodeURIComponent(artboard.id)}`)

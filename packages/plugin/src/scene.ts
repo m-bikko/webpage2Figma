@@ -208,7 +208,14 @@ export type SceneNode =
 
 export type SceneScreen = {
   id: string
+  /** Имя экрана из бандла («Desktop», «Mobile»). Круговой обход
+   *  возвращает его в IR как есть. */
   name: string
+  /** Имя АРТБОРДА на холсте Figma: хост страницы, имя экрана и
+   *  ширина — `tailwindcss.com — Desktop 1440`. Одно только имя
+   *  экрана не годится: после второго импорта на странице лежат два
+   *  «Desktop», и какой с какого сайта — не видно. */
+  artboard: string
   width: number
   height: number
   /** Заливка рамки экрана — холст браузера. Применитель создаёт рамку

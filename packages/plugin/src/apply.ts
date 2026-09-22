@@ -462,7 +462,7 @@ export const applyScreen = async (
    *  показывал вьюпорт, а горизонтальное переполнение в браузере тоже
    *  за краем экрана. */
   const root = figma.createFrame()
-  root.name = screen.name
+  root.name = screen.artboard
   root.x = 0
   root.y = 0
   root.resize(screen.width, screen.height)
