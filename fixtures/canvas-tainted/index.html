@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>canvas-tainted</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:16px;font:14px/1.4 monospace}
+  canvas{display:block;background:#f1f5f9;margin-bottom:12px}</style>
+</head>
+<body>
+  <!-- ЗАГРЯЗНЁННАЯ КАНВА: на неё нарисовано изображение с ДРУГОГО
+       источника без разрешения CORS. Браузер после этого запрещает
+       читать её пиксели — `toDataURL` бросает исключение, и обойти
+       это нечем.
+
+       Фикстура живёт в проверке диагностик и валидатора, а не в
+       пиксельном гейте: на её месте законно стоит заглушка, которой
+       браузер не рисует, и расхождение тут замысел.
+
+       Заведена после того, как этот случай отверг бандл настоящей
+       страницы: код заглушки не совпадал с кодом диагностики, и
+       валидатор был прав. Ни одна фикстура такого не содержала. -->
+  <canvas id="c" width="200" height="90"></canvas>
+  <div>подпись</div>
+<script>
+  const canvas = document.getElementById('c')
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#2563eb'
+  ctx.fillRect(10, 10, 80, 60)
+  const img = new Image()
+  img.onload = () => { ctx.drawImage(img, 100, 10, 80, 60) }
+  // Порт 4318 — второй источник фикстур: тот же хост, другой порт,
+  // то есть другое происхождение по правилам браузера.
+  img.src = 'http://127.0.0.1:4318/image-fit/asset.png'
+</script>
+</body></html>

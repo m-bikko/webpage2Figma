@@ -648,7 +648,17 @@ const placeholderFor = (
 type ImageVerdict =
   | { kind: 'not-image' }
   | { kind: 'ref'; ref: ImageRef }
-  | { kind: 'broken'; label: string }
+  /** КОД несёт сам вердикт, а не подставляется на месте.
+   *
+   *  Инвариант контракта требует, чтобы код заглушки совпадал с кодом
+   *  объяснившей её диагностики. Пока код подставлялся в одном месте
+   *  жёстко, а диагностику выдавал вызывающий, эти два места могли
+   *  разойтись — и разошлись: загрязнённая канва сообщала
+   *  `unsupported.canvas`, а заглушка несла `fidelity.image-unreadable`.
+   *  Валидатор отверг бандл целиком, и поймал это не тест, а живая
+   *  страница. */
+  | { kind: 'broken'; label: string
+      code: typeof DIAGNOSTIC_CODES[keyof typeof DIAGNOSTIC_CODES] }
 
 const readImage = (
   el: Element,
@@ -666,7 +676,10 @@ const readImage = (
       ctx.sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas,
         'Канва «загрязнена» изображением с чужого источника: браузер ' +
         'запрещает читать её пиксели, и обойти это нечем.', id, true)
-      return { kind: 'broken', label: 'canvas' }
+      return {
+        kind: 'broken', label: 'canvas',
+        code: DIAGNOSTIC_CODES.unsupportedCanvas,
+      }
     }
     if (shot.kind === 'empty') {
       /** ЗАГЛУШКА ЗДЕСЬ НЕУМЕСТНА, и это не мелочь. Заглушка означает
@@ -708,7 +721,10 @@ const readImage = (
       `Источник <img> не загружен: "${img.getAttribute('src') ?? ''}".`,
       id, true,
     )
-    return { kind: 'broken', label: 'img' }
+    return {
+      kind: 'broken', label: 'img',
+      code: DIAGNOSTIC_CODES.imageUnreadable,
+    }
   }
   const natural = { w: img.naturalWidth, h: img.naturalHeight }
   return {
@@ -1135,7 +1151,7 @@ const buildNode = (
      *  и правильно сделает: именно так дыра и выглядела молча. */
     node = {
       ...base, kind: 'placeholder',
-      placeholder: { code: DIAGNOSTIC_CODES.imageUnreadable, label: image.label },
+      placeholder: { code: image.code, label: image.label },
     }
   } else if (placeholder !== null) {
     node = { ...base, kind: 'placeholder', placeholder }

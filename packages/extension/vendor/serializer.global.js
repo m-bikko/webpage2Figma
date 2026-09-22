@@ -2499,7 +2499,11 @@ var H2DSerializer = (() => {
           id,
           true
         );
-        return { kind: "broken", label: "canvas" };
+        return {
+          kind: "broken",
+          label: "canvas",
+          code: DIAGNOSTIC_CODES.unsupportedCanvas
+        };
       }
       if (shot.kind === "empty") {
         ctx.sink.report(
@@ -2540,7 +2544,11 @@ var H2DSerializer = (() => {
         id,
         true
       );
-      return { kind: "broken", label: "img" };
+      return {
+        kind: "broken",
+        label: "img",
+        code: DIAGNOSTIC_CODES.imageUnreadable
+      };
     }
     const natural = { w: img.naturalWidth, h: img.naturalHeight };
     return {
@@ -2812,7 +2820,7 @@ var H2DSerializer = (() => {
       node = {
         ...base,
         kind: "placeholder",
-        placeholder: { code: DIAGNOSTIC_CODES.imageUnreadable, label: image.label }
+        placeholder: { code: image.code, label: image.label }
       };
     } else if (placeholder !== null) {
       node = { ...base, kind: "placeholder", placeholder };
