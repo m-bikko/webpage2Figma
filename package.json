@@ -17,7 +17,8 @@
     "build:plugin": "pnpm --filter @w2f/plugin build",
     "build": "pnpm build:serializer && pnpm build:bundle && pnpm build:plugin && pnpm build:extension",
     "verify-figma": "node scripts/verify-figma.mjs",
-    "build:extension": "pnpm --filter @w2f/extension build"
+    "build:extension": "pnpm --filter @w2f/extension build",
+    "verify-figma-nodes": "node scripts/verify-figma-nodes.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.138.0",

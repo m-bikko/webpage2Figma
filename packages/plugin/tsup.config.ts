@@ -1,6 +1,22 @@
 import { defineConfig } from 'tsup'
 
-export default defineConfig({
+export default defineConfig([{
+  /** Самодостаточная сборка БИБЛИОТЕКИ плагина для скриптов сверки.
+   *
+   *  `dist/index.js` от `tsc -b` импортирует `@w2f/ir`, чьи `exports`
+   *  указывают на `.ts`, и обычный Node его не прочитает. А
+   *  `verify-figma-nodes.mjs` нужен строитель сцены во время
+   *  выполнения — чтобы сравнить с деревом из Figma ровно то, что
+   *  плагин туда отправлял. Та же причина, по которой у `@w2f/bundle`
+   *  есть `bundled.js`. */
+  entry: { bundled: 'src/index.ts' },
+  format: ['esm'],
+  target: 'node20',
+  platform: 'node',
+  sourcemap: true,
+  clean: false,
+  noExternal: [/.*/],
+}, {
   entry: { code: 'src/main.ts' },
   format: ['iife'],
   target: 'es2020',
@@ -25,4 +41,4 @@ export default defineConfig({
    *  что-нибудь внешним значит получить отказ при запуске, а не при
    *  сборке. */
   noExternal: [/.*/],
-})
+}])
