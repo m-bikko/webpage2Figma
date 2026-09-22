@@ -54,8 +54,29 @@ const isVisible = (node: SceneNode): boolean => {
 const canCollapse = (node: SceneNode, parentHasLayout: boolean): boolean => {
   if (isVisible(node)) return false
   if (node.base.autoLayout !== null) return false
-  if (parentHasLayout) return false
+  if (parentHasLayout) return fillsExactly(node)
   return true
+}
+
+/** Внутри auto-layout схлопывается ТОЛЬКО обёртка, которую единственный
+ *  ребёнок занимает целиком.
+ *
+ *  Общий запрет схлопывать внутри auto-layout верен: дети обёртки
+ *  стали бы элементами чужой раскладки и встали бы не туда. Но если
+ *  ребёнок один и его бокс совпадает с боксом обёртки, замена одного
+ *  на другой ничего в раскладке не меняет — элемент того же размера
+ *  на том же месте. Это единственный случай, где безопасность следует
+ *  из построения, а не из надежды.
+ *
+ *  Именно такие обёртки и дают глубину: на живом figma.com глубина 29
+ *  оставалась 20 после первого схлопывания, потому что почти всё
+ *  дерево там лежит внутри auto-layout. */
+const fillsExactly = (node: SceneNode): boolean => {
+  const [only, ...rest] = node.base.children
+  if (only === undefined || rest.length > 0) return false
+  const { base } = only
+  return base.x === 0 && base.y === 0
+    && base.width === node.base.width && base.height === node.base.height
 }
 
 /** Схлопывает поддерево, возвращая узлы, которые займут место

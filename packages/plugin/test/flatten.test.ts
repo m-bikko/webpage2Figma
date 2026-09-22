@@ -127,19 +127,51 @@ describe('flattenScene', () => {
 
   /** И зеркальный случай: поднять детей В auto-layout нельзя — они
    *  стали бы элементами чужой раскладки и встали в ряд вместо своего
-   *  места. */
-  it('внутри auto-layout ничего не схлопывается', () => {
-    const layout = {
-      mode: 'VERTICAL' as const, itemSpacing: 0,
-      paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
-      primaryAxisAlignItems: 'MIN' as const, counterAxisAlignItems: 'MIN' as const,
-      expected: [],
-    }
+   *  места. Ребёнок здесь МЕНЬШЕ обёртки: именно это и делает замену
+   *  небезопасной. */
+  const vertical = {
+    mode: 'VERTICAL' as const, itemSpacing: 0,
+    paddingTop: 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0,
+    primaryAxisAlignItems: 'MIN' as const, counterAxisAlignItems: 'MIN' as const,
+    expected: [],
+  }
+
+  it('внутри auto-layout обёртка с ребёнком другого размера остаётся', () => {
     const root = frame('root', {
-      autoLayout: layout,
-      children: [frame('wrap', { children: [frame('kid', { fills: paint })] })],
+      autoLayout: vertical,
+      children: [frame('wrap', {
+        children: [frame('kid', { fills: paint, width: 40, height: 40 })],
+      })],
     })
     expect(ids(flattenScene(root))).toContain('wrap')
+  })
+
+  it('внутри auto-layout обёртка с двумя детьми остаётся', () => {
+    const root = frame('root', {
+      autoLayout: vertical,
+      children: [frame('wrap', {
+        children: [frame('a', { fills: paint }), frame('b', { fills: paint })],
+      })],
+    })
+    expect(ids(flattenScene(root))).toContain('wrap')
+  })
+
+  /** Единственное исключение, безопасное ПО ПОСТРОЕНИЮ: ребёнок один и
+   *  занимает обёртку целиком. Элемент того же размера на том же месте
+   *  раскладки не меняет. На живом figma.com именно такие обёртки
+   *  держали глубину: 20 после первого схлопывания, 19 после этого, и
+   *  ещё семь процентов узлов. */
+  it('внутри auto-layout обёртка, занятая ребёнком целиком, схлопывается', () => {
+    const root = frame('root', {
+      autoLayout: vertical,
+      children: [frame('wrap', {
+        x: 10, y: 20,
+        children: [frame('kid', { fills: paint })],
+      })],
+    })
+    const out = flattenScene(root)
+    expect(ids(out)).toEqual(['root', 'kid'])
+    expect(find(out, 'kid')?.base.x).toBe(10)
   })
 
   /** Корень держит экран целиком: его размер — размер макета. */
