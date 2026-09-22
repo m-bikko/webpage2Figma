@@ -175,6 +175,22 @@ export const autoLayoutVerdict = (node: IrNode): AutoLayoutVerdict => {
   const folded = foldMargins({ ...node, children: flow }, mode)
   if ('reason' in folded) return { safe: false, reason: folded.reason }
 
+  /** Отрицательный отступ у Figma не проходит проверку — присваивание
+   *  бросает, и на живом импорте это валило ВЕСЬ экран: «paddingRight
+   *  failed validation: Number must be greater than or equal to 0».
+   *  Берётся он из отрицательного `margin` ребёнка (`-mx-4` в Tailwind
+   *  обычное дело), свёрнутого в отступ контейнера. Такую раскладку
+   *  auto-layout не выражает, и отказ обязан случиться здесь, в чистой
+   *  части, а не в Figma. Отрицательный зазор Figma принимает. */
+  const { padding } = folded
+  if (padding.top < 0 || padding.right < 0 || padding.bottom < 0 || padding.left < 0) {
+    return {
+      safe: false,
+      reason: 'отрицательный внешний отступ ребёнка свернулся в отрицательный '
+        + 'отступ контейнера, а у auto-layout отступ не бывает меньше нуля',
+    }
+  }
+
   const effective: NodeLayout = {
     ...node.layout,
     mode,

@@ -373,3 +373,41 @@ describe('auto-layout: абсолютный ребёнок', () => {
       .not.toContain('fidelity.auto-layout-rejected')
   })
 })
+
+/** Сбой одного узла не валит импорт. Двойник отвергает присваивание
+ *  у одного ребёнка — как Figma отвергает отрицательный отступ, — и
+ *  проверяется, что остальные построены, а причина записана. */
+describe('applyScreen: изоляция сбоев', () => {
+  it('сломавшийся ребёнок пропускается, братья строятся, причина в отчёте', async () => {
+    const figma = makeFigma()
+    const createRectangle = figma.createRectangle
+    let made = 0
+    figma.createRectangle = () => {
+      const rect = createRectangle()
+      made += 1
+      if (made === 2) {
+        Object.defineProperty(rect, 'opacity', {
+          set: () => { throw new Error('Property "opacity" failed validation') },
+        })
+      }
+      return rect
+    }
+    const parent: SceneNode = {
+      kind: 'frame', clipsContent: false,
+      base: {
+        ...base('p'),
+        children: [
+          { kind: 'rect', base: base('a') },
+          { kind: 'rect', base: base('b') },
+          { kind: 'rect', base: base('c') },
+        ],
+      },
+    }
+    const { root, report } = await applyScreen(figma, screen(parent), [])
+    const kids = (root as unknown as { appendedChildren: FigmaLikeNode[] }).appendedChildren
+    expect(kids.map((kid) => kid.name)).toEqual(['a', 'c'])
+    const failed = report.find((entry) => entry.code === 'fidelity.node-failed')
+    expect(failed?.nodeId).toBe('b')
+    expect(failed?.message).toContain('failed validation')
+  })
+})

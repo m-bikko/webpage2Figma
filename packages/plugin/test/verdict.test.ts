@@ -147,3 +147,27 @@ describe('autoLayoutVerdict: допуск', () => {
     expect(verdict.safe).toBe(true)
   })
 })
+
+/** Отрицательный отступ. Берётся из отрицательного `margin` ребёнка,
+ *  свёрнутого в отступ контейнера; Figma такое присваивание отвергает
+ *  с исключением, и на живом импорте оно валило весь экран. Отказ
+ *  обязан случиться здесь, в чистой части. */
+describe('autoLayoutVerdict: отрицательный отступ', () => {
+  it('отвергается с названной причиной', () => {
+    const parent = rowParent([
+      { x: -16, y: 0, w: 50, h: 20 },
+      { x: 40, y: 0, w: 40, h: 20 },
+    ])
+    const first = parent.children[0]
+    if (first !== undefined) {
+      first.selfLayout = {
+        ...first.selfLayout,
+        margin: { top: 0, right: 0, bottom: 0, left: -16 },
+      }
+    }
+    const verdict = autoLayoutVerdict(parent)
+    expect(verdict.safe).toBe(false)
+    if (verdict.safe) return
+    expect(verdict.reason).toContain('меньше нуля')
+  })
+})

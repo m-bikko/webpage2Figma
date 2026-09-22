@@ -333,9 +333,26 @@ export const applyNode = (
    *  бы вторым местом, где решается один и тот же вопрос. */
   const placed: FigmaLikeNode[] = []
   for (const child of node.base.children) {
-    const built = applyNode(figma, child, substitutions, images, report)
-    target.appendChild(built)
-    placed.push(built)
+    /** Сбой ОДНОГО ребёнка — запись в отчёте, а не конец импорта.
+     *
+     *  Figma проверяет присваивания и бросает на любом значении, которое
+     *  ей не нравится; до этого места такое исключение поднималось до
+     *  самого верха, и экран приезжал наполовину — созданные узлы
+     *  висели, остальных не было, а причина одна на всех. Теперь
+     *  сломавшийся ребёнок пропускается вместе со своим поддеревом,
+     *  причина записывается с адресом, и остальные братья строятся. */
+    try {
+      const built = applyNode(figma, child, substitutions, images, report)
+      target.appendChild(built)
+      placed.push(built)
+    } catch (error) {
+      report.push({
+        level: 'error', code: 'fidelity.node-failed',
+        message: `Узел «${child.base.name}» не построен: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        nodeId: child.base.id, screenId: '', needsPlaceholder: false,
+      })
+    }
   }
 
   applyAutoLayout(target, node.base, placed, report)
