@@ -1082,6 +1082,29 @@ var H2DSerializer = (() => {
     };
   };
 
+  // src/canvas.ts
+  var snapshotCanvas = (el) => {
+    if (el.width === 0 || el.height === 0) return { kind: "empty" };
+    let dataUrl;
+    try {
+      dataUrl = el.toDataURL("image/png");
+    } catch {
+      return { kind: "tainted" };
+    }
+    if (!dataUrl.startsWith("data:image/png")) return { kind: "empty" };
+    const blank = document.createElement("canvas");
+    blank.width = el.width;
+    blank.height = el.height;
+    let blankUrl;
+    try {
+      blankUrl = blank.toDataURL("image/png");
+    } catch {
+      return { kind: "image", dataUrl, width: el.width, height: el.height };
+    }
+    if (dataUrl === blankUrl) return { kind: "empty" };
+    return { kind: "image", dataUrl, width: el.width, height: el.height };
+  };
+
   // src/counters.ts
   var parsePairs = (value, fallback) => {
     if (value === "none" || value === "" || value === "normal") return [];
@@ -2434,16 +2457,6 @@ var H2DSerializer = (() => {
     }
   };
   var placeholderFor = (el, sink, id) => {
-    if (el.tagName === "CANVAS") {
-      sink.report(
-        "warning",
-        DIAGNOSTIC_CODES.unsupportedCanvas,
-        "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 <canvas> \u043D\u0435 \u043F\u0435\u0440\u0435\u043D\u043E\u0441\u0438\u0442\u0441\u044F.",
-        id,
-        true
-      );
-      return { code: DIAGNOSTIC_CODES.unsupportedCanvas, label: "canvas" };
-    }
     if (el.tagName === "VIDEO") {
       sink.report(
         "warning",
@@ -2476,6 +2489,47 @@ var H2DSerializer = (() => {
     return null;
   };
   var readImage = (el, cs, box, ctx, id) => {
+    if (el.tagName === "CANVAS") {
+      const shot = snapshotCanvas(el);
+      if (shot.kind === "tainted") {
+        ctx.sink.report(
+          "warning",
+          DIAGNOSTIC_CODES.unsupportedCanvas,
+          "\u041A\u0430\u043D\u0432\u0430 \xAB\u0437\u0430\u0433\u0440\u044F\u0437\u043D\u0435\u043D\u0430\xBB \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u043C \u0441 \u0447\u0443\u0436\u043E\u0433\u043E \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430: \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u0437\u0430\u043F\u0440\u0435\u0449\u0430\u0435\u0442 \u0447\u0438\u0442\u0430\u0442\u044C \u0435\u0451 \u043F\u0438\u043A\u0441\u0435\u043B\u0438, \u0438 \u043E\u0431\u043E\u0439\u0442\u0438 \u044D\u0442\u043E \u043D\u0435\u0447\u0435\u043C.",
+          id,
+          true
+        );
+        return { kind: "broken", label: "canvas" };
+      }
+      if (shot.kind === "empty") {
+        ctx.sink.report(
+          "info",
+          DIAGNOSTIC_CODES.unsupportedCanvas,
+          "\u041A\u0430\u043D\u0432\u0430 \u043F\u0443\u0441\u0442\u0430 \u0438\u043B\u0438 \u043D\u0430\u0440\u0438\u0441\u043E\u0432\u0430\u043D\u0430 \u0447\u0435\u0440\u0435\u0437 WebGL \u0431\u0435\u0437 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u043E\u0433\u043E \u0431\u0443\u0444\u0435\u0440\u0430: \u0447\u0438\u0442\u0430\u0442\u044C \u043D\u0435\u0447\u0435\u0433\u043E. \u0423\u0437\u0435\u043B \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u043F\u0443\u0441\u0442\u044B\u043C \u2014 \u0442\u0430\u043A\u0438\u043C \u043E\u043D \u0438 \u0432\u044B\u0433\u043B\u044F\u0434\u0438\u0442 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435.",
+          id,
+          false
+        );
+        return { kind: "not-image" };
+      }
+      const natural2 = { w: shot.width, h: shot.height };
+      return {
+        kind: "ref",
+        ref: {
+          assetId: ctx.requests.request(
+            shot.dataUrl,
+            natural2.w,
+            natural2.h,
+            id,
+            ctx.screenId
+          ),
+          /** Канва растягивается по своему боксу как `object-fit: fill`:
+           *  CSS-размер задаёт бокс, а атрибуты `width`/`height` —
+           *  разрешение буфера, и браузер именно растягивает одно на
+           *  другое. */
+          placement: placementFor("fill", "50% 50%", box, natural2)
+        }
+      };
+    }
     if (el.tagName !== "IMG") return { kind: "not-image" };
     const img = el;
     if (img.currentSrc === "" || img.naturalWidth === 0 || img.naturalHeight === 0) {

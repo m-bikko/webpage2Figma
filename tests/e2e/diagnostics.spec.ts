@@ -652,3 +652,50 @@ test('значения CSS-счётчиков вычислены верно', as
   expect(texts).toContain('I) a')
   expect(texts).toContain('IV) d')
 })
+
+/** Канва: что стало узлом-картинкой, а что осталось фреймом.
+ *
+ *  Пикселями это не сверить, и разница принципиальна. Пустая канва,
+ *  ошибочно признанная непустой, даёт ПРОЗРАЧНУЮ картинку — на экране
+ *  она неотличима от пустого фрейма, и пиксельный гейт молчит
+ *  (проверено сломом: 53 пикселя, то есть ровно эталон). А в Figma
+ *  разница есть: там появится заливка-изображение из ничего, и
+ *  дизайнер получит слой, которого на странице не было.
+ *
+ *  Поэтому утверждается СТРУКТУРА: у нарисованной канвы узел несёт
+ *  картинку, у пустой — нет. */
+test('канва: нарисованная едет картинкой, пустая остаётся фреймом', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(fixtureUrl('canvas'))
+  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
+
+  const canvases: { kind: string; hasImageFill: boolean }[] = []
+  const visit = (node: typeof screen.root): void => {
+    if (node.sourceTag === 'canvas') {
+      canvases.push({
+        kind: node.kind,
+        hasImageFill: node.style.fills.some((fill) => fill.kind === 'image'),
+      })
+    }
+    for (const child of node.children) visit(child)
+  }
+  visit(screen.root)
+
+  expect(canvases, 'фикстура обязана дать ровно две канвы').toHaveLength(2)
+  /** Нарисованная: узел-картинка. Именно `kind`, а не заливка —
+   *  содержимое канвы это и есть узел, а не фон под ним. */
+  expect(canvases.filter((item) => item.kind === 'image')).toHaveLength(1)
+  /** Пустая: обычный фрейм и НИКАКОЙ заливки-изображения. */
+  const empty = canvases.find((item) => item.kind !== 'image')
+  expect(empty?.hasImageFill, 'у пустой канвы не должно быть картинки')
+    .toBe(false)
+
+  /** И о пустой сказано — но уровнем info и без заглушки: терять там
+   *  нечего, а красная рамка на её месте была бы ложной тревогой. */
+  const about = report.filter(
+    (item) => item.code === 'unsupported.canvas',
+  )
+  expect(about).toHaveLength(1)
+  expect(about[0]?.level).toBe('info')
+  expect(about[0]?.needsPlaceholder).toBe(false)
+})

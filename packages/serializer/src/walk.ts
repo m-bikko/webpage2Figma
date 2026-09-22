@@ -24,6 +24,7 @@ import {
   parseMatrix, readOrigin, untransformedSize, type Matrix,
 } from './css/transform.js'
 import type { DiagnosticSink } from './diagnostics.js'
+import { snapshotCanvas } from './canvas.js'
 import { computeCounters, type CounterMap } from './counters.js'
 import { hoistEscaped } from './hoist.js'
 import {
@@ -600,11 +601,10 @@ const placeholderFor = (
   sink: DiagnosticSink,
   id: string,
 ): { code: typeof DIAGNOSTIC_CODES[keyof typeof DIAGNOSTIC_CODES]; label: string } | null => {
-  if (el.tagName === 'CANVAS') {
-    sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas,
-      'Содержимое <canvas> не переносится.', id, true)
-    return { code: DIAGNOSTIC_CODES.unsupportedCanvas, label: 'canvas' }
-  }
+  /** Канвы здесь БОЛЬШЕ НЕТ: её содержимое читается через `toDataURL`
+   *  и едет обычным ассетом. Случаи, когда читать нечего, разбирает
+   *  `readImage` — и каждый называет свою причину, а не общее
+   *  «не переносится». */
   if (el.tagName === 'VIDEO') {
     sink.report('warning', DIAGNOSTIC_CODES.unsupportedVideo,
       'Содержимое <video> не переносится: кадр видео — не изображение ' +
@@ -657,6 +657,49 @@ const readImage = (
   ctx: WalkContext,
   id: string,
 ): ImageVerdict => {
+  /** Канва — тоже изображение, просто нарисованное скриптом. Её
+   *  пиксели доступны через `toDataURL`, и это не приближение:
+   *  браузер отдаёт ровно то, что показывает. */
+  if (el.tagName === 'CANVAS') {
+    const shot = snapshotCanvas(el as HTMLCanvasElement)
+    if (shot.kind === 'tainted') {
+      ctx.sink.report('warning', DIAGNOSTIC_CODES.unsupportedCanvas,
+        'Канва «загрязнена» изображением с чужого источника: браузер ' +
+        'запрещает читать её пиксели, и обойти это нечем.', id, true)
+      return { kind: 'broken', label: 'canvas' }
+    }
+    if (shot.kind === 'empty') {
+      /** ЗАГЛУШКА ЗДЕСЬ НЕУМЕСТНА, и это не мелочь. Заглушка означает
+       *  «содержимое потеряно», а у пустой канвы терять нечего: на
+       *  экране она и есть пустой прямоугольник. Громкая красная рамка
+       *  на её месте была бы не честностью, а ложной тревогой — и
+       *  расхождением с браузером вдобавок.
+       *
+       *  Узел строится обычным фреймом: у канвы бывают фон и рамка из
+       *  CSS, и они переносятся как у любого элемента. Запись в отчёте
+       *  остаётся — но уровня info и без требования заглушки. */
+      ctx.sink.report('info', DIAGNOSTIC_CODES.unsupportedCanvas,
+        'Канва пуста или нарисована через WebGL без сохранённого буфера: ' +
+        'читать нечего. Узел перенесён пустым — таким он и выглядит ' +
+        'на странице.', id, false)
+      return { kind: 'not-image' }
+    }
+    const natural = { w: shot.width, h: shot.height }
+    return {
+      kind: 'ref',
+      ref: {
+        assetId: ctx.requests.request(
+          shot.dataUrl, natural.w, natural.h, id, ctx.screenId,
+        ),
+        /** Канва растягивается по своему боксу как `object-fit: fill`:
+         *  CSS-размер задаёт бокс, а атрибуты `width`/`height` —
+         *  разрешение буфера, и браузер именно растягивает одно на
+         *  другое. */
+        placement: placementFor('fill', '50% 50%', box, natural),
+      },
+    }
+  }
+
   if (el.tagName !== 'IMG') return { kind: 'not-image' }
   const img = el as HTMLImageElement
   if (img.currentSrc === '' || img.naturalWidth === 0 || img.naturalHeight === 0) {

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>canvas</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#fff;padding:16px;font:14px/1.4 monospace}
+  canvas{display:block;margin-bottom:12px;background:#f1f5f9}
+</style></head>
+<body>
+  <!-- ОБЫЧНАЯ 2D-КАНВА. Её содержимое доступно через toDataURL, то
+       есть переносимо точно, а не приближённо. Раньше здесь приезжала
+       заглушка: на живых страницах таких по 6-12 на страницу, и это
+       графики и визуализации — то, ради чего страницу и снимают. -->
+  <canvas id="chart" width="280" height="120"></canvas>
+
+  <!-- ПУСТАЯ канва. Переносить нечего, и заглушка тут честнее
+       картинки: пустая картинка неотличима от потерянной. -->
+  <canvas id="blank" width="200" height="60"></canvas>
+
+  <div>подпись под канвами</div>
+<script>
+  const c = document.getElementById('chart').getContext('2d')
+  c.fillStyle = '#2563eb'
+  c.fillRect(10, 20, 60, 90)
+  c.fillStyle = '#16a34a'
+  c.fillRect(80, 50, 60, 60)
+  c.fillStyle = '#dc2626'
+  c.beginPath(); c.arc(200, 60, 40, 0, Math.PI * 2); c.fill()
+  c.strokeStyle = '#0f172a'; c.lineWidth = 3
+  c.beginPath(); c.moveTo(5, 115); c.lineTo(275, 115); c.stroke()
+</script>
+</body></html>

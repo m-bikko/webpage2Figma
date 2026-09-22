@@ -58,6 +58,7 @@ const FIXTURES = [
   'background-layers',
   'svg-background',
   'shadow-dom',
+  'canvas',
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.
