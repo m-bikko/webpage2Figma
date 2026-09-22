@@ -102,12 +102,13 @@ export const DIAGNOSTIC_CODES = {
    *  нужен потому, что молчаливая потеря текста невидима и для
    *  валидатора, и для pixel-diff: оба сравнивают то, что доехало. */
   textLost: 'fidelity.text-lost',
-  /** Фон страницы задан на `<html>`, а обход начинается с `<body>`.
-   *  Заливка перенесена на корневой узел. Молчать нельзя: без
-   *  переноса тёмная страница приезжала бы на белом фоне, и ни
-   *  валидатор, ни pixel-diff этого не увидели бы — обход просто
-   *  не дошёл бы до элемента, где фон объявлен. */
-  pageBackgroundMoved: 'fidelity.page-background-moved',
+  /** Ни `<html>`, ни `<body>` фона не задают, и цвет холста экрана
+   *  не прочитан, а ВЫВЕДЕН из `color-scheme` и темы системы по
+   *  измерениям Chromium. Молчать нельзя: сам цвет ни один API не
+   *  отдаёт, и человек должен видеть, что это правило, а не факт.
+   *  Объявленный фон (`html` или `body`) на холст уходит по CSS и
+   *  отчёта не требует. */
+  canvasDefaulted: 'fidelity.canvas-defaulted',
   colorClamped: 'fidelity.color-clamped',
   fontFallback: 'fidelity.font-fallback',
   gridFlattened: 'fidelity.grid-flattened',

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ru" style="color-scheme: dark">
+<head><meta charset="utf-8"><title>canvas-bg</title>
+<style>*{margin:0;padding:0}body{font:16px monospace;color:#e2e8f0;padding:16px}
+  .card{background:#1e293b;padding:12px;width:240px}</style></head>
+<body>
+  <!-- НИ html, НИ body фона не задают. Страница при этом не прозрачна:
+       холст красит браузер, и при color-scheme: dark он тёмный —
+       rgb(18,18,18), измерено. Раньше корень приезжал без заливки, и
+       страница, белая в браузере, на тёмном холсте Figma выглядела
+       тёмной — или наоборот. Фикстура с тёмной схемой нарочно: на
+       белом фоне гейта потеря белой заливки была бы невидима. -->
+  <div class="card">карточка на холсте браузера</div>
+</body></html>

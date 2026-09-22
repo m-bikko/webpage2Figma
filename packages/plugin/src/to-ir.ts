@@ -410,6 +410,12 @@ export const sceneToIr = (
     height: screen.height,
     dpr: 1,
     scroll: { x: 0, y: 0 },
+    canvas: {
+      r: Math.round(screen.canvas.color.r * 255),
+      g: Math.round(screen.canvas.color.g * 255),
+      b: Math.round(screen.canvas.color.b * 255),
+      a: screen.canvas.opacity,
+    },
     root: nodeFrom(screen.root, { value: 0 }, natural),
     screenshotId: null,
   }

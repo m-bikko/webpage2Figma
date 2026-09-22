@@ -741,10 +741,19 @@ export const renderScreenToSvg = (
   /** У корня экрана координаты абсолютные, поэтому накопленное смещение
    *  начинается с нуля. */
   const body = renderSubtree(screen.root, { x: 0, y: 0 }, ctx)
+  /** Холст — ПОД всем и НА ВЕСЬ экран, а не по боксу корня: браузер
+   *  красит им вьюпорт целиком, и там, куда `body` не дотягивается,
+   *  тоже он. Это и есть то, что сравнивает pixel-diff: короткая
+   *  страница со схемой `dark` без него давала миллион пикселей
+   *  расхождения на фикстуре `canvas-bg`, а белый холст вместо
+   *  прочитанного — 1 285 403 из 1 296 000. */
+  const canvas =
+    `<rect width="${screen.width}" height="${screen.height}" ` +
+    `fill="${rgb(screen.canvas)}" fill-opacity="${screen.canvas.a}"/>`
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${screen.width}" ` +
     `height="${screen.height}" viewBox="0 0 ${screen.width} ${screen.height}">` +
-    `<defs>${defs.join('')}</defs>${body}</svg>`
+    `<defs>${defs.join('')}</defs>${canvas}${body}</svg>`
   )
 }

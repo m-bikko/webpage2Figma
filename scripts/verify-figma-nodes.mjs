@@ -131,18 +131,34 @@ const compare = (sceneNode, figmaNode, origin, path) => {
 
 let matched = 0
 for (const screen of scene.screens) {
+  /** Плагин кладёт на страницу АРТБОРД с именем экрана и холстом в
+   *  заливке, а корень сцены (`body`) — первым ребёнком в нём. Ищется
+   *  артборд; берётся последний из одноимённых — последний импорт. */
   const candidates = rootId !== undefined
     ? top.filter((n) => n.id === rootId)
-    : top.filter((n) => n.name === screen.root.base.name)
-  const figmaRoot = candidates[candidates.length - 1]
-  if (figmaRoot === undefined) {
-    console.log(`экран «${screen.name}»: корня с именем «${screen.root.base.name}» на страницах нет`)
+    : top.filter((n) => n.name === screen.name)
+  const artboard = candidates[candidates.length - 1]
+  if (artboard === undefined) {
+    console.log(`экран «${screen.name}»: артборда с таким именем на страницах нет`)
     continue
   }
-  const full = await api(`/files/${fileKey}/nodes?ids=${encodeURIComponent(figmaRoot.id)}`)
-  const doc = full.nodes[figmaRoot.id]?.document
-  if (doc === undefined) { console.log(`экран «${screen.name}»: узел ${figmaRoot.id} не отдан`); continue }
+  const full = await api(`/files/${fileKey}/nodes?ids=${encodeURIComponent(artboard.id)}`)
+  const board = full.nodes[artboard.id]?.document
+  if (board === undefined) { console.log(`экран «${screen.name}»: узел ${artboard.id} не отдан`); continue }
   const before = problems.length
+  const size = board.absoluteBoundingBox
+  if (Math.round(size.width) !== screen.width || Math.round(size.height) !== screen.height) {
+    problems.push(`${screen.name}: артборд ${Math.round(size.width)}×${Math.round(size.height)}, ожидалось ${screen.width}×${screen.height}`)
+  }
+  const fill = (board.fills ?? [])[0]
+  const expected = screen.canvas.color
+  const same = fill !== undefined && fill.type === 'SOLID' &&
+    ['r', 'g', 'b'].every((k) => Math.abs(fill.color[k] - expected[k]) < 0.002)
+  if (!same) {
+    problems.push(`${screen.name}: холст артборда ${JSON.stringify(fill?.color ?? null)}, ожидалось ${JSON.stringify(expected)}`)
+  }
+  const doc = (board.children ?? [])[0]
+  if (doc === undefined) { console.log(`экран «${screen.name}»: артборд пуст`); continue }
   compare(screen.root, doc, { x: doc.absoluteBoundingBox.x - screen.root.base.x, y: doc.absoluteBoundingBox.y - screen.root.base.y }, screen.name)
   matched += 1
   console.log(`экран «${screen.name}» (${figmaRoot.id}): расхождений ${problems.length - before}`)

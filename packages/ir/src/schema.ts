@@ -215,6 +215,7 @@ const screen = z.object({
   height: z.number().positive(),
   dpr: z.number().positive(),
   scroll: z.object({ x: z.number(), y: z.number() }),
+  canvas: rgba8,
   root: irNodeSchema,
   screenshotId: z.string().nullable(),
 })

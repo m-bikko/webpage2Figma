@@ -66,6 +66,7 @@ export const screen = (overrides: Partial<Screen> = {}): Screen => ({
   height: 900,
   dpr: 1,
   scroll: { x: 0, y: 0 },
+  canvas: { r: 255, g: 255, b: 255, a: 1 },
   root: frameNode(),
   screenshotId: null,
   ...overrides,

@@ -1,5 +1,5 @@
 import type { Gradient, Rgba8 } from '@w2f/ir'
-import type { FigmaColor, FigmaRgba, ScenePaint } from '../scene.js'
+import type { FigmaColor, FigmaRgba, ScenePaint, SceneSolid } from '../scene.js'
 
 /** Цвет в представлении Figma: доли `0..1`, альфа НЕ входит.
  *
@@ -19,7 +19,7 @@ export const figmaRgba = (color: Rgba8): FigmaRgba => ({
   r: color.r / 255, g: color.g / 255, b: color.b / 255, a: color.a,
 })
 
-export const solidPaint = (color: Rgba8): ScenePaint => ({
+export const solidPaint = (color: Rgba8): SceneSolid => ({
   type: 'SOLID',
   color: figmaColor(color),
   opacity: color.a,

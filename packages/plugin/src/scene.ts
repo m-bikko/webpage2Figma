@@ -26,8 +26,10 @@ export type FigmaColor = { r: number; g: number; b: number }
 /** Цвет с альфой внутри — форма `RGBA` из Figma. */
 export type FigmaRgba = { r: number; g: number; b: number; a: number }
 
+export type SceneSolid = { type: 'SOLID'; color: FigmaColor; opacity: number }
+
 export type ScenePaint =
-  | { type: 'SOLID'; color: FigmaColor; opacity: number }
+  | SceneSolid
   | {
       type: 'GRADIENT_LINEAR'
       /** Матрица, а не пара концов: Figma задаёт градиент именно так.
@@ -61,7 +63,7 @@ export type ScenePaint =
 export type SceneStroke = {
   /** Краска обводки — обычный `SolidPaint`, а не наша выдумка: в Figma
    *  `strokes` принимает массив красок, и толщина в краску не входит. */
-  paint: { type: 'SOLID'; color: FigmaColor; opacity: number }
+  paint: SceneSolid
   /** Толщина ПО СТОРОНАМ, а не одним числом. Figma это умеет
    *  (`IndividualStrokesMixin`), в отличие от SVG, где одиночная
    *  обводка имеет одну ширину на весь путь и референс-рендереру
@@ -209,6 +211,12 @@ export type SceneScreen = {
   name: string
   width: number
   height: number
+  /** Заливка рамки экрана — холст браузера. Применитель создаёт рамку
+   *  размером в экран с этой заливкой и кладёт корень в неё: в Figma
+   *  это и есть артборд, а корень (`body`) — лишь его содержимое, и
+   *  он бывает ниже экрана. Строго `SOLID`: холст красится одним
+   *  цветом, и применитель не обязан уметь здесь большее. */
+  canvas: SceneSolid
   root: SceneNode
 }
 

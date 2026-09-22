@@ -61,6 +61,7 @@ const FIXTURES = [
   'canvas',
   'text-box',
   'layout-ghosts',
+  'canvas-bg',
 ] as const
 
 /** Порог двухчастный, и главная часть — АБСОЛЮТНАЯ.

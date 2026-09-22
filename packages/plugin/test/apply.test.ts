@@ -100,7 +100,20 @@ const textNode: SceneNode = {
 }
 
 const screen = (root: SceneNode): SceneScreen =>
-  ({ id: 's', name: 'S', width: 100, height: 100, root })
+  ({
+    id: 's', name: 'S', width: 100, height: 100, root,
+    canvas: { type: 'SOLID', color: { r: 1, g: 1, b: 1 }, opacity: 1 },
+  })
+
+/** `applyScreen` отдаёт РАМКУ ЭКРАНА — артборд с холстом, — а корень
+ *  сцены лежит в ней первым ребёнком. Тесты про сам корень идут туда. */
+const kidsOf = (node: FigmaLikeNode): FigmaLikeNode[] =>
+  (node as unknown as { appendedChildren?: FigmaLikeNode[] }).appendedChildren ?? []
+const contentOf = (artboard: FigmaLikeNode): FigmaLikeNode => {
+  const content = kidsOf(artboard)[0]
+  if (content === undefined) throw new Error('рамка экрана пуста')
+  return content
+}
 
 describe('applyScreen: порядок действий', () => {
   it('шрифты загружаются ДО создания текста', async () => {
@@ -240,7 +253,8 @@ describe('auto-layout: включение и откат', () => {
    *  иначе узел останется с тем, что успела наставить Figma. */
   it('после отката координаты возвращены', async () => {
     const figma = layingOut(7)
-    const { root } = await applyScreen(figma, screen(withLayout()), [])
+    const { root: artboard } = await applyScreen(figma, screen(withLayout()), [])
+    const root = contentOf(artboard)
     const kids = (root as unknown as { appendedChildren?: FigmaLikeNode[] })
       .appendedChildren
     expect(root['layoutMode']).toBe('NONE')
@@ -274,7 +288,8 @@ describe('векторы', () => {
     await applyScreen(figma, screen(vector(svgOf(48, 48), 48, 48)), [])
     const ops = figma.calls.map((call) => call.op)
     expect(ops).toContain('createNodeFromSvg')
-    expect(ops).not.toContain('createFrame')
+    /** Единственная рамка — артборд экрана; сам вектор рамкой не стал. */
+    expect(ops.filter((op) => op === 'createFrame')).toHaveLength(1)
   })
 
   it('сам SVG доезжает до Figma без изменений', async () => {
@@ -362,7 +377,8 @@ describe('auto-layout: абсолютный ребёнок', () => {
 
   it('получает ABSOLUTE и остаётся на своём месте, режим не откатывается', async () => {
     const figma = layingOut()
-    const { root, report } = await applyScreen(figma, screen(withBadge()), [])
+    const { root: artboard, report } = await applyScreen(figma, screen(withBadge()), [])
+    const root = contentOf(artboard)
     const kids = (root as unknown as { appendedChildren: FigmaLikeNode[] })
       .appendedChildren
     expect(kids[2]?.['layoutPositioning']).toBe('ABSOLUTE')
@@ -403,8 +419,8 @@ describe('applyScreen: изоляция сбоев', () => {
         ],
       },
     }
-    const { root, report } = await applyScreen(figma, screen(parent), [])
-    const kids = (root as unknown as { appendedChildren: FigmaLikeNode[] }).appendedChildren
+    const { root: artboard, report } = await applyScreen(figma, screen(parent), [])
+    const kids = kidsOf(contentOf(artboard))
     expect(kids.map((kid) => kid.name)).toEqual(['a', 'c'])
     const failed = report.find((entry) => entry.code === 'fidelity.node-failed')
     expect(failed?.nodeId).toBe('b')

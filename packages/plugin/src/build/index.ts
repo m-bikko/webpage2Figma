@@ -665,6 +665,7 @@ export const buildScreen = (
   name: screen.name,
   width: screen.width,
   height: screen.height,
+  canvas: solidPaint(screen.canvas),
   /** Схлопывание — ПОСЛЕДНИЙ шаг построения, уже над готовым
    *  деревом. Делать его по ходу нельзя: решение о подъёме детей
    *  зависит от того, что у узла в итоге оказалось — заливки,

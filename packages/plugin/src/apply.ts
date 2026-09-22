@@ -454,7 +454,21 @@ export const applyScreen = async (
    *  текста, и нарушение порядка даёт отказ уже в Figma, где
    *  разбираться труднее всего. */
   const { substitutions, report } = await loadFonts(figma, fonts, screen.id)
-  const root = applyNode(figma, screen.root, substitutions, images, report)
+  const content = applyNode(figma, screen.root, substitutions, images, report)
+  /** Рамка экрана — артборд: размером в экран, с холстом браузера как
+   *  заливкой, и корень (`body`) лежит В НЕЙ. Дать холст заливкой
+   *  корня нельзя — корень бывает ниже экрана, и всё под ним осталось
+   *  бы прозрачным. Обрезка включена: артборд показывает ровно то, что
+   *  показывал вьюпорт, а горизонтальное переполнение в браузере тоже
+   *  за краем экрана. */
+  const root = figma.createFrame()
+  root.name = screen.name
+  root.x = 0
+  root.y = 0
+  root.resize(screen.width, screen.height)
+  root.fills = [screen.canvas]
+  root.clipsContent = true
+  root.appendChild(content)
   /** Экран у записей об откате проставляется здесь: применитель узла
    *  его не знает, а запись без адреса бесполезна. */
   for (const entry of report) {

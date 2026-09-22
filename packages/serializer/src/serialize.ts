@@ -1,6 +1,8 @@
 import { IR_VERSION } from '@w2f/ir/version'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import { DiagnosticSink } from './diagnostics.js'
+import { readCanvas } from './page-canvas.js'
 import type { AssetRequest, AssetRequests } from './assets.js'
 import {
   collectFonts, createIdAllocator, walkDocument, type IdAllocator,
@@ -45,6 +47,20 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
   if (root === null) {
     throw new Error('Документ пуст: <body> не отрисован.')
   }
+  /** Холст — свойство экрана, не корня: см. `Screen.canvas`. Отчёт
+   *  только когда фон не объявлен нигде — тогда цвет ВЫВЕДЕН, а не
+   *  прочитан, и человеку стоит это знать. Объявленный фон — обычный
+   *  случай, и запись о нём была бы шумом в каждом бандле. */
+  const canvas = readCanvas()
+  if (canvas.source === 'default') {
+    const { r, g, b } = canvas.color
+    sink.report(
+      'info', DIAGNOSTIC_CODES.canvasDefaulted,
+      `Фон страницы не задан ни на <html>, ни на <body>: холсту дан цвет ` +
+      `холста браузера rgb(${r},${g},${b}) (color-scheme: ${canvas.scheme || 'normal'}).`,
+      root.id, false,
+    )
+  }
   return {
     screen: {
       id: options.id,
@@ -57,6 +73,7 @@ export const serializeScreen = (options: SerializeOptions): SerializeResult => {
       height: Math.max(document.documentElement.scrollHeight, window.innerHeight),
       dpr: window.devicePixelRatio,
       scroll: { x: window.scrollX, y: window.scrollY },
+      canvas: canvas.color,
       root,
       screenshotId: null,
     },

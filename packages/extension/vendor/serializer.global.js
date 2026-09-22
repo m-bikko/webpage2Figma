@@ -1,43 +1,7 @@
 "use strict";
 var H2DSerializer = (() => {
   // ../ir/src/version.ts
-  var IR_VERSION = 3;
-
-  // src/diagnostics.ts
-  var DiagnosticSink = class {
-    constructor(screenId) {
-      this.screenId = screenId;
-    }
-    screenId;
-    items = [];
-    seen = /* @__PURE__ */ new Set();
-    /** `needsPlaceholder` обязателен намеренно: значение по умолчанию
-     *  приглашает забыть, а забытая заглушка означает, что неподдерживаемая
-     *  фича приедет в Figma обычной пустой коробкой. Пусть каждый вызов
-     *  решает явно.
-     *
-     *  Семантика — только ЗАМЕНА: `true` означает, что узел по `nodeId`
-     *  обязан быть `kind: 'placeholder'`. Коды, которые лишь помечают узел
-     *  с реальным содержимым, передают `false`. */
-    report(level, code, message, nodeId, needsPlaceholder) {
-      const key = `${code}|${nodeId ?? "<null>"}`;
-      if (this.seen.has(key)) return;
-      this.seen.add(key);
-      this.items.push({
-        level,
-        code,
-        message,
-        nodeId,
-        screenId: this.screenId,
-        needsPlaceholder
-      });
-    }
-    /** Отдаёт копию: вызывающий не должен иметь возможности испортить
-     *  накопленное, и читать отчёт можно многократно. */
-    drain() {
-      return [...this.items];
-    }
-  };
+  var IR_VERSION = 4;
 
   // ../ir/src/codes.ts
   var DIAGNOSTIC_CODES = {
@@ -135,12 +99,13 @@ var H2DSerializer = (() => {
      *  нужен потому, что молчаливая потеря текста невидима и для
      *  валидатора, и для pixel-diff: оба сравнивают то, что доехало. */
     textLost: "fidelity.text-lost",
-    /** Фон страницы задан на `<html>`, а обход начинается с `<body>`.
-     *  Заливка перенесена на корневой узел. Молчать нельзя: без
-     *  переноса тёмная страница приезжала бы на белом фоне, и ни
-     *  валидатор, ни pixel-diff этого не увидели бы — обход просто
-     *  не дошёл бы до элемента, где фон объявлен. */
-    pageBackgroundMoved: "fidelity.page-background-moved",
+    /** Ни `<html>`, ни `<body>` фона не задают, и цвет холста экрана
+     *  не прочитан, а ВЫВЕДЕН из `color-scheme` и темы системы по
+     *  измерениям Chromium. Молчать нельзя: сам цвет ни один API не
+     *  отдаёт, и человек должен видеть, что это правило, а не факт.
+     *  Объявленный фон (`html` или `body`) на холст уходит по CSS и
+     *  отчёта не требует. */
+    canvasDefaulted: "fidelity.canvas-defaulted",
     colorClamped: "fidelity.color-clamped",
     fontFallback: "fidelity.font-fallback",
     gridFlattened: "fidelity.grid-flattened",
@@ -219,6 +184,42 @@ var H2DSerializer = (() => {
   };
   var ALL_DIAGNOSTIC_CODES = Object.values(DIAGNOSTIC_CODES);
 
+  // src/diagnostics.ts
+  var DiagnosticSink = class {
+    constructor(screenId) {
+      this.screenId = screenId;
+    }
+    screenId;
+    items = [];
+    seen = /* @__PURE__ */ new Set();
+    /** `needsPlaceholder` обязателен намеренно: значение по умолчанию
+     *  приглашает забыть, а забытая заглушка означает, что неподдерживаемая
+     *  фича приедет в Figma обычной пустой коробкой. Пусть каждый вызов
+     *  решает явно.
+     *
+     *  Семантика — только ЗАМЕНА: `true` означает, что узел по `nodeId`
+     *  обязан быть `kind: 'placeholder'`. Коды, которые лишь помечают узел
+     *  с реальным содержимым, передают `false`. */
+    report(level, code, message, nodeId, needsPlaceholder) {
+      const key = `${code}|${nodeId ?? "<null>"}`;
+      if (this.seen.has(key)) return;
+      this.seen.add(key);
+      this.items.push({
+        level,
+        code,
+        message,
+        nodeId,
+        screenId: this.screenId,
+        needsPlaceholder
+      });
+    }
+    /** Отдаёт копию: вызывающий не должен иметь возможности испортить
+     *  накопленное, и читать отчёт можно многократно. */
+    drain() {
+      return [...this.items];
+    }
+  };
+
   // src/css/color.ts
   var TRANSPARENT = { r: 0, g: 0, b: 0, a: 0 };
   var RGB_FUNCTIONAL = /^rgba?\(\s*(-?[\d.]+)[\s,]+(-?[\d.]+)[\s,]+(-?[\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i;
@@ -271,6 +272,25 @@ var H2DSerializer = (() => {
     return resolveViaCanvas(trimmed);
   };
   var isInvisible = (color) => color.a === 0;
+
+  // src/page-canvas.ts
+  var DARK_CANVAS = { r: 18, g: 18, b: 18, a: 1 };
+  var LIGHT_CANVAS = { r: 255, g: 255, b: 255, a: 1 };
+  var defaultCanvas = (scheme) => {
+    const allowsDark = scheme.includes("dark");
+    const allowsLight = scheme.includes("light");
+    const osDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return allowsDark && (!allowsLight || osDark) ? DARK_CANVAS : LIGHT_CANVAS;
+  };
+  var readCanvas = () => {
+    const htmlStyle = window.getComputedStyle(document.documentElement);
+    const scheme = htmlStyle.colorScheme;
+    const html = parseColor(htmlStyle.backgroundColor);
+    if (html !== null && !isInvisible(html)) return { color: html, source: "html", scheme };
+    const body = parseColor(window.getComputedStyle(document.body).backgroundColor);
+    if (body !== null && !isInvisible(body)) return { color: body, source: "body", scheme };
+    return { color: defaultCanvas(scheme), source: "default", scheme };
+  };
 
   // src/css/clip.ts
   var parseSide = (raw, basis) => {
@@ -3038,18 +3058,6 @@ var H2DSerializer = (() => {
       x: built.node.rect.x + window.scrollX,
       y: built.node.rect.y + window.scrollY
     };
-    const htmlStyle = window.getComputedStyle(document.documentElement);
-    const htmlBackground = parseColor(htmlStyle.backgroundColor);
-    if (htmlBackground !== null && !isInvisible(htmlBackground) && built.node.style.fills.length === 0) {
-      built.node.style.fills = [{ kind: "solid", color: htmlBackground }];
-      sink.report(
-        "info",
-        DIAGNOSTIC_CODES.pageBackgroundMoved,
-        `\u0424\u043E\u043D \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u043E\u0431\u044A\u044F\u0432\u043B\u0435\u043D \u043D\u0430 <html> \u0438 \u043F\u0435\u0440\u0435\u043D\u0435\u0441\u0451\u043D \u043D\u0430 \u043A\u043E\u0440\u043D\u0435\u0432\u043E\u0439 \u0443\u0437\u0435\u043B: rgb(${htmlBackground.r},${htmlBackground.g},${htmlBackground.b}).`,
-        built.node.id,
-        false
-      );
-    }
     const order = resolvePaintOrder(built.probe);
     const contexts = /* @__PURE__ */ new Set();
     collectStackingContexts(built.probe, contexts);
@@ -3092,6 +3100,17 @@ var H2DSerializer = (() => {
     if (root === null) {
       throw new Error("\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442 \u043F\u0443\u0441\u0442: <body> \u043D\u0435 \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u043D.");
     }
+    const canvas = readCanvas();
+    if (canvas.source === "default") {
+      const { r, g, b } = canvas.color;
+      sink.report(
+        "info",
+        DIAGNOSTIC_CODES.canvasDefaulted,
+        `\u0424\u043E\u043D \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u043D\u0435 \u0437\u0430\u0434\u0430\u043D \u043D\u0438 \u043D\u0430 <html>, \u043D\u0438 \u043D\u0430 <body>: \u0445\u043E\u043B\u0441\u0442\u0443 \u0434\u0430\u043D \u0446\u0432\u0435\u0442 \u0445\u043E\u043B\u0441\u0442\u0430 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 rgb(${r},${g},${b}) (color-scheme: ${canvas.scheme || "normal"}).`,
+        root.id,
+        false
+      );
+    }
     return {
       screen: {
         id: options.id,
@@ -3104,6 +3123,7 @@ var H2DSerializer = (() => {
         height: Math.max(document.documentElement.scrollHeight, window.innerHeight),
         dpr: window.devicePixelRatio,
         scroll: { x: window.scrollX, y: window.scrollY },
+        canvas: canvas.color,
         root,
         screenshotId: null
       },

@@ -64,7 +64,7 @@ for (const [fixture, codes] of Object.entries(EXPECTED)) {
   })
 }
 
-test('фон <html> переносится на корневой узел и об этом сообщается', async ({ page }) => {
+test('фон <html> уходит на холст экрана, а не на корень', async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 })
   // Фикстура не нужна: setContent достаточно, а фон на <html> — единственное,
   // что здесь проверяется.
@@ -75,29 +75,75 @@ test('фон <html> переносится на корневой узел и о�
   )
   const { screen, report } = await captureScreen(page, 's0', 'Desktop')
 
-  // Без переноса тёмная страница приехала бы на белом фоне, и поймать это
-  // было бы нечем: обход начинается с <body> и до <html> не доходит.
-  expect(screen.root.style.fills).toEqual([
-    { kind: 'solid', color: { r: 30, g: 41, b: 59, a: 1 } },
-  ])
-  const explained = report.some(
-    (item) => item.code === 'fidelity.page-background-moved',
-  )
-  expect(explained, 'перенос фона обязан быть объяснён в отчёте').toBe(true)
+  // По CSS фон корневого элемента красит ВЕСЬ холст, а не бокс body.
+  // Держать его заливкой корня нельзя: body здесь высотой 50px, а
+  // тёмным должен быть весь экран 800×600.
+  expect(screen.canvas).toEqual({ r: 30, g: 41, b: 59, a: 1 })
+  expect(screen.root.style.fills).toEqual([])
+  // Фон объявлен — цвет прочитан, а не выведен; записи об этом не нужно.
+  expect(report.some((i) => i.code === 'fidelity.canvas-defaulted')).toBe(false)
 })
 
-test('фон <body> не подменяется фоном <html>', async ({ page }) => {
+test('фон <body> красит холст, если у <html> его нет', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.setContent(
+    '<!doctype html><html><body style="background:#f8fafc;height:50px">' +
+    '</body></html>',
+  )
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+  // Распространение фона body на холст — правило CSS, не наша выдумка:
+  // короткий body красит своим фоном весь вьюпорт. Корень при этом
+  // свою заливку сохраняет: в бандле он — бокс body с тем, что на нём
+  // объявлено.
+  expect(screen.canvas).toEqual({ r: 248, g: 250, b: 252, a: 1 })
+  expect(screen.root.style.fills).toEqual([
+    { kind: 'solid', color: { r: 248, g: 250, b: 252, a: 1 } },
+  ])
+})
+
+test('фон <html> не подменяется фоном <body> на холсте', async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 600 })
   await page.setContent(
     '<!doctype html><html style="background:#1e293b">' +
     '<body style="background:#f8fafc"></body></html>',
   )
-  const { screen, report } = await captureScreen(page, 's0', 'Desktop')
-  // У body свой фон — переносить нечего, и диагностики быть не должно.
+  const { screen } = await captureScreen(page, 's0', 'Desktop')
+  // Оба объявлены — холст берёт корневой, body остаётся при своём.
+  expect(screen.canvas).toEqual({ r: 30, g: 41, b: 59, a: 1 })
   expect(screen.root.style.fills).toEqual([
     { kind: 'solid', color: { r: 248, g: 250, b: 252, a: 1 } },
   ])
-  expect(report.some((i) => i.code === 'fidelity.page-background-moved')).toBe(false)
+})
+
+test('холст без объявленного фона выводится из color-scheme и объясняется', async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 })
+  await page.setContent('<!doctype html><html><body></body></html>')
+  const plain = await captureScreen(page, 's0', 'Desktop')
+  // Без color-scheme холст белый при любой теме системы — измерено.
+  expect(plain.screen.canvas).toEqual({ r: 255, g: 255, b: 255, a: 1 })
+  expect(
+    plain.report.some((i) => i.code === 'fidelity.canvas-defaulted'),
+    'выведенный, а не прочитанный цвет обязан быть объяснён в отчёте',
+  ).toBe(true)
+
+  await page.setContent(
+    '<!doctype html><html style="color-scheme: dark"><body></body></html>',
+  )
+  const dark = await captureScreen(page, 's0', 'Desktop')
+  // color-scheme: dark — rgb(18,18,18), измерено в Chromium. Проверка
+  // ломается, если правило перестанет смотреть на схему.
+  expect(dark.screen.canvas).toEqual({ r: 18, g: 18, b: 18, a: 1 })
+
+  // `light dark` следует за темой системы; Playwright эмулирует light.
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.setContent(
+    '<!doctype html><html style="color-scheme: light dark"><body></body></html>',
+  )
+  const both = await captureScreen(page, 's0', 'Desktop')
+  expect(both.screen.canvas).toEqual({ r: 255, g: 255, b: 255, a: 1 })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  const bothDark = await captureScreen(page, 's0', 'Desktop')
+  expect(bothDark.screen.canvas).toEqual({ r: 18, g: 18, b: 18, a: 1 })
 })
 
 test('broken-transform: потомки НЕпереносимой трансформы объяснены', async ({ page }) => {

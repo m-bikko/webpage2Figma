@@ -45,7 +45,8 @@ const text = (o: Partial<NodeText> = {}): NodeText => ({
 
 const screen = (root: IrNode): Screen => ({
   id: 's0', name: 'Test', width: 200, height: 100, dpr: 1,
-  scroll: { x: 0, y: 0 }, root, screenshotId: null,
+  scroll: { x: 0, y: 0 }, canvas: { r: 255, g: 255, b: 255, a: 1 },
+  root, screenshotId: null,
 })
 
 describe('renderScreenToSvg: геометрия и заливки', () => {
@@ -62,7 +63,22 @@ describe('renderScreenToSvg: геометрия и заливки', () => {
   })
 
   it('не рендерит rect у пустого фрейма', () => {
-    expect(renderScreenToSvg(screen(frame()))).not.toContain('<rect')
+    /** Единственный `<rect>` — холст экрана; у самого фрейма фигуры нет. */
+    const svg = renderScreenToSvg(screen(frame()))
+    expect(svg.match(/<rect/g)).toHaveLength(1)
+    expect(svg).toContain('<rect width="200" height="100" fill="rgb(255,255,255)"')
+  })
+
+  it('холст красится первым и на весь экран', () => {
+    const svg = renderScreenToSvg({
+      ...screen(filled({ r: 255, g: 0, b: 0, a: 1 })),
+      canvas: { r: 18, g: 18, b: 18, a: 1 },
+    })
+    const canvas = svg.indexOf('<rect width="200" height="100" fill="rgb(18,18,18)"')
+    const body = svg.indexOf('fill="rgb(255,0,0)"')
+    expect(canvas).toBeGreaterThan(-1)
+    /** Под содержимым, а не над ним: иначе холст закрыл бы страницу. */
+    expect(canvas).toBeLessThan(body)
   })
 
   it('рендерит равный радиус через rx', () => {
