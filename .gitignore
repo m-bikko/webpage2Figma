@@ -9,3 +9,4 @@ playwright-report/
 out/
 packages/*/dist/
 release/
+.gstack/
