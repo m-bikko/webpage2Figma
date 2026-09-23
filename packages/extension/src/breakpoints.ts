@@ -219,3 +219,41 @@ export const waitForImages = async (
     await new Promise((done) => { setTimeout(done, 50) })
   }
 }
+
+/** Выполняет действие при масштабе страницы 100 %.
+ *
+ *  Масштаб Chrome (⌘+/⌘−) и подмена метрик через отладчик
+ *  складываются: `setDeviceMetricsOverride` задаёт ширину ДО
+ *  масштаба, и при 90 % экран «1920» получает `innerWidth` 2133.
+ *  Измерено на живом импорте: артборды назывались «Desktop XL 2133».
+ *
+ *  Сброс — на время съёмки и ТОЛЬКО для этой вкладки: область
+ *  `per-tab` не трогает масштаб источника и другие вкладки того же
+ *  сайта. Прежний масштаб и прежние настройки возвращаются в
+ *  `finally` по той же причине, что и метрики: упавший воркер не
+ *  должен оставлять вкладку изменённой.
+ *
+ *  Возвращает масштаб, который был до сброса, — вызывающий по нему
+ *  решает, нужна ли запись в отчёт. */
+export const withNormalZoom = async <T>(
+  tabId: number,
+  body: () => Promise<T>,
+): Promise<{ result: T; zoom: number }> => {
+  const zoom = await chrome.tabs.getZoom(tabId)
+  if (Math.abs(zoom - 1) < 0.001) return { result: await body(), zoom }
+  const settings = await chrome.tabs.getZoomSettings(tabId)
+  await chrome.tabs.setZoomSettings(tabId, { mode: 'automatic', scope: 'per-tab' })
+  await chrome.tabs.setZoom(tabId, 1)
+  try {
+    return { result: await body(), zoom }
+  } finally {
+    try {
+      await chrome.tabs.setZoom(tabId, zoom)
+      await chrome.tabs.setZoomSettings(tabId, {
+        mode: settings.mode ?? 'automatic', scope: settings.scope ?? 'per-origin',
+      })
+    } catch {
+      /** Вкладка могла закрыться — возвращать нечего. */
+    }
+  }
+}

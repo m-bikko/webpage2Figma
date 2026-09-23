@@ -655,15 +655,21 @@ export const fontsOf = (scene: SceneScreen[]): FontRequest[] => {
 }
 
 /** Хост из адреса страницы — для имени артборда. Адрес бывает пустым
- *  или не URL (about:blank, file:), тогда хоста нет и артборд
- *  называется по экрану. */
+ *  или без хоста (about:blank, file:), тогда хоста нет и артборд
+ *  называется по экрану.
+ *
+ *  Разбор регулярным выражением, а НЕ `new URL()`: в песочнице
+ *  плагина Figma браузерных API нет — только встроенные объекты
+ *  ECMAScript, — и `URL` там не определён. Первая редакция звала его
+ *  внутри `try`, отказ глотался, и артборды на живом импорте молча
+ *  назывались «Desktop XL 1920» без хоста. Ни один тест этого не
+ *  видел: и Vitest, и Playwright исполняют плагин там, где `URL`
+ *  есть. Теперь есть тест `sandbox`, гоняющий собранный бандл в
+ *  контексте без браузерных глобалей. */
 const hostOf = (url: string): string | null => {
-  try {
-    const host = new URL(url).hostname
-    return host === '' ? null : host
-  } catch {
-    return null
-  }
+  const match = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?([^:/?#]+)/i.exec(url)
+  const host = match?.[1]
+  return host === undefined || host === '' ? null : host.toLowerCase()
 }
 
 export const artboardName = (screen: Screen, url: string): string => {

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { createContext, runInContext } from 'node:vm'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { encodeBundleText, packBundle } from '@w2f/bundle'
+import { bundle as makeBundle, frameNode, nodeText, screen as makeScreen } from '@w2f/ir/test-fixtures'
 
 /** Проверка СРЕДЫ выполнения, а не логики.
  *
@@ -67,5 +69,74 @@ describe('собранный плагин выполняется в песочн
    *  через стек внутри песочницы. */
   it('в бандле нет шима динамического require', () => {
     expect(readFileSync(bundlePath, 'utf8')).not.toContain('Dynamic require of')
+  })
+})
+
+/** Проверка ПУТИ, а не только загрузки: бандл исполняется в контексте
+ *  без браузерных глобалей и через него прогоняется настоящая вставка.
+ *
+ *  Песочница Figma даёт только встроенные объекты ECMAScript — ни
+ *  `URL`, ни `atob`, ни `TextDecoder`. Первая проверка выше ловила
+ *  лишь то, что падает на верхнем уровне; всё, что обращается к
+ *  браузерному API по ходу дела, проходило её и отказывало уже у
+ *  человека. Так и случилось дважды: `new URL()` внутри `try` молча
+ *  оставлял артборды без хоста, а `atob` внутри `try` называл любую
+ *  целую строку повреждённой. Контекст здесь собран из того же
+ *  `createContext` — в нём этих глобалей нет по построению, и тест
+ *  проверяет это утверждением, чтобы правка Node не сделала его
+ *  пустым. */
+describe('вставка проходит в контексте без браузерных API', () => {
+  type Node = Record<string, unknown> & { name: string; children: Node[] }
+  const node = (): Node => {
+    const self: Node = {
+      name: '', x: 0, y: 0, width: 0, height: 0, rotation: 0, opacity: 1,
+      blendMode: 'NORMAL', fills: [], strokes: [], effects: [], children: [],
+      resize: (w: number, h: number) => { self['width'] = w; self['height'] = h },
+      appendChild: (child: Node) => { self.children.push(child) },
+      remove: () => {},
+    }
+    return self
+  }
+
+  it('bundle-text → done, артборд назван по хосту', async () => {
+    const code = readFileSync(bundlePath, 'utf8')
+    const posted: Record<string, unknown>[] = []
+    const page = node()
+    const sandbox = {
+      figma: {
+        showUI: () => {},
+        ui: { onmessage: null as ((message: unknown) => Promise<void>) | null,
+              postMessage: (message: Record<string, unknown>) => { posted.push(message) } },
+        currentPage: page,
+        createFrame: node, createRectangle: node, createText: node,
+        createNodeFromSvg: node,
+        createImage: () => ({ hash: 'h' }),
+        loadFontAsync: async () => {},
+      },
+      __html__: '<!doctype html>',
+      console: { log: () => {}, warn: () => {}, error: () => {} },
+    }
+    const context = createContext(sandbox)
+    for (const global of ['URL', 'atob', 'btoa', 'TextDecoder', 'setTimeout', 'fetch']) {
+      expect(runInContext(`typeof ${global}`, context), global).toBe('undefined')
+    }
+    runInContext(code, context, { timeout: 5000 })
+
+    const zip = await packBundle(makeBundle({
+      url: 'https://uqr.kz/ru/admin/restaurants',
+      screens: [makeScreen({
+        name: 'Desktop', width: 1440,
+        root: frameNode({ children: [{ ...frameNode({ id: 'n1' }), kind: 'text', text: nodeText(), paintOrder: 1 }] }),
+      })],
+    }), { assets: {} })
+    const onmessage = sandbox.figma.ui.onmessage
+    if (onmessage === null) throw new Error('плагин не подписался на сообщения')
+    await onmessage({ kind: 'bundle-text', text: encodeBundleText(zip) })
+
+    const error = posted.find((message) => message['kind'] === 'error')
+    expect(error, `плагин отказал: ${String(error?.['text'])}`).toBeUndefined()
+    const done = posted.find((message) => message['kind'] === 'done')
+    expect(done?.['screens']).toBe(1)
+    expect(page.children.map((child) => child.name)).toEqual(['uqr.kz — Desktop 1440'])
   })
 })

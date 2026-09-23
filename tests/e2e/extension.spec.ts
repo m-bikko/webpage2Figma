@@ -103,6 +103,42 @@ test('CDP-эмуляция меняет раскладку, а не только
   }
 })
 
+/** Масштаб страницы в Chrome не портит брейкпоинты.
+ *
+ *  Подмена метрик через отладчик задаёт ширину ДО масштаба: при 90 %
+ *  экран «1920» получал `innerWidth` 2133, и на живом импорте
+ *  артборды назывались «Desktop XL 2133». Сброс масштаба — на время
+ *  съёмки, только для этой вкладки, с возвратом. Проверка ломается,
+ *  если убрать `withNormalZoom` из `captureBundle`: ширины уезжают в
+ *  2133/1600/1138/853/433. */
+test('масштаб 90 % сбрасывается на время съёмки и возвращается', async () => {
+  const { context, worker } = await launchWithExtension()
+  try {
+    const page = await context.newPage()
+    await page.goto(fixtureUrl('flex'))
+    const tabId = await tabIdOf(worker, '4317')
+    await worker.evaluate((tabId) => chrome.tabs.setZoom(tabId, 0.9), tabId)
+    expect(await worker.evaluate((tabId) => chrome.tabs.getZoom(tabId), tabId)).toBeCloseTo(0.9, 3)
+
+    const { bundle } = await worker.evaluate(
+      (tabId) => globalThis.w2f.captureBundle(tabId), tabId,
+    )
+    expect(bundle.screens.map((screen) => screen.width)).toEqual([1920, 1440, 1024, 768, 390])
+    const noted = bundle.report.find((entry) => entry.code === 'fidelity.zoom-reset')
+    expect(noted?.message, 'сброс масштаба обязан быть объяснён').toContain('90 %')
+    expect(await worker.evaluate((tabId) => chrome.tabs.getZoom(tabId), tabId)).toBeCloseTo(0.9, 3)
+
+    /** При 100 % записи нет: сообщать о несделанном — шум. */
+    await worker.evaluate((tabId) => chrome.tabs.setZoom(tabId, 1), tabId)
+    const plain = await worker.evaluate(
+      (tabId) => globalThis.w2f.captureBundle(tabId), tabId,
+    )
+    expect(plain.bundle.report.some((entry) => entry.code === 'fidelity.zoom-reset')).toBe(false)
+  } finally {
+    await context.close()
+  }
+})
+
 /** Идентификаторы уникальны в пределах БАНДЛА, а не экрана.
  *
  *  Этого требует инвариант `asset.dangling`: отчёт ссылается на узлы

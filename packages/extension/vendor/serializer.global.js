@@ -113,6 +113,14 @@ var H2DSerializer = (() => {
     mixedBorderColors: "fidelity.mixed-border-colors",
     strokeStyleFlattened: "fidelity.stroke-style-flattened",
     stickyFlattened: "fidelity.sticky-flattened",
+    /** Масштаб страницы в Chrome был не 100 % и сброшен на время
+     *  съёмки. Иначе брейкпоинты снимаются неверными: подмена метрик
+     *  через отладчик задаёт ширину ДО масштаба, и при 90 % экран
+     *  «1920» получал `innerWidth` 2133 — так и приехало на живом
+     *  импорте, артборды назывались «Desktop XL 2133». Сброс делает
+     *  съёмку верной, но страница при этом выглядит не так, как её
+     *  видел человек, — об этом и запись. */
+    zoomReset: "fidelity.zoom-reset",
     paintOrderInterleaved: "fidelity.paint-order-interleaved",
     /** Порядок отрисовки приближён: позиционированный узел с
      *  `z-index: auto` контекста не создаёт, и его z-индексированные

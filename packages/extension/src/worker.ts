@@ -1,9 +1,10 @@
 import { IR_VERSION } from '@w2f/ir/version'
+import { DIAGNOSTIC_CODES } from '@w2f/ir/codes'
 import { reconcileAssets } from '@w2f/ir'
 import type { Bundle, Diagnostic, FontRequirement, Screen } from '@w2f/ir'
 import {
   BREAKPOINTS, captureFullPage, primeLazyContent, selectedBreakpoints,
-  waitForImages, withViewport,
+  waitForImages, withNormalZoom, withViewport,
   type Breakpoint,
 } from './breakpoints.js'
 import { encodeBundleText, packBundle } from '@w2f/bundle'
@@ -252,7 +253,7 @@ export const captureBundle = async (
   assets: Bundle['assets']
   report: Diagnostic[]
 }> => {
-  const captured = await captureAll(tabId, sizes)
+  const { result: captured, zoom } = await withNormalZoom(tabId, () => captureAll(tabId, sizes))
   const last = captured[captured.length - 1]
   if (last === undefined) throw new Error('Ни одного экрана не снято.')
 
@@ -261,6 +262,15 @@ export const captureBundle = async (
 
   const screens: Screen[] = []
   const report: Diagnostic[] = [...resolved.report]
+  if (Math.abs(zoom - 1) >= 0.001) {
+    report.push({
+      level: 'info', code: DIAGNOSTIC_CODES.zoomReset,
+      message: `Масштаб страницы в Chrome был ${Math.round(zoom * 100)} % и на время ` +
+        `съёмки сброшен до 100 %: иначе размеры экранов снимались бы неверными. ` +
+        `Макет соответствует странице при 100 %.`,
+      nodeId: null, screenId: null, needsPlaceholder: false,
+    })
+  }
   const bytes: Record<string, Uint8Array> = { ...resolved.bytes }
   const assets: Bundle['assets'] = [...resolved.assets]
 

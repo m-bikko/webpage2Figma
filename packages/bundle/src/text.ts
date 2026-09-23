@@ -67,10 +67,8 @@ export const decodeBundleText = (text: string): Uint8Array => {
    *  снятие однозначно и ничего не прячет. */
   const cleaned = payload.replace(/\s+/g, '')
 
-  let binary: string
-  try {
-    binary = atob(cleaned)
-  } catch {
+  const bytes = decodeBase64(cleaned)
+  if (bytes === null) {
     /** Чаще всего это обрезанная строка: буфер отдал не всё, или
      *  вставку оборвали. Сказать «строка повреждена» мало — человеку
      *  нужно знать, что делать. */
@@ -80,11 +78,44 @@ export const decodeBundleText = (text: string): Uint8Array => {
       'кнопка кладёт в буфер всё сразу.',
     )
   }
-
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
   if (bytes.length === 0) {
     throw new Error('После маркера ничего нет: скопировано пустое значение.')
   }
   return bytes
+}
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const VALUES = new Map([...ALPHABET].map((char, index) => [char, index] as const))
+
+/** Base64 своими руками, а не `atob`.
+ *
+ *  `atob` — браузерный API, а не часть языка, и в песочнице плагина
+ *  Figma его нет: там только встроенные объекты ECMAScript. Первая
+ *  редакция звала `atob` внутри `try`, и в Figma это выглядело как
+ *  «строка повреждена, скопируй заново» — на любую, сколь угодно
+ *  целую строку. Отказ с неверной причиной хуже отказа без причины:
+ *  человек делает то, что ему сказано, и получает то же самое.
+ *
+ *  `null` — только при неверных символах или длине; ровно то, о чём
+ *  `atob` бросал бы `InvalidCharacterError`. */
+export const decodeBase64 = (text: string): Uint8Array | null => {
+  const unpadded = text.replace(/=+$/, '')
+  const padding = text.length - unpadded.length
+  if (padding > 2 || text.length % 4 !== 0) return null
+  const out = new Uint8Array(Math.floor((unpadded.length * 3) / 4))
+  let acc = 0
+  let bits = 0
+  let at = 0
+  for (const char of unpadded) {
+    const value = VALUES.get(char)
+    if (value === undefined) return null
+    acc = (acc << 6) | value
+    bits += 6
+    if (bits >= 8) {
+      bits -= 8
+      out[at] = (acc >> bits) & 0xff
+      at += 1
+    }
+  }
+  return out
 }
