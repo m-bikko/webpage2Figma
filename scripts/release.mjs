@@ -162,7 +162,6 @@ for (const file of extensionFiles) {
 const zipName = `webpage2figma-extension-${version}.zip`
 const zip = spawnSync('zip', ['-X', '-r', '-q', join('..', zipName), '.'], { cwd: stageDir, stdio: 'inherit' })
 if (zip.status !== 0) fail('zip не собрался (нужен /usr/bin/zip)')
-rmSync(stageDir, { recursive: true, force: true })
 
 // ------------------------------------------------------------------- плагин
 
@@ -208,6 +207,35 @@ if (placeholderId) {
   )
 }
 
+// ----------------------------------------------------------- для своих
+
+/** Раздача БЕЗ магазинов: один архив, в котором расширение лежит
+ *  папкой для «Load unpacked», плагин — папкой для «Import plugin from
+ *  manifest», и инструкция для человека, который не читал этот
+ *  репозиторий. Те же файлы, что уходят в магазины: отдельной
+ *  «внутренней» сборки нет, иначе она разошлась бы с публичной. */
+const teamDir = resolve(releaseDir, `webpage2figma-${version}-team`)
+mkdirSync(teamDir, { recursive: true })
+const copyTree = (from, to) => {
+  mkdirSync(to, { recursive: true })
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const source = join(from, entry.name)
+    const target = join(to, entry.name)
+    if (entry.isDirectory()) copyTree(source, target)
+    else copyFileSync(source, target)
+  }
+}
+copyTree(stageDir, resolve(teamDir, 'extension'))
+copyTree(pluginOut, resolve(teamDir, 'plugin'))
+const install = readFileSync(resolve(root, 'docs/release/install-team.md'), 'utf8')
+  .replaceAll('<v>', version)
+writeFileSync(resolve(teamDir, 'УСТАНОВКА.md'), install)
+const teamZip = `webpage2figma-${version}-team.zip`
+const zipTeam = spawnSync('zip', ['-X', '-r', '-q', join('..', teamZip), '.'], { cwd: teamDir, stdio: 'inherit' })
+if (zipTeam.status !== 0) fail('командный zip не собрался')
+rmSync(teamDir, { recursive: true, force: true })
+rmSync(stageDir, { recursive: true, force: true })
+
 // -------------------------------------------------------------------- итог
 
 const sha = (path) => createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 16)
@@ -215,4 +243,5 @@ const size = (path) => `${(statSync(path).size / 1024).toFixed(0)} КБ`
 console.log(`\n✓ release/${zipName}  ${size(resolve(releaseDir, zipName))}  sha256 ${sha(resolve(releaseDir, zipName))}…`)
 console.log(`  содержимое: ${[...extensionFiles].sort().join(', ')}`)
 console.log(`✓ release/webpage2figma-plugin-${version}/  ${readdirSync(pluginOut).join(', ')}  code.js ${size(resolve(pluginOut, 'code.js'))}`)
-console.log('\nДальше: docs/release/publishing.md')
+console.log(`✓ release/${teamZip}  ${size(resolve(releaseDir, teamZip))}  — для своих: extension/, plugin/, УСТАНОВКА.md`)
+console.log('\nДальше: docs/release/publishing.md (магазины) или отдать командный zip как есть')
